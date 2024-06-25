@@ -129,7 +129,11 @@ public class CompilerProperties extends AbstractProperties {
         COMPILER_RUNTIME_MEMORY_OVERHEAD(
                 NONNEGATIVE_INTEGER,
                 5,
-                "A percentage of the job's required memory to be added to account for runtime memory overhead");
+                "A percentage of the job's required memory to be added to account for runtime memory overhead"),
+        COMPILER_JOBPRIORITY(
+                NONNEGATIVE_INTEGER,
+                0,
+                "Enable clients to manually assign priority to queries");
 
         private final IOptionType type;
         private final Object defaultValue;
@@ -213,6 +217,8 @@ public class CompilerProperties extends AbstractProperties {
     public static final String COMPILER_COLUMN_FILTER_KEY = Option.COMPILER_COLUMN_FILTER.ini();
 
     public static final int COMPILER_PARALLELISM_AS_STORAGE = 0;
+
+    public static final String COMPILER_JOBPRIORITY_KEY = Option.COMPILER_JOBPRIORITY.ini();
 
     public CompilerProperties(PropertiesAccessor accessor) {
         super(accessor);
@@ -322,5 +328,9 @@ public class CompilerProperties extends AbstractProperties {
 
     public int getRuntimeMemoryOverheadPercentage() {
         return accessor.getInt(Option.COMPILER_RUNTIME_MEMORY_OVERHEAD);
+    }
+
+    public int getJobPriority() {
+        return accessor.getInt(Option.COMPILER_JOBPRIORITY);
     }
 }

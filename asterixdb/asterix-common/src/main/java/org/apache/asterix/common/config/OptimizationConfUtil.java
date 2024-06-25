@@ -96,6 +96,8 @@ public class OptimizationConfUtil {
         boolean columnFilter = getBoolean(querySpecificConfig, CompilerProperties.COMPILER_COLUMN_FILTER_KEY,
                 compilerProperties.isColumnFilter());
 
+        int jobPriority = getJobPriority(compilerProperties, querySpecificConfig, sourceLoc);
+
         PhysicalOptimizationConfig physOptConf = new PhysicalOptimizationConfig();
         physOptConf.setFrameSize(frameSize);
         physOptConf.setMaxFramesExternalSort(sortFrameLimit);
@@ -119,6 +121,8 @@ public class OptimizationConfUtil {
         physOptConf.setForceJoinOrderMode(forceJoinOrder);
         physOptConf.setQueryPlanShapeMode(queryPlanShape);
         physOptConf.setColumnFilter(columnFilter);
+
+        physOptConf.setJobPriority(jobPriority);
 
         // We should have already validated the parameter names at this point...
         Set<String> filteredParameterNames = new HashSet<>(parameterNames);
@@ -214,5 +218,17 @@ public class OptimizationConfUtil {
             return valueInQuery;
         }
         return defaultValue;
+    }
+
+    private static int getJobPriority(CompilerProperties compilerProperties, Map<String, Object> querySpecificConfig,
+            SourceLocation sourceLoc) throws AsterixException {
+        String jobPriority = (String) querySpecificConfig.get(CompilerProperties.COMPILER_JOBPRIORITY_KEY);
+        try {
+            return jobPriority == null ? compilerProperties.getJobPriority()
+                    : OptionTypes.NONNEGATIVE_INTEGER.parse(jobPriority);
+        }   catch (IllegalArgumentException e) {
+            throw AsterixException.create(ErrorCode.COMPILATION_BAD_QUERY_PARAMETER_VALUE, sourceLoc,
+                    CompilerProperties.COMPILER_JOBPRIORITY_KEY, 1, "priority");
+        }
     }
 }
