@@ -51,6 +51,7 @@ import org.apache.hyracks.control.cc.DeployedJobSpecStore.DeployedJobSpecDescrip
 import org.apache.hyracks.control.cc.executor.ActivityPartitionDetails;
 import org.apache.hyracks.control.cc.executor.JobExecutor;
 import org.apache.hyracks.control.cc.partitions.PartitionMatchMaker;
+import org.apache.hyracks.control.cc.scheduler.JobTypeManager;
 import org.apache.hyracks.control.common.job.profiling.om.JobProfile;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -84,6 +85,14 @@ public class JobRun implements IJobStatusConditionVariable {
 
     private final long createTime;
 
+    private long addedToQueueTime = -1;
+
+    private long addedToMemoryQueueTime = -1;
+
+    private long executionEndTime;
+
+    private long executionStartTime;
+
     private volatile long startTime;
 
     private String startTimeZoneId;
@@ -99,6 +108,10 @@ public class JobRun implements IJobStatusConditionVariable {
     private List<Exception> pendingExceptions;
 
     private final Map<OperatorDescriptorId, Map<Integer, String>> operatorLocations;
+
+    private JobTypeManager.JobSchedulingType schedulingType;
+
+    private int priority;
 
     private JobRun(DeploymentId deploymentId, JobId jobId, Set<JobFlag> jobFlags, JobSpecification spec,
             ActivityClusterGraph acg) {
@@ -228,6 +241,14 @@ public class JobRun implements IJobStatusConditionVariable {
 
     public void registerOperatorLocation(OperatorDescriptorId op, int partition, String location) {
         operatorLocations.computeIfAbsent(op, k -> new HashMap<>()).put(partition, location);
+    }
+
+    public long getExecutionStartTime() {
+        return executionStartTime;
+    }
+
+    public void setExecutionStartTime(long executionStartTime) {
+        this.executionStartTime = executionStartTime;
     }
 
     @Override
@@ -427,5 +448,63 @@ public class JobRun implements IJobStatusConditionVariable {
 
     public Map<OperatorDescriptorId, Map<Integer, String>> getOperatorLocations() {
         return operatorLocations;
+    }
+
+    public ObjectNode toJSON_Shortened() {
+        ObjectMapper om = new ObjectMapper();
+        ObjectNode result = om.createObjectNode();
+
+        result.put("job-id", jobId.toString());
+        result.putPOJO("status", getStatus());
+        result.put("create-time", getCreateTime());
+        result.put("start-time", getStartTime());
+        result.put("end-time", getEndTime());
+        if (getJobSpecification().getSizeTag() != null) {
+            result.put("query-size", getJobSpecification().getSizeTag().toString());
+        }
+        long executionTime = getEndTime() - getStartTime();
+        long waitTime = getStartTime() - getCreateTime();
+        result.put("slow-down", (double) (waitTime + executionTime) / executionTime);
+        return result;
+    }
+
+    public long getAddedToQueueTime() {
+        return addedToQueueTime;
+    }
+
+    public void setAddedToQueueTime(long addedToQueueTime) {
+        this.addedToQueueTime = addedToQueueTime;
+    }
+
+    public long getAddedToMemoryQueueTime() {
+        return addedToMemoryQueueTime;
+    }
+
+    public void setAddedToMemoryQueueTime(long addedToMemoryQueueTime) {
+        this.addedToMemoryQueueTime = addedToMemoryQueueTime;
+    }
+
+    public long getExecutionEndTime() {
+        return executionEndTime;
+    }
+
+    public void setExecutionEndTime(long executionEndTime) {
+        this.executionEndTime = executionEndTime;
+    }
+
+    public void setSchedulingType(JobTypeManager.JobSchedulingType type) {
+        schedulingType = type;
+    }
+
+    public void setPriority(int pri) {
+        priority = pri;
+    }
+
+    public JobTypeManager.JobSchedulingType getSchedulingType() {
+        return schedulingType;
+    }
+
+    public Integer getPriority() {
+        return priority;
     }
 }

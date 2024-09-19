@@ -63,11 +63,11 @@ public class JobManager implements IJobManager {
 
     private static final Logger LOGGER = LogManager.getLogger();
 
-    private final ClusterControllerService ccs;
-    private final Map<JobId, JobRun> activeRunMap;
-    private final Map<JobId, JobRun> runMapArchive;
-    private final Map<JobId, List<Exception>> runMapHistory;
-    private final IJobCapacityController jobCapacityController;
+    protected final ClusterControllerService ccs;
+    protected final Map<JobId, JobRun> activeRunMap;
+    protected final Map<JobId, JobRun> runMapArchive;
+    protected final Map<JobId, List<Exception>> runMapHistory;
+    protected final IJobCapacityController jobCapacityController;
     private final AtomicLong successfulJobs;
     private final AtomicLong totalFailedJobs;
     private final AtomicLong totalCancelledJobs;
@@ -255,6 +255,7 @@ public class JobManager implements IJobManager {
         }
         run.setStatus(run.getPendingStatus(), run.getPendingExceptions());
         run.setEndTime(System.currentTimeMillis());
+        run.setExecutionEndTime(System.nanoTime());
         if (activeRunMap.remove(jobId) != null) {
             // non-active jobs have zero capacity
             releaseJobCapacity(run);
@@ -273,7 +274,7 @@ public class JobManager implements IJobManager {
                 caughtException = ExceptionUtils.suppress(caughtException, e);
             }
         }
-
+        jobQueue.notifyJobFinished(run);
         // Picks the next job to execute.
         pickJobsToRun();
 
@@ -346,7 +347,7 @@ public class JobManager implements IJobManager {
         return totalRejectedJobs.get();
     }
 
-    private void pickJobsToRun() throws HyracksException {
+    protected void pickJobsToRun() throws HyracksException {
         List<JobRun> selectedRuns = jobQueue.pull();
         for (JobRun run : selectedRuns) {
             executeJob(run);
@@ -364,7 +365,7 @@ public class JobManager implements IJobManager {
     }
 
     // Queue a job when the required capacity for the job is not met.
-    private void queueJob(JobRun jobRun) throws HyracksException {
+    protected void queueJob(JobRun jobRun) throws HyracksException {
         jobRun.setStatus(JobStatus.PENDING, null);
         jobQueue.add(jobRun);
     }

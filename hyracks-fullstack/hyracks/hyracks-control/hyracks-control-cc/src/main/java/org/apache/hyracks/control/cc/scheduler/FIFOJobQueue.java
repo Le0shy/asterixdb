@@ -49,7 +49,6 @@ import org.apache.logging.log4j.Logger;
 public class FIFOJobQueue implements IJobQueue {
 
     private static final Logger LOGGER = LogManager.getLogger();
-
     private final Map<JobId, JobRun> jobListMap = new LinkedHashMap<>();
     private final IJobManager jobManager;
     private final IJobCapacityController jobCapacityController;
@@ -120,5 +119,15 @@ public class FIFOJobQueue implements IJobQueue {
     @Override
     public void clear() {
         jobListMap.clear();
+    }
+
+    @Override
+    public void notifyJobFinished(JobRun run) {
+
+    }
+
+    @Override
+    public boolean isEmpty() {
+        return false;
     }
 }

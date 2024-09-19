@@ -57,4 +57,6 @@ public interface IJobCapacityController {
      */
     void release(JobSpecification job);
 
+    double getMemoryRatio(JobSpecification jobSpecification);
+
 }
