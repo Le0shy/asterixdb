@@ -73,4 +73,8 @@ public interface IJobQueue {
      * Clears the job queue
      */
     void clear();
+
+    void notifyJobFinished(JobRun run);
+
+    boolean isEmpty();
 }
