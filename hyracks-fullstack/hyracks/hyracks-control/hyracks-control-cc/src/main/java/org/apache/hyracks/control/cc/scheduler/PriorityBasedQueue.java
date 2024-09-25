@@ -66,6 +66,7 @@ public class PriorityBasedQueue implements IJobQueue{
         if (ret != null && queue.getFirst() == null) {
             activeQueues.remove(ret.getPriority());
         }
+        return ret;
     }
     @Override
     public JobRun remove(JobId jobId) {
@@ -111,7 +112,7 @@ public class PriorityBasedQueue implements IJobQueue{
         return left;
     }
 
-    private void checkAdmission(JobRun nextToRun, List<JobRun> jobRuns) {
+    private void checkAndAdd(JobRun nextToRun, List<JobRun> jobRuns) {
         if (nextToRun == null) {
             return;
         }
@@ -164,7 +165,7 @@ public class PriorityBasedQueue implements IJobQueue{
             /* other queue gets selected */
             MPLQueue selectedQueue = queues.get(distribution[selectedIdx] - distribution[selectedIdx - 1]);
             JobRun nextToRun = selectedQueue.getFirst();
-            checkAdmission(nextToRun, jobRuns);
+            checkAndAdd(nextToRun, jobRuns);
             return jobRuns;
         }
     }

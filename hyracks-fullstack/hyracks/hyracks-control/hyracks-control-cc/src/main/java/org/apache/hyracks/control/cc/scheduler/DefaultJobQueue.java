@@ -169,14 +169,43 @@ public class DefaultJobQueue implements IJobQueue {
         return queue.get(jobId);
     }
 
+    private boolean checkAndAdd(JobRun nextToRun, List<JobRun> jobRuns) {
+        boolean isAdmitted = true;
+        try{
+            IJobCapacityController.JobSubmissionStatus status =
+                    jobCapacityController.allocate(nextToRun.getJobSpecification());
+            // Checks if the job can be executed immediately.
+            if (status == IJobCapacityController.JobSubmissionStatus.EXECUTE) {
+                jobRuns.add(nextToRun);
+                remove(nextToRun.getJobId());
+            } else {
+                isAdmitted = false;
+            }
+        } catch (HyracksException exception) {
+            // The required capacity exceeds maximum capacity.
+            List<Exception> exceptions = new ArrayList<>();
+            exceptions.add(exception);
+            try {
+                // Fails the job.
+                jobManager.prepareComplete(nextToRun, JobStatus.FAILURE_BEFORE_EXECUTION, exceptions);
+                remove(nextToRun.getJobId()); // Removes the job from the queue.
+            } catch (HyracksException e) {
+                LOGGER.log(Level.ERROR, e.getMessage(), e);
+            }
+        }
+        return isAdmitted;
+    }
+
     @Override
     public List<JobRun> pull() {
         List<JobRun> jobRuns = new ArrayList<>();
         boolean canExecute = true;
         double maxSlowDown = -1;
+        /* pulling jobs from selected queues based on the formula until no more available capacity */
         while (canExecute) {
             MPLQueue nextJobQueue = null;
             long now = System.currentTimeMillis();
+            /* for every queue that has jobs, calculate the slowdowns and pick the one with max slowdown */
             for (int i = queueHasAnyJob.nextSetBit(0); i >= 0 && i < queueHasAnyJob.size();
                  i = queueHasAnyJob.nextSetBit(i + 1)) {
                 MPLQueue queue = queues.get(i);
@@ -186,32 +215,10 @@ public class DefaultJobQueue implements IJobQueue {
                     nextJobQueue = queue;
                 }
             }
+            /* get its front job and check system's capacity */
             if (nextJobQueue != null) {
                 JobRun nextToRun = nextJobQueue.getFirst();
-                try {
-                    IJobCapacityController.JobSubmissionStatus status =
-                            jobCapacityController.allocate(nextToRun.getJobSpecification());
-                    // Checks if the job can be executed immediately.
-                    if (status == IJobCapacityController.JobSubmissionStatus.EXECUTE) {
-                        jobRuns.add(nextToRun);
-                        remove(nextToRun.getJobId());
-                        //calculateSlowDown(nextJobQueue, now);
-                    } else {
-                        canExecute = false;
-                    }
-                } catch (HyracksException exception) {
-                    // The required capacity exceeds maximum capacity.
-                    List<Exception> exceptions = new ArrayList<>();
-                    exceptions.add(exception);
-                    //                    nextJobQueue.remove(nextToRun.getJobId()); // Removes the job from the queue.
-                    try {
-                        // Fails the job.
-                        jobManager.prepareComplete(nextToRun, JobStatus.FAILURE_BEFORE_EXECUTION, exceptions);
-                        remove(nextToRun.getJobId()); // Removes the job from the queue.
-                    } catch (HyracksException e) {
-                        LOGGER.log(Level.ERROR, e.getMessage(), e);
-                    }
-                }
+                canExecute = checkAndAdd(nextToRun, jobRuns);
             } else {
                 canExecute = false;
             }
