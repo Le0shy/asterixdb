@@ -15,18 +15,19 @@ import java.util.List;
 @NotThreadSafe
 @GuardedBy("JobManager")
 public class CompositeQueue implements IJobQueue{
-    private final IJobQueue dedicatedJobQueue;
+
+    private final IJobQueue SQAJobQueue;
     private final IJobQueue priorityBasedQueue;
 
     public CompositeQueue(IJobManager jobManager, IJobCapacityController jobCapacityController) {
-        dedicatedJobQueue = new FIFOJobQueue(jobManager, jobCapacityController);
+        SQAJobQueue = new FIFOJobQueue(jobManager, jobCapacityController);
         priorityBasedQueue = new PriorityBasedQueue(jobManager, jobCapacityController);
     }
     @Override
     public void add(JobRun run) throws HyracksException {
         JobTypeManager.JobSchedulingType schedulingType = run.getSchedulingType();
         if (schedulingType == JobTypeManager.JobSchedulingType.SHORT) {
-            dedicatedJobQueue.add(run);
+            SQAJobQueue.add(run);
         } else {
             priorityBasedQueue.add(run);
         }
@@ -35,7 +36,7 @@ public class CompositeQueue implements IJobQueue{
     @Override
     public JobRun remove(JobId jobId) {
         JobRun removedJob;
-        removedJob = dedicatedJobQueue.remove(jobId);
+        removedJob = SQAJobQueue.remove(jobId);
         if (removedJob != null) {
             return removedJob;
         }
@@ -45,7 +46,7 @@ public class CompositeQueue implements IJobQueue{
     @Override
     public JobRun get(JobId jobId) {
         JobRun acquiredJob;
-        acquiredJob = dedicatedJobQueue.get(jobId);
+        acquiredJob = SQAJobQueue.get(jobId);
         if (acquiredJob != null) {
             return acquiredJob;
         }
@@ -54,7 +55,7 @@ public class CompositeQueue implements IJobQueue{
 
     @Override
     public List<JobRun> pull() {
-        List<JobRun> dedicatedJobToRun = dedicatedJobQueue.pull();
+        List<JobRun> dedicatedJobToRun = SQAJobQueue.pull();
         List<JobRun> priorityBasedJobToRun = priorityBasedQueue.pull();
         return null;
     }
@@ -62,7 +63,7 @@ public class CompositeQueue implements IJobQueue{
     @Override
     public Collection<JobRun> jobs() {
         List<JobRun> jobs = new ArrayList<>();
-        jobs.addAll(dedicatedJobQueue.jobs());
+        jobs.addAll(SQAJobQueue.jobs());
         jobs.addAll(priorityBasedQueue.jobs());
         return Collections.unmodifiableCollection(jobs);
     }
