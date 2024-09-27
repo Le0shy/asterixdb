@@ -197,7 +197,7 @@ public class DefaultJobQueue implements IJobQueue {
     }
 
     @Override
-    public List<JobRun> pull() {
+    public List<JobRun> pull(JobTypeManager.JobSchedulingType jobSchedulingType) {
         List<JobRun> jobRuns = new ArrayList<>();
         boolean canExecute = true;
         double maxSlowDown = -1;

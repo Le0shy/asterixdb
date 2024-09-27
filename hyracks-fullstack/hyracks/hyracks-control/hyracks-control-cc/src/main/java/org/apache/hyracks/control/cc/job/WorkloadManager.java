@@ -1,4 +1,5 @@
 package org.apache.hyracks.control.cc.job;
+
 import org.apache.hyracks.api.exceptions.ErrorCode;
 import org.apache.hyracks.api.exceptions.HyracksException;
 import org.apache.hyracks.api.job.JobSpecification;
@@ -11,10 +12,13 @@ import org.apache.hyracks.control.common.controllers.CCConfig;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-public class WorkloadManager extends JobManager{
+import java.util.List;
+
+public class WorkloadManager extends JobManager {
 
     private static final Logger LOGGER = LogManager.getLogger();
     private final IJobTypeManager jobTypeManager = new JobTypeManager();
+
     public WorkloadManager(CCConfig ccConfig, ClusterControllerService ccs,
             IJobCapacityController jobCapacityController) {
         super(ccConfig, ccs, jobCapacityController);
@@ -32,9 +36,36 @@ public class WorkloadManager extends JobManager{
         CCServiceContext serviceCtx = ccs.getContext();
         serviceCtx.notifyJobCreation(jobRun.getJobId(), job, IJobCapacityController.JobSubmissionStatus.QUEUE);
         queueJob(jobRun);
-        //Whenever a new jobs added or a job finishes, check for jobs in the queue that can execite with the
+        //Whenever a new jobs added or a job finishes, check for jobs in the queue that can execute with the
         // current resources
         pickJobsToRun();
+    }
+
+    private void pickJobsToRun(JobRun jobRun) throws HyracksException {
+        //        if (jobRun.getSchedulingType() == JobTypeManager.JobSchedulingType.SHORT) {
+        //            //pickShortJobs();
+        //        } else {
+        //            //pickNonShortJobs();
+        //        }
+        List<JobRun> selectedRuns = jobQueue.pull(jobRun.getSchedulingType());
+        for (JobRun run : selectedRuns) {
+            executeJob(run);
+        }
+    }
+
+    private void pickShortJobs(JobTypeManager.JobSchedulingType
+            schedulingType) throws HyracksException {
+        List<JobRun> selectedRuns = jobQueue.pull(schedulingType);
+        for (JobRun run : selectedRuns) {
+            executeJob(run);
+        }
+    }
+
+    private void pickNonShortJobs(JobTypeManager.JobSchedulingType schedulingType) throws HyracksException{
+        List<JobRun> selectedRuns = jobQueue.pull(schedulingType);
+        for (JobRun run : selectedRuns) {
+            executeJob(run);
+        }
     }
 
     @Override

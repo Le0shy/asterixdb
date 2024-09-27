@@ -15,13 +15,14 @@ import java.util.List;
 @NotThreadSafe
 @GuardedBy("JobManager")
 public class CompositeQueue implements IJobQueue{
-
+    private final IJobCapacityController jobCapacityController;
     private final IJobQueue SQAJobQueue;
     private final IJobQueue priorityBasedQueue;
 
     public CompositeQueue(IJobManager jobManager, IJobCapacityController jobCapacityController) {
-        SQAJobQueue = new FIFOJobQueue(jobManager, jobCapacityController);
+        SQAJobQueue = new DedicatedJobQueue(jobManager, jobCapacityController);
         priorityBasedQueue = new PriorityBasedQueue(jobManager, jobCapacityController);
+        this.jobCapacityController = jobCapacityController;
     }
     @Override
     public void add(JobRun run) throws HyracksException {
@@ -54,10 +55,17 @@ public class CompositeQueue implements IJobQueue{
     }
 
     @Override
-    public List<JobRun> pull() {
-        List<JobRun> dedicatedJobToRun = SQAJobQueue.pull();
-        List<JobRun> priorityBasedJobToRun = priorityBasedQueue.pull();
-        return null;
+    public List<JobRun> pull(JobTypeManager.JobSchedulingType schedulingType) {
+        //List<JobRun> dedicatedJobToRun = SQAJobQueue.pull(schedulingType);
+        //List<JobRun> priorityBasedJobToRun = priorityBasedQueue.pull(schedulingType);
+        List<JobRun> jobRuns;
+        if (jobCapacityController.isSQAResourcesAvailable()){
+            jobRuns = SQAJobQueue.pull();
+        } else {
+            jobRuns = new ArrayList<>();
+        }
+        jobRuns.addAll(priorityBasedQueue.pull());
+        return jobRuns;
     }
 
     @Override

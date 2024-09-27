@@ -80,7 +80,7 @@ public class FIFOJobQueue implements IJobQueue {
     }
 
     @Override
-    public List<JobRun> pull() {
+    public List<JobRun> pull(JobTypeManager.JobSchedulingType jobSchedulingType) {
         List<JobRun> jobRuns = new ArrayList<>();
         Iterator<JobRun> runIterator = jobListMap.values().iterator();
         while (runIterator.hasNext()) {

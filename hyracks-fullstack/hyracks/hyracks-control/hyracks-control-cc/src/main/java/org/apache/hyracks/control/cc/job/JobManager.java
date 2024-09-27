@@ -72,7 +72,7 @@ public class JobManager implements IJobManager {
     private final AtomicLong totalFailedJobs;
     private final AtomicLong totalCancelledJobs;
     private final AtomicLong totalRejectedJobs;
-    private IJobQueue jobQueue;
+    protected IJobQueue jobQueue;
 
     public JobManager(CCConfig ccConfig, ClusterControllerService ccs, IJobCapacityController jobCapacityController) {
         this.ccs = ccs;
@@ -348,14 +348,14 @@ public class JobManager implements IJobManager {
     }
 
     protected void pickJobsToRun() throws HyracksException {
-        List<JobRun> selectedRuns = jobQueue.pull();
+        List<JobRun> selectedRuns = jobQueue.pull(null);
         for (JobRun run : selectedRuns) {
             executeJob(run);
         }
     }
 
     // Executes a job when the required capacity for the job is met.
-    private void executeJob(JobRun run) throws HyracksException {
+    protected void executeJob(JobRun run) throws HyracksException {
         run.setStartTime(System.currentTimeMillis());
         run.setStartTimeZoneId(ZoneId.systemDefault().getId());
         JobId jobId = run.getJobId();
