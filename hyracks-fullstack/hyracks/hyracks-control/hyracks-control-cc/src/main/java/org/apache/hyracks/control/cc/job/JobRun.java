@@ -459,9 +459,9 @@ public class JobRun implements IJobStatusConditionVariable {
         result.put("create-time", getCreateTime());
         result.put("start-time", getStartTime());
         result.put("end-time", getEndTime());
-        if (getJobSpecification().getSizeTag() != null) {
-            result.put("query-size", getJobSpecification().getSizeTag().toString());
-        }
+//        if (getJobSpecification().getSizeTag() != null) {
+//            result.put("query-size", getJobSpecification().getSizeTag().toString());
+//        }
         long executionTime = getEndTime() - getStartTime();
         long waitTime = getStartTime() - getCreateTime();
         result.put("slow-down", (double) (waitTime + executionTime) / executionTime);
