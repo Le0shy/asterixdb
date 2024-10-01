@@ -117,6 +117,7 @@ public class JobManager implements IJobManager {
     @Override
     public void add(JobRun jobRun) throws HyracksException {
         checkJob(jobRun);
+
         JobSpecification job = jobRun.getJobSpecification();
         IJobCapacityController.JobSubmissionStatus status;
         try {
@@ -348,7 +349,7 @@ public class JobManager implements IJobManager {
     }
 
     protected void pickJobsToRun() throws HyracksException {
-        List<JobRun> selectedRuns = jobQueue.pull(null);
+        List<JobRun> selectedRuns = jobQueue.pull();
         for (JobRun run : selectedRuns) {
             executeJob(run);
         }
@@ -383,7 +384,7 @@ public class JobManager implements IJobManager {
         }
     }
 
-    private ObjectNode createJobLogObject(final JobRun run) {
+    ObjectNode createJobLogObject(final JobRun run) {
         ObjectMapper om = new ObjectMapper();
         ObjectNode jobLogObject = om.createObjectNode();
         ActivityClusterGraph acg = run.getActivityClusterGraph();
@@ -392,7 +393,7 @@ public class JobManager implements IJobManager {
         return jobLogObject;
     }
 
-    private void checkJob(JobRun jobRun) throws HyracksException {
+    void checkJob(JobRun jobRun) throws HyracksException {
         if (jobRun == null) {
             throw HyracksException.create(ErrorCode.INVALID_INPUT_PARAMETER);
         }
@@ -414,19 +415,19 @@ public class JobManager implements IJobManager {
         }
     }
 
-    private void incrementSuccessfulJobs() {
+    void incrementSuccessfulJobs() {
         successfulJobs.incrementAndGet();
     }
 
-    private void incrementFailedJobs() {
+    void incrementFailedJobs() {
         totalFailedJobs.incrementAndGet();
     }
 
-    private void incrementCancelledJobs() {
+    void incrementCancelledJobs() {
         totalCancelledJobs.incrementAndGet();
     }
 
-    private void incrementRejectedJobs() {
+    void incrementRejectedJobs() {
         totalRejectedJobs.incrementAndGet();
     }
 }
