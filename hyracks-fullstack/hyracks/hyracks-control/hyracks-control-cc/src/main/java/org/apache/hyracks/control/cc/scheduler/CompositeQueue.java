@@ -5,6 +5,7 @@ import org.apache.hyracks.api.job.JobId;
 import org.apache.hyracks.api.job.resource.IJobCapacityController;
 import org.apache.hyracks.control.cc.job.IJobManager;
 import org.apache.hyracks.control.cc.job.JobRun;
+import org.apache.hyracks.control.cc.job.WorkloadManager;
 import org.apache.hyracks.util.annotations.GuardedBy;
 import org.apache.hyracks.util.annotations.NotThreadSafe;
 
@@ -15,14 +16,15 @@ import java.util.List;
 @NotThreadSafe
 @GuardedBy("JobManager")
 public class CompositeQueue implements IJobQueue{
-    private final IJobCapacityController jobCapacityController;
+    private final CapacityControllerGuard capacityControllerGuard;
+    //private final IJobCapacityController jobCapacityController;
     private final IJobQueue SQAJobQueue;
     private final IJobQueue priorityBasedQueue;
 
     public CompositeQueue(IJobManager jobManager, IJobCapacityController jobCapacityController) {
         SQAJobQueue = new DedicatedJobQueue(jobManager, jobCapacityController);
         priorityBasedQueue = new PriorityBasedQueue(jobManager, jobCapacityController);
-        this.jobCapacityController = jobCapacityController;
+        capacityControllerGuard = new CapacityControllerGuard(jobCapacityController);
     }
     @Override
     public void add(JobRun run) throws HyracksException {
@@ -55,11 +57,11 @@ public class CompositeQueue implements IJobQueue{
     }
 
     @Override
-    public List<JobRun> pull(JobTypeManager.JobSchedulingType schedulingType) {
+    public List<JobRun> pull() {
         //List<JobRun> dedicatedJobToRun = SQAJobQueue.pull(schedulingType);
         //List<JobRun> priorityBasedJobToRun = priorityBasedQueue.pull(schedulingType);
         List<JobRun> jobRuns;
-        if (jobCapacityController.isSQAResourcesAvailable()){
+        if (capacityControllerGuard.isSQAResourcesAvailable()){
             jobRuns = SQAJobQueue.pull();
         } else {
             jobRuns = new ArrayList<>();

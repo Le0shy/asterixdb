@@ -31,13 +31,13 @@ public class DedicatedJobQueue implements IJobQueue{
     }
 
     @Override
-    public List<JobRun> pull(JobTypeManager.JobSchedulingType schedulingType) {
-        return null;
+    public List<JobRun> pull() {
+        return FIFOJobQueue.pull();
     }
 
     @Override
     public Collection<JobRun> jobs() {
-        return null;
+        return FIFOJobQueue.jobs();
     }
 
     @Override

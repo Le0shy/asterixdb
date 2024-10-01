@@ -139,7 +139,7 @@ public class PriorityBasedQueue implements IJobQueue{
         }
     }
     @Override
-    public List<JobRun> pull(JobTypeManager.JobSchedulingType schedulingType) {
+    public List<JobRun> pull() {
         /* Generate probability distribution based on queues' (those have jobs waiting) priorities */
         List<JobRun> jobRuns = new ArrayList<>();
         int numNonEmptyQueues = activeQueues.size();
@@ -160,7 +160,7 @@ public class PriorityBasedQueue implements IJobQueue{
 
         if (selectedIdx == 0) {
             /* default queue gets selected */
-            return defaultJobQueue.pull(schedulingType);
+            return defaultJobQueue.pull();
         } else {
             /* other queue gets selected */
             MPLQueue selectedQueue = queues.get(distribution[selectedIdx] - distribution[selectedIdx - 1]);

@@ -62,7 +62,7 @@ public interface IJobQueue {
      *
      * @return a list of jobs whose capacity requirements can all be met at the same time.
      */
-    List<JobRun> pull(JobTypeManager.JobSchedulingType schedulingType);
+    List<JobRun> pull();
 
     /**
      * @return all pending jobs in the queue.
