@@ -16,7 +16,7 @@ public class PriorityBasedQueue implements IJobQueue{
     private final Logger LOGGER = LogManager.getLogger();
     private final IJobQueue defaultJobQueue;
     private final IJobManager jobManager;
-    private final IJobCapacityController jobCapacityController;
+    private final CapacityControllerGuard capacityControllerGuard;
     /* default queue's priority can be modified */
     private int defaultQueuePriority;
     private final Map<JobId, MPLQueue> jobIdToQueueMap = new HashMap<>();
@@ -24,13 +24,13 @@ public class PriorityBasedQueue implements IJobQueue{
     private final Map<Integer, MPLQueue> queues;
     private final Set<Integer> activeQueues;
 
-    public PriorityBasedQueue(IJobManager jobManager, IJobCapacityController jobCapacityController) {
-        defaultJobQueue = new DefaultJobQueue(jobManager, jobCapacityController);
+    public PriorityBasedQueue(IJobManager jobManager, CapacityControllerGuard capacityControllerGuard) {
+        defaultJobQueue = new DefaultJobQueue(jobManager, capacityControllerGuard);
         queues = new HashMap<>();
         activeQueues = new HashSet<>();
         defaultQueuePriority = jobManager.getDefaultQueuePriority();
         this.jobManager = jobManager;
-        this.jobCapacityController = jobCapacityController;
+        this.capacityControllerGuard = capacityControllerGuard;
     }
     @Override
     public void add(JobRun run) throws HyracksException {
@@ -118,7 +118,7 @@ public class PriorityBasedQueue implements IJobQueue{
         }
         try {
             IJobCapacityController.JobSubmissionStatus status =
-                    jobCapacityController.allocate(nextToRun.getJobSpecification());
+                    capacityControllerGuard.allocate(nextToRun);
             /* Checks if the job can be executed immediately. */
             if (status == IJobCapacityController.JobSubmissionStatus.EXECUTE) {
                 jobRuns.add(nextToRun);

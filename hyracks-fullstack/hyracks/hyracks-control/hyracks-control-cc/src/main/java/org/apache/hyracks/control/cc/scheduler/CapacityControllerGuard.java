@@ -4,7 +4,6 @@ import org.apache.hyracks.api.exceptions.HyracksException;
 import org.apache.hyracks.api.job.JobSpecification;
 import org.apache.hyracks.api.job.resource.IClusterCapacity;
 import org.apache.hyracks.api.job.resource.IJobCapacityController;
-import org.apache.hyracks.api.job.resource.IReadOnlyClusterCapacity;
 import org.apache.hyracks.control.cc.job.JobRun;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -18,21 +17,19 @@ public class CapacityControllerGuard {
     private final int maximumAggregatedCores;
 
     private final long maximumAggregatedMemoryByteSize;
-    //private final long maximumMemoryShort;
     private long memoryAvailableShort;
-    //private final long maximumMemoryCommon;
     private long memoryAvailableCommon;
 
     public CapacityControllerGuard(IJobCapacityController jobCapacityController) {
         this.jobCapacityController = jobCapacityController;
 
         /* available memory resources for short jobs and other jobs */
-        maximumAggregatedMemoryByteSize = jobCapacityController.getAggregatedMemeoryByteSize();
+        maximumAggregatedMemoryByteSize = jobCapacityController.getMaxAggregatedMemoryByteSize();
         memoryAvailableShort = (long)(maximumAggregatedMemoryByteSize * memoryAllocatedToShort);
         memoryAvailableCommon = maximumAggregatedMemoryByteSize - memoryAvailableShort;
 
         /* available cpu resources for short jobs and other jobs */
-        maximumAggregatedCores = jobCapacityController.getAggregatedNumCores();
+        maximumAggregatedCores = jobCapacityController.getMaxAggregatedNumCores();
         CPUQuotaCommon = maximumAggregatedCores - CPUQuotaShort;
     }
 

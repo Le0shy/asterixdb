@@ -24,16 +24,18 @@ public class DefaultJobQueue implements IJobQueue {
     private final Logger LOGGER = LogManager.getLogger();
     //private final Map<JobId, JobRun> memoryQueue = new LinkedHashMap<>();
     private final IJobManager jobManager;
-    private final IJobCapacityController jobCapacityController;
+
+    private final CapacityControllerGuard capacityControllerGuard;
+    //private final IJobCapacityController jobCapacityController;
     private final Map<JobId, MPLQueue> jobIdToQueueMap = new HashMap<>();
     private final int jobQueueCapacity;
     private ArrayList<MPLQueue> queues = new ArrayList<>();
     private int numberOfQueues = 11;
     private BitSet queueHasAnyJob = new BitSet(numberOfQueues);
 
-    public DefaultJobQueue(IJobManager jobManager, IJobCapacityController jobCapacityController) {
+    public DefaultJobQueue(IJobManager jobManager, CapacityControllerGuard capacityControllerGuard) {
         this.jobManager = jobManager;
-        this.jobCapacityController = jobCapacityController;
+        this.capacityControllerGuard = capacityControllerGuard;
         this.jobQueueCapacity = jobManager.getJobQueueCapacity();
         double[] candidateExecTimes =
                 new double[] {337.32, 0.5, 55.5, 27.33, 41.4, 58.55, 76.27, 124.3, 160.46, 215.23, 295.49 };
@@ -116,7 +118,7 @@ public class DefaultJobQueue implements IJobQueue {
         if (run.getSchedulingType() == JobTypeManager.JobSchedulingType.LONG) {
             return queues.get(0);
         } else {
-            double ratio = jobCapacityController.getMemoryRatio(run.getJobSpecification());
+            double ratio = capacityControllerGuard.getMemoryRatio(run.getJobSpecification());
             if (ratio <= 0.05) {
                 return queues.get(1);
             } else if (ratio <= 0.10) {
@@ -173,7 +175,7 @@ public class DefaultJobQueue implements IJobQueue {
         boolean isAdmitted = true;
         try{
             IJobCapacityController.JobSubmissionStatus status =
-                    jobCapacityController.allocate(nextToRun.getJobSpecification());
+                    capacityControllerGuard.allocate(nextToRun);
             // Checks if the job can be executed immediately.
             if (status == IJobCapacityController.JobSubmissionStatus.EXECUTE) {
                 jobRuns.add(nextToRun);

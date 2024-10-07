@@ -21,10 +21,10 @@ public class CompositeQueue implements IJobQueue{
     private final IJobQueue SQAJobQueue;
     private final IJobQueue priorityBasedQueue;
 
-    public CompositeQueue(IJobManager jobManager, IJobCapacityController jobCapacityController) {
-        SQAJobQueue = new DedicatedJobQueue(jobManager, jobCapacityController);
-        priorityBasedQueue = new PriorityBasedQueue(jobManager, jobCapacityController);
-        capacityControllerGuard = new CapacityControllerGuard(jobCapacityController);
+    public CompositeQueue(IJobManager jobManager, CapacityControllerGuard capacityControllerGuard) {
+        SQAJobQueue = new DedicatedJobQueue(jobManager, capacityControllerGuard);
+        priorityBasedQueue = new PriorityBasedQueue(jobManager, capacityControllerGuard);
+        this.capacityControllerGuard = capacityControllerGuard;
     }
     @Override
     public void add(JobRun run) throws HyracksException {
@@ -58,8 +58,6 @@ public class CompositeQueue implements IJobQueue{
 
     @Override
     public List<JobRun> pull() {
-        //List<JobRun> dedicatedJobToRun = SQAJobQueue.pull(schedulingType);
-        //List<JobRun> priorityBasedJobToRun = priorityBasedQueue.pull(schedulingType);
         List<JobRun> jobRuns;
         if (capacityControllerGuard.isSQAResourcesAvailable()){
             jobRuns = SQAJobQueue.pull();
