@@ -85,8 +85,6 @@ public class JobRun implements IJobStatusConditionVariable {
 
     private final long createTime;
 
-    private long addedToQueueTime = -1;
-
     private long addedToMemoryQueueTime = -1;
 
     private long executionEndTime;
@@ -468,13 +466,6 @@ public class JobRun implements IJobStatusConditionVariable {
         return result;
     }
 
-    public long getAddedToQueueTime() {
-        return addedToQueueTime;
-    }
-
-    public void setAddedToQueueTime(long addedToQueueTime) {
-        this.addedToQueueTime = addedToQueueTime;
-    }
 
     public long getAddedToMemoryQueueTime() {
         return addedToMemoryQueueTime;
@@ -490,6 +481,10 @@ public class JobRun implements IJobStatusConditionVariable {
 
     public void setExecutionEndTime(long executionEndTime) {
         this.executionEndTime = executionEndTime;
+    }
+
+    public long getExecutionTime() {
+        return this.getStartTime() - this.getEndTime();
     }
 
     public void setSchedulingType(JobTypeManager.JobSchedulingType type) {

@@ -14,26 +14,28 @@ public class CapacityControllerGuard {
     private int CPUQuotaShort = 8;
     private int CPUQuotaCommon;
     private final double memoryAllocatedToShort = 0.1;
-    private final int maximumAggregatedCores;
-
-    private final long maximumAggregatedMemoryByteSize;
+    private int maximumAggregatedCores;
+    private long maximumAggregatedMemoryByteSize;
     private long memoryAvailableShort;
     private long memoryAvailableCommon;
-
+    private boolean isUpdate;
     public CapacityControllerGuard(IJobCapacityController jobCapacityController) {
         this.jobCapacityController = jobCapacityController;
-
         /* available memory resources for short jobs and other jobs */
-        maximumAggregatedMemoryByteSize = jobCapacityController.getMaxAggregatedMemoryByteSize();
-        memoryAvailableShort = (long)(maximumAggregatedMemoryByteSize * memoryAllocatedToShort);
-        memoryAvailableCommon = maximumAggregatedMemoryByteSize - memoryAvailableShort;
-
-        /* available cpu resources for short jobs and other jobs */
-        maximumAggregatedCores = jobCapacityController.getMaxAggregatedNumCores();
-        CPUQuotaCommon = maximumAggregatedCores - CPUQuotaShort;
+//        maximumAggregatedMemoryByteSize = jobCapacityController.getMaxAggregatedMemoryByteSize();
+//        memoryAvailableShort = (long)(maximumAggregatedMemoryByteSize * memoryAllocatedToShort);
+//        memoryAvailableCommon = maximumAggregatedMemoryByteSize - memoryAvailableShort;
+//
+//        /* available cpu resources for short jobs and other jobs */
+//        maximumAggregatedCores = jobCapacityController.getMaxAggregatedNumCores();
+//        CPUQuotaCommon = maximumAggregatedCores - CPUQuotaShort;
     }
 
     public IJobCapacityController.JobSubmissionStatus allocate(JobRun jobRun) throws HyracksException {
+        if(!isUpdate) {
+            update();
+        }
+
         JobSpecification job = jobRun.getJobSpecification();
 
         /* Short jobs */
@@ -119,6 +121,22 @@ public class CapacityControllerGuard {
             jobCapacityController.release(jobRun.getJobSpecification());
         }
 
+    }
+
+    public void update() {
+            isUpdate = true;
+            /* available memory resources for short jobs and other jobs */
+            maximumAggregatedMemoryByteSize = jobCapacityController.getMaxAggregatedMemoryByteSize();
+            memoryAvailableShort = (long)(maximumAggregatedMemoryByteSize * memoryAllocatedToShort);
+            memoryAvailableCommon = maximumAggregatedMemoryByteSize - memoryAvailableShort;
+
+            /* available cpu resources for short jobs and other jobs */
+            maximumAggregatedCores = jobCapacityController.getMaxAggregatedNumCores();
+            CPUQuotaCommon = maximumAggregatedCores - CPUQuotaShort;
+    }
+
+    public boolean isUpdate() {
+        return isUpdate;
     }
 
     public double getMemoryRatio(JobSpecification jobSpecification) {

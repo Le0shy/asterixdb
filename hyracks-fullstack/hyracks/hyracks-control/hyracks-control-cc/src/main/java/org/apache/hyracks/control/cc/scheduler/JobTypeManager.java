@@ -16,11 +16,13 @@ public class JobTypeManager implements IJobTypeManager {
     public void setJobType(JobRun jobRun) {
         JobSpecification job = jobRun.getJobSpecification();
         int jobPriority = job.getPriority();
-        if (jobPriority < 0) {
+        if (jobPriority == 0) {
             jobRun.setSchedulingType(JobSchedulingType.SHORT);
-        } else if (jobPriority == 0) {
+        }
+        /* else if (jobPriority == 0) {
             jobRun.setSchedulingType(JobSchedulingType.LONG);
-        } else if (jobPriority == defaultPriority) {
+        } */
+        else if (jobPriority == defaultPriority) {
             jobRun.setSchedulingType(JobSchedulingType.DEFAULT);
         } else {
             jobRun.setSchedulingType(JobSchedulingType.NORMAL);

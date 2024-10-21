@@ -146,19 +146,34 @@ public class PriorityBasedQueue implements IJobQueue{
         if (!defaultJobQueue.isEmpty()) {
            numNonEmptyQueues += 1;
         }
-        int[] distribution = new int[numNonEmptyQueues];
+        if(numNonEmptyQueues == 0) {
+            return jobRuns;
+        }
+        int[] distribution = new int[numNonEmptyQueues + 1];
+        distribution[0] = 0;
         if (!defaultJobQueue.isEmpty()) {
-            distribution[0] = defaultQueuePriority;
+            distribution[1] = defaultQueuePriority;
+            int iter = 2;
+            for (Integer priority: activeQueues) {
+                distribution[iter] = priority + distribution[iter - 1];
+                iter += 1;
+            }
+        }else {
+            int iter = 1;
+            for (Integer priority: activeQueues) {
+                if (iter == 1) {
+                    distribution[iter] = priority;
+                } else {
+                    distribution[iter] = priority + distribution[iter - 1];
+                }
+                iter += 1;
+            }
         }
-        int iter = 1;
-        for (Integer priority: activeQueues) {
-            distribution[iter] = priority + distribution[iter - 1];
-            iter += 1;
-        }
-        int generatedRandomInteger = random.nextInt(1, distribution[iter - 1] + 1);
+
+        int generatedRandomInteger = random.nextInt(1, distribution[numNonEmptyQueues] + 1);
         int selectedIdx = searchSelected(distribution, generatedRandomInteger);
 
-        if (selectedIdx == 0) {
+        if (!defaultJobQueue.isEmpty() && selectedIdx == 1) {
             /* default queue gets selected */
             return defaultJobQueue.pull();
         } else {
@@ -182,7 +197,9 @@ public class PriorityBasedQueue implements IJobQueue{
 
     @Override
     public void notifyJobFinished(JobRun run) {
-
+        if (run.getSchedulingType() == JobTypeManager.JobSchedulingType.DEFAULT) {
+            defaultJobQueue.notifyJobFinished(run);
+        }
     }
 
     @Override
