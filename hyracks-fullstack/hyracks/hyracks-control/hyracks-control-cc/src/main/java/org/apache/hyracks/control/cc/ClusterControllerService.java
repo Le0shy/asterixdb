@@ -254,22 +254,22 @@ public class ClusterControllerService implements IControllerService {
         executor = MaintainedThreadNameExecutorService.newCachedThreadPool(serviceCtx.getThreadFactory());
         application.start(ccConfig.getAppArgsArray());
         IJobCapacityController jobCapacityController = application.getJobCapacityController();
-        jobManager = new WorkloadManager(ccConfig, this, jobCapacityController);
+        /* jobManager = new WorkloadManager(ccConfig, this, jobCapacityController); */
 
         // Job manager is in charge of job lifecycle management.
-//        try {
-//            Constructor<?> jobManagerConstructor =
-//                    this.getClass().getClassLoader().loadClass(ccConfig.getJobManagerClass()).getConstructor(
-//                            CCConfig.class, ClusterControllerService.class, IJobCapacityController.class);
-//            jobManager = (IJobManager) jobManagerConstructor.newInstance(ccConfig, this, jobCapacityController);
-//        } catch (ClassNotFoundException | InstantiationException | IllegalAccessException | NoSuchMethodException
-//                | InvocationTargetException e) {
-//            if (LOGGER.isWarnEnabled()) {
-//                LOGGER.log(Level.WARN, "class " + ccConfig.getJobManagerClass() + " could not be used: ", e);
-//            }
-//            // Falls back to the default implementation if the user-provided class name is not valid.
-//            jobManager = new JobManager(ccConfig, this, jobCapacityController);
-//        }
+        try {
+            Constructor<?> jobManagerConstructor =
+                    this.getClass().getClassLoader().loadClass(ccConfig.getJobManagerClass()).getConstructor(
+                            CCConfig.class, ClusterControllerService.class, IJobCapacityController.class);
+            jobManager = (IJobManager) jobManagerConstructor.newInstance(ccConfig, this, jobCapacityController);
+        } catch (ClassNotFoundException | InstantiationException | IllegalAccessException | NoSuchMethodException
+                | InvocationTargetException e) {
+            if (LOGGER.isWarnEnabled()) {
+                LOGGER.log(Level.WARN, "class " + ccConfig.getJobManagerClass() + " could not be used: ", e);
+            }
+            // Falls back to the default implementation if the user-provided class name is not valid.
+            jobManager = new JobManager(ccConfig, this, jobCapacityController);
+        }
     }
 
     private InetSocketAddress getNCService(String nodeId) {
