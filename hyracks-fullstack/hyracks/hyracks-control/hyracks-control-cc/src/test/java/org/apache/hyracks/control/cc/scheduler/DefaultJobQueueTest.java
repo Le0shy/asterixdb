@@ -15,7 +15,6 @@ import org.apache.hyracks.control.cc.job.JobRun;
 import org.apache.hyracks.control.common.controllers.CCConfig;
 import org.apache.hyracks.control.common.ipc.NodeControllerRemoteProxy;
 import org.apache.hyracks.control.common.logs.LogFile;
-import org.apache.hyracks.ipc.sockets.SslHandshake;
 import org.junit.Test;
 import org.junit.Before;
 import org.kohsuke.args4j.CmdLineException;

@@ -103,15 +103,6 @@ public class WorkloadManager extends JobManager {
         workloadCapacityController.release(jobRun);
     }
 
-//    private void pickJobsToRun(JobRun jobRun) throws HyracksException{
-//        if (jobRun.getSchedulingType() == JobTypeManager.JobSchedulingType.SHORT) {
-//            pickShortJobs();
-//        } else {
-//            pickOtherJobs();
-//        }
-//    }
-
-
     private void pickJobsToRun() throws HyracksException {
         List<JobRun> selectedRuns = jobQueue.pull();
         for (JobRun run : selectedRuns) {

@@ -12,7 +12,7 @@ import org.apache.logging.log4j.Logger;
 
 import java.util.*;
 
-public class PriorityBasedQueue implements IJobQueue{
+public class PriorityBasedQueue implements IJobQueue {
     private final Logger LOGGER = LogManager.getLogger();
     private final IJobQueue defaultJobQueue;
     private final IJobManager jobManager;
@@ -32,12 +32,13 @@ public class PriorityBasedQueue implements IJobQueue{
         this.jobManager = jobManager;
         this.capacityControllerGuard = capacityControllerGuard;
     }
+
     @Override
     public void add(JobRun run) throws HyracksException {
         JobTypeManager.JobSchedulingType jobSchedulingType = run.getSchedulingType();
         /* if the job's scheduling type is DEFAULT OR LONG, add it to the default queue */
         if (jobSchedulingType == JobTypeManager.JobSchedulingType.DEFAULT ||
-        jobSchedulingType == JobTypeManager.JobSchedulingType.LONG) {
+                jobSchedulingType == JobTypeManager.JobSchedulingType.LONG) {
             defaultJobQueue.add(run);
         } else {
             /* add it to its corresponding priority based queue */
@@ -45,17 +46,17 @@ public class PriorityBasedQueue implements IJobQueue{
             MPLQueue targetQueue;
             if (queues.containsKey(jobPriority)) {
                 targetQueue = queues.get(jobPriority);
-                targetQueue.put(run.getJobId(), run);
             } else {
                 targetQueue = new MPLQueue(jobPriority, jobManager.getJobQueueCapacity());
-                targetQueue.put(run.getJobId(), run);
-                queues.put(jobPriority, targetQueue);
-                /* Jobs are waiting in the queue */
-                activeQueues.add(jobPriority);
-                jobIdToQueueMap.put(run.getJobId(), targetQueue);
             }
+            targetQueue.put(run.getJobId(), run);
+            queues.put(jobPriority, targetQueue);
+            /* Jobs are waiting in the queue */
+            activeQueues.add(jobPriority);
+            jobIdToQueueMap.put(run.getJobId(), targetQueue);
         }
     }
+
     private JobRun removeFromNormalQueue(JobId jobId) {
         MPLQueue queue = jobIdToQueueMap.get(jobId);
         if (queue == null) {
@@ -68,6 +69,7 @@ public class PriorityBasedQueue implements IJobQueue{
         }
         return ret;
     }
+
     @Override
     public JobRun remove(JobId jobId) {
         JobRun removedJob;
@@ -117,8 +119,7 @@ public class PriorityBasedQueue implements IJobQueue{
             return;
         }
         try {
-            IJobCapacityController.JobSubmissionStatus status =
-                    capacityControllerGuard.allocate(nextToRun);
+            IJobCapacityController.JobSubmissionStatus status = capacityControllerGuard.allocate(nextToRun);
             /* Checks if the job can be executed immediately. */
             if (status == IJobCapacityController.JobSubmissionStatus.EXECUTE) {
                 jobRuns.add(nextToRun);
@@ -138,15 +139,16 @@ public class PriorityBasedQueue implements IJobQueue{
             }
         }
     }
+
     @Override
     public List<JobRun> pull() {
         /* Generate probability distribution based on queues' (those have jobs waiting) priorities */
         List<JobRun> jobRuns = new ArrayList<>();
         int numNonEmptyQueues = activeQueues.size();
         if (!defaultJobQueue.isEmpty()) {
-           numNonEmptyQueues += 1;
+            numNonEmptyQueues += 1;
         }
-        if(numNonEmptyQueues == 0) {
+        if (numNonEmptyQueues == 0) {
             return jobRuns;
         }
         int[] distribution = new int[numNonEmptyQueues + 1];
@@ -154,13 +156,13 @@ public class PriorityBasedQueue implements IJobQueue{
         if (!defaultJobQueue.isEmpty()) {
             distribution[1] = defaultQueuePriority;
             int iter = 2;
-            for (Integer priority: activeQueues) {
+            for (Integer priority : activeQueues) {
                 distribution[iter] = priority + distribution[iter - 1];
                 iter += 1;
             }
-        }else {
+        } else {
             int iter = 1;
-            for (Integer priority: activeQueues) {
+            for (Integer priority : activeQueues) {
                 if (iter == 1) {
                     distribution[iter] = priority;
                 } else {
@@ -202,8 +204,18 @@ public class PriorityBasedQueue implements IJobQueue{
         }
     }
 
+    public String printQueueInfo() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("\nPriority Based Queues:{\n");
+        for (Integer priority : queues.keySet()) {
+            sb.append(queues.get(priority)).append("\n");
+        }
+        sb.append("}\n");
+        return sb.toString();
+    }
+
     @Override
     public boolean isEmpty() {
-        return false;
+        return activeQueues.isEmpty();
     }
 }

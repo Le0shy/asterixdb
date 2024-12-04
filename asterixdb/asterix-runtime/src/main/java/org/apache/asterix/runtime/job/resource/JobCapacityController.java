@@ -110,13 +110,13 @@ public class JobCapacityController implements IJobCapacityController {
 //        }
 //
 //    }
-
-    public int getNumberOfAvailableCores() {
-        return resourceManager.getCurrentCapacity().getAggregatedCores();
+    @Override
+    public int getMaxAggregatedNumCores() {
+        return resourceManager.getMaximumCapacity().getAggregatedCores();
     }
 
-    public double getMemoryRatio(JobSpecification job) {
-        return (double) job.getRequiredClusterCapacity().getAggregatedMemoryByteSize()
-                / resourceManager.getMaximumCapacity().getAggregatedMemoryByteSize();
+    @Override
+    public long getMaxAggregatedMemoryByteSize() {
+        return resourceManager.getMaximumCapacity().getAggregatedMemoryByteSize();
     }
 }

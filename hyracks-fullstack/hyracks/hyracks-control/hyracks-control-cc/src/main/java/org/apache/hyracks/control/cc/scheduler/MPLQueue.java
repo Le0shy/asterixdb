@@ -11,11 +11,7 @@ import java.util.Map;
 
 public class MPLQueue {
     private final Map<JobId, JobRun> jobs = new LinkedHashMap<>();
-    private double topQuerySlowDown;
-    private long sumExecutionTimesIncludingQueueTime = 0L;
-    private int countOfExecutedJobs = 0;
     private Iterator<Map.Entry<JobId, JobRun>> it;
-    private double candidateQueryExecTime = 1;
     private int id;
     private int jobQueueCapacity;
 
@@ -32,12 +28,6 @@ public class MPLQueue {
 
     public MPLQueue(int id, int jobQueueCapacity) {
         this.id = id;
-        this.jobQueueCapacity = jobQueueCapacity;
-    }
-
-    public MPLQueue(int id, double candidateQueryExecTime, int jobQueueCapacity) {
-        this.id = id;
-        this.candidateQueryExecTime = candidateQueryExecTime;
         this.jobQueueCapacity = jobQueueCapacity;
     }
 

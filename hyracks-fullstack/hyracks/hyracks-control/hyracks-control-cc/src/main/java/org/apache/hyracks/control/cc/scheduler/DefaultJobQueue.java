@@ -98,8 +98,6 @@ public class DefaultJobQueue implements IJobQueue {
     }
 
     private MPLQueue getQueue(JobRun run) {
-        StringBuilder sb = new StringBuilder();
-
         if (run.getSchedulingType() == JobTypeManager.JobSchedulingType.LONG) {
             return queues.get(0);
         } else {

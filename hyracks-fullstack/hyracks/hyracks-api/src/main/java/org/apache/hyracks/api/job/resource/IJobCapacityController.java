@@ -21,7 +21,6 @@ package org.apache.hyracks.api.job.resource;
 
 import org.apache.hyracks.api.exceptions.HyracksException;
 import org.apache.hyracks.api.job.JobSpecification;
-import org.apache.hyracks.control.cc.scheduler.IResourceManager;
 
 /**
  * This interface determines the behavior of a job when it is submitted to the job manager.
@@ -58,11 +57,11 @@ public interface IJobCapacityController {
      */
     void release(JobSpecification job);
 
-    default int getAggregatedNumCores() {
+    default int getMaxAggregatedNumCores() {
         return 0;
     }
 
-    default long getAggregatedMemeoryByteSize() {
+    default long getMaxAggregatedMemoryByteSize() {
         return 0;
     }
 
