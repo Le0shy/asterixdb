@@ -119,56 +119,7 @@ import org.apache.asterix.lang.common.expression.TypeExpression;
 import org.apache.asterix.lang.common.expression.TypeReferenceExpression;
 import org.apache.asterix.lang.common.expression.VariableExpr;
 import org.apache.asterix.lang.common.rewrites.LangRewritingContext;
-import org.apache.asterix.lang.common.statement.AdapterDropStatement;
-import org.apache.asterix.lang.common.statement.AnalyzeDropStatement;
-import org.apache.asterix.lang.common.statement.AnalyzeStatement;
-import org.apache.asterix.lang.common.statement.CompactStatement;
-import org.apache.asterix.lang.common.statement.ConnectFeedStatement;
-import org.apache.asterix.lang.common.statement.CopyFromStatement;
-import org.apache.asterix.lang.common.statement.CopyToStatement;
-import org.apache.asterix.lang.common.statement.CreateAdapterStatement;
-import org.apache.asterix.lang.common.statement.CreateDatabaseStatement;
-import org.apache.asterix.lang.common.statement.CreateDataverseStatement;
-import org.apache.asterix.lang.common.statement.CreateFeedPolicyStatement;
-import org.apache.asterix.lang.common.statement.CreateFeedStatement;
-import org.apache.asterix.lang.common.statement.CreateFullTextConfigStatement;
-import org.apache.asterix.lang.common.statement.CreateFullTextFilterStatement;
-import org.apache.asterix.lang.common.statement.CreateFunctionStatement;
-import org.apache.asterix.lang.common.statement.CreateIndexStatement;
-import org.apache.asterix.lang.common.statement.CreateLibraryStatement;
-import org.apache.asterix.lang.common.statement.CreateSynonymStatement;
-import org.apache.asterix.lang.common.statement.CreateViewStatement;
-import org.apache.asterix.lang.common.statement.DatabaseDropStatement;
-import org.apache.asterix.lang.common.statement.DatasetDecl;
-import org.apache.asterix.lang.common.statement.DataverseDecl;
-import org.apache.asterix.lang.common.statement.DataverseDropStatement;
-import org.apache.asterix.lang.common.statement.DeleteStatement;
-import org.apache.asterix.lang.common.statement.DisconnectFeedStatement;
-import org.apache.asterix.lang.common.statement.DropDatasetStatement;
-import org.apache.asterix.lang.common.statement.ExternalDetailsDecl;
-import org.apache.asterix.lang.common.statement.FeedDropStatement;
-import org.apache.asterix.lang.common.statement.FeedPolicyDropStatement;
-import org.apache.asterix.lang.common.statement.FullTextConfigDropStatement;
-import org.apache.asterix.lang.common.statement.FullTextFilterDropStatement;
-import org.apache.asterix.lang.common.statement.FunctionDecl;
-import org.apache.asterix.lang.common.statement.FunctionDropStatement;
-import org.apache.asterix.lang.common.statement.IndexDropStatement;
-import org.apache.asterix.lang.common.statement.InsertStatement;
-import org.apache.asterix.lang.common.statement.InternalDetailsDecl;
-import org.apache.asterix.lang.common.statement.LibraryDropStatement;
-import org.apache.asterix.lang.common.statement.LoadStatement;
-import org.apache.asterix.lang.common.statement.NodeGroupDropStatement;
-import org.apache.asterix.lang.common.statement.NodegroupDecl;
-import org.apache.asterix.lang.common.statement.Query;
-import org.apache.asterix.lang.common.statement.SetStatement;
-import org.apache.asterix.lang.common.statement.StartFeedStatement;
-import org.apache.asterix.lang.common.statement.StopFeedStatement;
-import org.apache.asterix.lang.common.statement.SynonymDropStatement;
-import org.apache.asterix.lang.common.statement.TypeDecl;
-import org.apache.asterix.lang.common.statement.TypeDropStatement;
-import org.apache.asterix.lang.common.statement.UpsertStatement;
-import org.apache.asterix.lang.common.statement.ViewDecl;
-import org.apache.asterix.lang.common.statement.ViewDropStatement;
+import org.apache.asterix.lang.common.statement.*;
 import org.apache.asterix.lang.common.struct.Identifier;
 import org.apache.asterix.lang.common.struct.VarIdentifier;
 import org.apache.asterix.lang.common.util.FunctionUtil;
@@ -182,25 +133,7 @@ import org.apache.asterix.metadata.dataset.DatasetFormatInfo;
 import org.apache.asterix.metadata.dataset.hints.DatasetHints;
 import org.apache.asterix.metadata.dataset.hints.DatasetHints.DatasetNodegroupCardinalityHint;
 import org.apache.asterix.metadata.declared.MetadataProvider;
-import org.apache.asterix.metadata.entities.CompactionPolicy;
-import org.apache.asterix.metadata.entities.Database;
-import org.apache.asterix.metadata.entities.Dataset;
-import org.apache.asterix.metadata.entities.DatasourceAdapter;
-import org.apache.asterix.metadata.entities.Datatype;
-import org.apache.asterix.metadata.entities.Dataverse;
-import org.apache.asterix.metadata.entities.ExternalDatasetDetails;
-import org.apache.asterix.metadata.entities.Feed;
-import org.apache.asterix.metadata.entities.FeedConnection;
-import org.apache.asterix.metadata.entities.FeedPolicyEntity;
-import org.apache.asterix.metadata.entities.FullTextConfigMetadataEntity;
-import org.apache.asterix.metadata.entities.FullTextFilterMetadataEntity;
-import org.apache.asterix.metadata.entities.Function;
-import org.apache.asterix.metadata.entities.Index;
-import org.apache.asterix.metadata.entities.InternalDatasetDetails;
-import org.apache.asterix.metadata.entities.Library;
-import org.apache.asterix.metadata.entities.NodeGroup;
-import org.apache.asterix.metadata.entities.Synonym;
-import org.apache.asterix.metadata.entities.ViewDetails;
+import org.apache.asterix.metadata.entities.*;
 import org.apache.asterix.metadata.feeds.FeedMetadataUtil;
 import org.apache.asterix.metadata.functions.ExternalFunctionCompilerUtil;
 import org.apache.asterix.metadata.utils.DatasetUtil;
@@ -221,6 +154,7 @@ import org.apache.asterix.runtime.fulltext.AbstractFullTextFilterDescriptor;
 import org.apache.asterix.runtime.fulltext.FullTextConfigDescriptor;
 import org.apache.asterix.runtime.fulltext.StopwordsFullTextFilterDescriptor;
 import org.apache.asterix.runtime.operators.DatasetStreamStats;
+import org.apache.asterix.runtime.scheduler.SchedulerConfigDescriptor;
 import org.apache.asterix.transaction.management.service.transaction.DatasetIdFactory;
 import org.apache.asterix.transaction.management.service.transaction.GlobalTxInfo;
 import org.apache.asterix.translator.AbstractLangTranslator;
@@ -398,6 +332,9 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
                         break;
                     case CREATE_FULL_TEXT_CONFIG:
                         handleCreateFullTextConfigStatement(metadataProvider, stmt);
+                        break;
+                    case CREATE_SCHEDULER_CONFIG:
+                        handleCreateSchedulerConfigStatement(metadataProvider, stmt);
                         break;
                     case TYPE_DECL:
                         handleCreateTypeStatement(metadataProvider, stmt);
@@ -1751,6 +1688,81 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
             FullTextConfigMetadataEntity configMetadataEntity = new FullTextConfigMetadataEntity(configDescriptor);
 
             MetadataManager.INSTANCE.addFullTextConfig(mdTxnCtx, configMetadataEntity);
+            MetadataManager.INSTANCE.commitTransaction(mdTxnCtx);
+        } catch (Exception e) {
+            abort(e, e, mdTxnCtx);
+            throw e;
+        }
+    }
+
+    public void handleCreateSchedulerConfigStatement(MetadataProvider metadataProvider, Statement stmt)
+            throws Exception {
+        /* create config statement */
+        CreateSchedulerConfigStatement stmtCreateConfig = (CreateSchedulerConfigStatement) stmt;
+
+        /* validate database object */
+        String configName = stmtCreateConfig.getConfigName();
+        metadataProvider.validateDatabaseObjectName(stmtCreateConfig.getNamespace(), configName,
+                stmt.getSourceLocation());
+
+        Namespace stmtActiveNamespace = getActiveNamespace(stmtCreateConfig.getNamespace());
+        DataverseName dataverseName = stmtActiveNamespace.getDataverseName();
+        String databaseName = stmtActiveNamespace.getDatabaseName();
+
+        long defaultPriority = stmtCreateConfig.getDefaultPriority();
+        double shortMemoryPercent = stmtCreateConfig.getShortMemoryPercent();
+        long shortCPUQuota = stmtCreateConfig.getShortCPUQuota();
+        Map<Long, List<String>> queryGroups = stmtCreateConfig.getQueryGroups();
+
+        if (isCompileOnly()) {
+            return;
+        }
+        lockUtil.createSchedulerConfigBegin(lockManager, metadataProvider.getLocks(), databaseName, dataverseName,
+                configName);
+        try {
+                doCreateSchedulerConfig(metadataProvider, stmtCreateConfig, databaseName, dataverseName, configName,
+                        defaultPriority, shortMemoryPercent, shortCPUQuota, queryGroups);
+        } finally {
+            metadataProvider.getLocks().unlock();
+        }
+    }
+
+    protected void doCreateSchedulerConfig(MetadataProvider metadataProvider,
+            CreateSchedulerConfigStatement stmtCreateConfig, String databaseName, DataverseName dataverseName,
+            String configName, long defaultPriority, double shortMemoryPercent, long shortCPUQuota,
+            Map<Long, List<String>> queryGroups) throws Exception {
+        /* Begins a metadata transaction to ensure atomic updates. */
+        MetadataTransactionContext mdTxnCtx = MetadataManager.INSTANCE.beginTransaction();
+        metadataProvider.setMetadataTxnContext(mdTxnCtx);
+
+        /*
+            Checks if the scheduler config already exists:
+            If IF NOT EXISTS is specified and also the config already exists, it skips creation instead of failing.
+            Otherwise, it throws an error (SCHEDULER_CONFIG_ALREADY_EXISTS).
+        */
+        try {
+            SchedulerConfigMetadataEntity existingConfig =
+                    MetadataManager.INSTANCE.getSchedulerConfig(mdTxnCtx, databaseName, dataverseName, configName);
+            if (existingConfig != null) {
+                if (stmtCreateConfig.getIfNotExists()) {
+                    MetadataManager.INSTANCE.commitTransaction(mdTxnCtx);
+                    return;
+                } else {
+                    throw new CompilationException(ErrorCode.SCHEDULER_CONFIG_ALREADY_EXISTS,
+                            stmtCreateConfig.getSourceLocation(), configName);
+                }
+            }
+            /*
+                Creates a scheduler configuration (SchedulerConfigDescriptor).
+                Inserts the configuration into the metadata.
+                Commits the transaction.
+            */
+
+            SchedulerConfigDescriptor configDescriptor = new SchedulerConfigDescriptor(databaseName, dataverseName,
+                    configName, defaultPriority, shortMemoryPercent, shortCPUQuota, queryGroups);
+            SchedulerConfigMetadataEntity configMetadataEntity = new SchedulerConfigMetadataEntity(configDescriptor);
+
+            MetadataManager.INSTANCE.addSchedulerConfig(mdTxnCtx, configMetadataEntity);
             MetadataManager.INSTANCE.commitTransaction(mdTxnCtx);
         } catch (Exception e) {
             abort(e, e, mdTxnCtx);

@@ -100,6 +100,10 @@ public class MetadataIndexesProvider {
         return FullTextFilterEntity.of(usingDatabase);
     }
 
+    public SchedulerConfigEntity getSchedulerConfigEntity() {
+        return SchedulerConfigEntity.of(usingDatabase);
+    }
+
     public IMetadataIndex[] getMetadataIndexes() {
         if (isUsingDatabase()) {
             return new IMetadataIndex[] { getDatabaseEntity().getIndex(), getDataverseEntity().getIndex(),

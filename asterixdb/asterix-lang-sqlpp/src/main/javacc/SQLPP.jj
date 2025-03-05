@@ -187,6 +187,7 @@ import org.apache.asterix.lang.common.util.ConfigurationUtil;
 import org.apache.asterix.lang.common.util.DatasetDeclParametersUtil;
 import org.apache.asterix.lang.common.util.ExpressionUtils;
 import org.apache.asterix.lang.common.util.RangeMapBuilder;
+import org.apache.asterix.lang.common.statement.CreateSchedulerConfigStatement;
 import org.apache.asterix.lang.sqlpp.clause.AbstractBinaryCorrelateClause;
 import org.apache.asterix.lang.sqlpp.clause.FromClause;
 import org.apache.asterix.lang.sqlpp.clause.FromTerm;
@@ -1070,6 +1071,7 @@ Statement CreateStatement() throws ParseException:
     | stmt = CreateFeedPolicyStatement(startToken)
     | stmt = CreateFullTextStatement(startToken)
     | stmt = CreateViewStatement(startToken, false)
+    | stmt = CreateSchedulerConfigStatement(startToken, false)
   )
   {
     return stmt;
@@ -2178,6 +2180,46 @@ CreateFullTextConfigStatement CreateFullTextConfigSpec(Token startStmtToken) thr
   {
     try {
       stmt = new CreateFullTextConfigStatement(nameComponents.first, nameComponents.second.getValue(), ifNotExists, expr);
+      return addSourceLocation(stmt, startStmtToken);
+    } catch (CompilationException e) {
+       throw new SqlppParseException(getSourceLocation(startStmtToken), e.getMessage());
+    }
+  }
+}
+
+Statement CreateSchedulerStatement(Token startStmtToken) throws ParseException:
+{
+  Statement stmt = null;
+}
+{
+  (
+    <SCHEDULER>
+    (
+      <IDENTIFIER> { expectToken(CONFIG); } stmt = CreateSchedulerConfigSpec(startStmtToken)
+    )
+  )
+  {
+    return stmt;
+  }
+}
+
+
+CreateSchedulerConfigStatement CreateSchedulerConfigSpec(Token startStmtToken) throws ParseException:
+{
+  CreateSchedulerConfig stmt = null;
+  Pair<Namespace,Identifier> nameComponents = null;
+  boolean ifNotExists = false;
+  RecordConstructor expr = null;
+}
+{
+  (
+    nameComponents = QualifiedName() ifNotExists = IfNotExists()
+    <AS>
+    expr = RecordConstructor()
+  )
+  {
+    try {
+      stmt = new CreateSchedulerConfigStatement(nameComponents.first, nameComponents.second.getValue(), ifNotExists, expr);
       return addSourceLocation(stmt, startStmtToken);
     } catch (CompilationException e) {
        throw new SqlppParseException(getSourceLocation(startStmtToken), e.getMessage());

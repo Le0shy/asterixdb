@@ -103,4 +103,8 @@ public class MetadataTupleTranslatorProvider {
     public SynonymTupleTranslator getSynonymTupleTranslator(boolean getTuple) {
         return new SynonymTupleTranslator(getTuple, mdIndexesProvider.getSynonymEntity());
     }
+
+    public SchedulerConfigMetadataEntityTupleTranslator getSchedulerConfigTupleTranslator(boolean getTuple) {
+        return new SchedulerConfigMetadataEntityTupleTranslator(getTuple, mdIndexesProvider.getSchedulerConfigEntity());
+    }
 }

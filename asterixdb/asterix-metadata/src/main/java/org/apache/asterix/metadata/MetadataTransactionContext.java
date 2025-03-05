@@ -27,21 +27,7 @@ import org.apache.asterix.common.metadata.DataverseName;
 import org.apache.asterix.common.metadata.MetadataUtil;
 import org.apache.asterix.common.transactions.TxnId;
 import org.apache.asterix.external.dataset.adapter.AdapterIdentifier;
-import org.apache.asterix.metadata.entities.CompactionPolicy;
-import org.apache.asterix.metadata.entities.Database;
-import org.apache.asterix.metadata.entities.Dataset;
-import org.apache.asterix.metadata.entities.DatasourceAdapter;
-import org.apache.asterix.metadata.entities.Datatype;
-import org.apache.asterix.metadata.entities.Dataverse;
-import org.apache.asterix.metadata.entities.Feed;
-import org.apache.asterix.metadata.entities.FeedConnection;
-import org.apache.asterix.metadata.entities.FeedPolicyEntity;
-import org.apache.asterix.metadata.entities.FullTextConfigMetadataEntity;
-import org.apache.asterix.metadata.entities.FullTextFilterMetadataEntity;
-import org.apache.asterix.metadata.entities.Function;
-import org.apache.asterix.metadata.entities.Index;
-import org.apache.asterix.metadata.entities.Library;
-import org.apache.asterix.metadata.entities.NodeGroup;
+import org.apache.asterix.metadata.entities.*;
 import org.apache.asterix.runtime.fulltext.AbstractFullTextFilterDescriptor;
 import org.apache.asterix.runtime.fulltext.FullTextConfigDescriptor;
 import org.apache.hyracks.storage.am.lsm.invertedindex.fulltext.FullTextFilterType;
@@ -339,5 +325,14 @@ public class MetadataTransactionContext extends MetadataCache {
         super.clear();
         droppedCache.clear();
         opLog.clear();
+    }
+
+    public void addSchedulerConfig(SchedulerConfigMetadataEntity configMetadataEntity) {
+    }
+
+    public SchedulerConfigMetadataEntity getSchedulerConfig(String database, DataverseName dataverseName, String configName) {
+    }
+
+    public boolean schedulerConfigIsDropped(String database, DataverseName dataverseName, String configName) {
     }
 }

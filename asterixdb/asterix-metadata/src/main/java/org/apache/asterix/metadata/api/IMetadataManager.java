@@ -28,23 +28,7 @@ import org.apache.asterix.common.metadata.DataverseName;
 import org.apache.asterix.common.metadata.IMetadataBootstrap;
 import org.apache.asterix.external.indexing.ExternalFile;
 import org.apache.asterix.metadata.MetadataTransactionContext;
-import org.apache.asterix.metadata.entities.CompactionPolicy;
-import org.apache.asterix.metadata.entities.Database;
-import org.apache.asterix.metadata.entities.Dataset;
-import org.apache.asterix.metadata.entities.DatasourceAdapter;
-import org.apache.asterix.metadata.entities.Datatype;
-import org.apache.asterix.metadata.entities.Dataverse;
-import org.apache.asterix.metadata.entities.Feed;
-import org.apache.asterix.metadata.entities.FeedConnection;
-import org.apache.asterix.metadata.entities.FeedPolicyEntity;
-import org.apache.asterix.metadata.entities.FullTextConfigMetadataEntity;
-import org.apache.asterix.metadata.entities.FullTextFilterMetadataEntity;
-import org.apache.asterix.metadata.entities.Function;
-import org.apache.asterix.metadata.entities.Index;
-import org.apache.asterix.metadata.entities.Library;
-import org.apache.asterix.metadata.entities.Node;
-import org.apache.asterix.metadata.entities.NodeGroup;
-import org.apache.asterix.metadata.entities.Synonym;
+import org.apache.asterix.metadata.entities.*;
 import org.apache.hyracks.algebricks.common.exceptions.AlgebricksException;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -512,6 +496,31 @@ public interface IMetadataManager extends IMetadataBootstrap {
     void dropFullTextConfig(MetadataTransactionContext mdTxnCtx, String database, DataverseName dataverseName,
             String configName) throws AlgebricksException;
 
+    /**
+     * @param mdTxnCtx
+     *            MetadataTransactionContext of an active metadata transaction.
+     * @param dataverseName
+     *            the name of the dataverse where the scheduler config belongs
+     * @param configName
+     *            the name of the scheduler config to be fetched
+     * @throws AlgebricksException
+     *
+     * @return
+     */
+    SchedulerConfigMetadataEntity getSchedulerConfig(MetadataTransactionContext mdTxnCtx, String database,
+            DataverseName dataverseName, String configName) throws AlgebricksException;
+
+    /**
+     * @param mdTxnCtx
+     *            MetadataTransactionContext of an active metadata transaction.
+     * @param configMetadataEntity
+     *            the scheduler config descriptor to be added
+     * @throws AlgebricksException
+     *
+     * @return
+     */
+    void addSchedulerConfig(MetadataTransactionContext mdTxnCtx, SchedulerConfigMetadataEntity configMetadataEntity)
+            throws AlgebricksException;
     /**
      * @param mdTxnCtx
      *            MetadataTransactionContext of an active metadata transaction.

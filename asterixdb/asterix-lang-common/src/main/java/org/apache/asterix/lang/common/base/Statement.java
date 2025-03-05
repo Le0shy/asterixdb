@@ -96,6 +96,8 @@ public interface Statement extends ILangExpression {
         CREATE_VIEW,
         CREATE_FULL_TEXT_FILTER,
         CREATE_FULL_TEXT_CONFIG,
+        CREATE_SCHEDULER_CONFIG,
+
         INDEX_DROP,
         FULL_TEXT_FILTER_DROP,
         FULL_TEXT_CONFIG_DROP,

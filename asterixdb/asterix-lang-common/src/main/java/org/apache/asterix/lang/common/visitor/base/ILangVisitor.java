@@ -90,6 +90,7 @@ import org.apache.asterix.lang.common.statement.TypeDropStatement;
 import org.apache.asterix.lang.common.statement.UpdateStatement;
 import org.apache.asterix.lang.common.statement.ViewDecl;
 import org.apache.asterix.lang.common.statement.ViewDropStatement;
+import org.apache.asterix.lang.common.statement.CreateSchedulerConfigStatement;
 
 public interface ILangVisitor<R, T> {
 
@@ -234,4 +235,6 @@ public interface ILangVisitor<R, T> {
     R visit(ViewDecl vd, T arg) throws CompilationException;
 
     R visit(IVisitorExtension ve, T arg) throws CompilationException;
+
+    R visit(CreateSchedulerConfigStatement del, T arg) throws CompilationException;
 }

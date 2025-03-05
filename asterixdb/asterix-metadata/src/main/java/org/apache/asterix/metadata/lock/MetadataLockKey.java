@@ -41,7 +41,8 @@ final class MetadataLockKey implements IMetadataLock.LockKey {
         ADAPTER,
         MERGE_POLICY,
         NODE_GROUP,
-        SYNONYM
+        SYNONYM,
+        SCHEDULER_CONFIG
     }
 
     private final EntityKind entityKind;
@@ -161,5 +162,10 @@ final class MetadataLockKey implements IMetadataLock.LockKey {
 
     static MetadataLockKey createMergePolicyLockKey(String mergePolicyName) {
         return new MetadataLockKey(EntityKind.MERGE_POLICY, null, null, null, mergePolicyName);
+    }
+
+    static MetadataLockKey createSchedulerConfigLockKey(String database, DataverseName dataverseName,
+            String fullTextConfigName) {
+        return new MetadataLockKey(EntityKind.SCHEDULER_CONFIG, null, database, dataverseName, fullTextConfigName);
     }
 }

@@ -103,45 +103,8 @@ import org.apache.asterix.metadata.api.IMetadataNode;
 import org.apache.asterix.metadata.api.IValueExtractor;
 import org.apache.asterix.metadata.bootstrap.MetadataBuiltinEntities;
 import org.apache.asterix.metadata.bootstrap.MetadataIndexesProvider;
-import org.apache.asterix.metadata.entities.CompactionPolicy;
-import org.apache.asterix.metadata.entities.Database;
-import org.apache.asterix.metadata.entities.Dataset;
-import org.apache.asterix.metadata.entities.DatasourceAdapter;
-import org.apache.asterix.metadata.entities.Datatype;
-import org.apache.asterix.metadata.entities.Dataverse;
-import org.apache.asterix.metadata.entities.DependencyKind;
-import org.apache.asterix.metadata.entities.Feed;
-import org.apache.asterix.metadata.entities.FeedConnection;
-import org.apache.asterix.metadata.entities.FeedPolicyEntity;
-import org.apache.asterix.metadata.entities.FullTextConfigMetadataEntity;
-import org.apache.asterix.metadata.entities.FullTextFilterMetadataEntity;
-import org.apache.asterix.metadata.entities.Function;
-import org.apache.asterix.metadata.entities.Index;
-import org.apache.asterix.metadata.entities.InternalDatasetDetails;
-import org.apache.asterix.metadata.entities.Library;
-import org.apache.asterix.metadata.entities.Node;
-import org.apache.asterix.metadata.entities.NodeGroup;
-import org.apache.asterix.metadata.entities.Synonym;
-import org.apache.asterix.metadata.entities.ViewDetails;
-import org.apache.asterix.metadata.entitytupletranslators.CompactionPolicyTupleTranslator;
-import org.apache.asterix.metadata.entitytupletranslators.DatabaseTupleTranslator;
-import org.apache.asterix.metadata.entitytupletranslators.DatasetTupleTranslator;
-import org.apache.asterix.metadata.entitytupletranslators.DatasourceAdapterTupleTranslator;
-import org.apache.asterix.metadata.entitytupletranslators.DatatypeTupleTranslator;
-import org.apache.asterix.metadata.entitytupletranslators.DataverseTupleTranslator;
-import org.apache.asterix.metadata.entitytupletranslators.ExternalFileTupleTranslator;
-import org.apache.asterix.metadata.entitytupletranslators.FeedConnectionTupleTranslator;
-import org.apache.asterix.metadata.entitytupletranslators.FeedPolicyTupleTranslator;
-import org.apache.asterix.metadata.entitytupletranslators.FeedTupleTranslator;
-import org.apache.asterix.metadata.entitytupletranslators.FullTextConfigMetadataEntityTupleTranslator;
-import org.apache.asterix.metadata.entitytupletranslators.FullTextFilterMetadataEntityTupleTranslator;
-import org.apache.asterix.metadata.entitytupletranslators.FunctionTupleTranslator;
-import org.apache.asterix.metadata.entitytupletranslators.IndexTupleTranslator;
-import org.apache.asterix.metadata.entitytupletranslators.LibraryTupleTranslator;
-import org.apache.asterix.metadata.entitytupletranslators.MetadataTupleTranslatorProvider;
-import org.apache.asterix.metadata.entitytupletranslators.NodeGroupTupleTranslator;
-import org.apache.asterix.metadata.entitytupletranslators.NodeTupleTranslator;
-import org.apache.asterix.metadata.entitytupletranslators.SynonymTupleTranslator;
+import org.apache.asterix.metadata.entities.*;
+import org.apache.asterix.metadata.entitytupletranslators.*;
 import org.apache.asterix.metadata.utils.DatasetUtil;
 import org.apache.asterix.metadata.utils.TypeUtil;
 import org.apache.asterix.metadata.valueextractors.MetadataEntityValueExtractor;
@@ -662,6 +625,50 @@ public class MetadataNode implements IMetadataNode {
             throw new AsterixException(METADATA_ERROR, e, e.getMessage());
         }
     }
+
+    private void insertSchedulerConfigMetadataEntityToCatalog(TxnId txnId, SchedulerConfigMetadataEntity config)
+            throws AlgebricksException {
+        try {
+            SchedulerConfigMetadataEntityTupleTranslator tupleReaderWriter =
+                    tupleTranslatorProvider.getSchedulerConfigTupleTranslator(true);
+            ITupleReference configTuple = tupleReaderWriter.getTupleFromMetadataEntity(config);
+            insertTupleIntoIndex(txnId, mdIndexesProvider.getSchedulerConfigEntity().getIndex(), configTuple);
+        } catch (HyracksDataException e) {
+            throw new AsterixException(METADATA_ERROR, e, e.getMessage());
+        }
+    }
+
+    @Override
+    public void addSchedulerConfig(TxnId txnId, SchedulerConfigMetadataEntity config)
+            throws AlgebricksException, RemoteException {
+        insertSchedulerConfigMetadataEntityToCatalog(txnId, config);
+    }
+
+    @Override
+    public SchedulerConfigMetadataEntity getSchedulerConfig(TxnId txnId, String database, DataverseName dataverseName,
+            String configName) throws AlgebricksException {
+        SchedulerConfigMetadataEntityTupleTranslator translator =
+                tupleTranslatorProvider.getSchedulerConfigTupleTranslator(true);
+
+        ITupleReference searchKey;
+        List<SchedulerConfigMetadataEntity> results = new ArrayList<>();
+        try {
+            searchKey = createTuple(database, dataverseName, configName);
+            IValueExtractor<SchedulerConfigMetadataEntity> valueExtractor =
+                    new MetadataEntityValueExtractor<>(translator);
+            searchIndex(txnId, mdIndexesProvider.getSchedulerConfigEntity().getIndex(), searchKey, valueExtractor,
+                    results);
+        } catch (HyracksDataException e) {
+            throw new AsterixException(METADATA_ERROR, e, e.getMessage());
+        }
+
+        if (results.isEmpty()) {
+            return null;
+        }
+
+        return results.get(0);
+    }
+
 
     private void insertTupleIntoIndex(TxnId txnId, IMetadataIndex metadataIndex, ITupleReference tuple)
             throws HyracksDataException {

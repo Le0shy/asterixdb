@@ -19,11 +19,7 @@
 
 package org.apache.asterix.metadata.bootstrap;
 
-import org.apache.asterix.om.types.AOrderedListType;
-import org.apache.asterix.om.types.ARecordType;
-import org.apache.asterix.om.types.AUnionType;
-import org.apache.asterix.om.types.BuiltinType;
-import org.apache.asterix.om.types.IAType;
+import org.apache.asterix.om.types.*;
 
 /**
  * Contains static ARecordType's of all metadata record types.
@@ -129,6 +125,19 @@ public final class MetadataRecordTypes {
     public static final String FIELD_NAME_FULL_TEXT_TOKENIZER = "Tokenizer";
     public static final String FIELD_NAME_FULL_TEXT_FILTER_PIPELINE = "FullTextFilterPipeline";
     public static final String FIELD_NAME_FULL_TEXT_STOPWORD_LIST = "StopwordList";
+
+    public static final String FIELD_NAME_SCHEDULER_CONFIG_NAME = "SchedulerConfigName";
+
+    public static final String FIELD_NAME_SCHEDULER_CONFIG_DEFAULT_PRIORITY = "DefaultPriority";
+    public static final String FIELD_NAME_SCHEDULER_CONFIG_SHORT_MEMORY_PERCENT = "ShortMemoryPercent";
+    public static final String FIELD_NAME_SCHEDULER_CONFIG_SHORT_CPU_QUOTA = "ShortCPUQuota";
+    public static final String FIELD_NAME_SCHEDULER_CONFIG_QUERY_GROUPS = "QueryGroups";
+    public static final ARecordType SCHEDULER_COFING_QUERY_GROUPS_RECORDTYPE = createRecordType(
+           null,
+            new String[]{"priority", "grouplist"},
+            new IAType[]{BuiltinType.AINT32, new AUnorderedListType(BuiltinType.ASTRING, null)},
+            true
+    );
 
     //---------------------------------- Record Types Creation ----------------------------------//
     //--------------------------------------- Properties ----------------------------------------//
@@ -293,6 +302,9 @@ public final class MetadataRecordTypes {
     //---------------------------------- FullText Config and Filter -------------------------//
     public static final String RECORD_NAME_FULL_TEXT_CONFIG = "FullTextConfigRecordType";
     public static final String RECORD_NAME_FULL_TEXT_FILTER = "FullTextFilterRecordType";
+
+    //---------------------------------- Scheduler Config and Filter -------------------------//
+    public static final String RECORD_NAME_SCHEDULER_CONFIG = "SchedulerConfigRecordType";
 
     // private members
     private MetadataRecordTypes() {

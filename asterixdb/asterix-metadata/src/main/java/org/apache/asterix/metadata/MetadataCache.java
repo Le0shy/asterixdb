@@ -29,22 +29,7 @@ import org.apache.asterix.common.config.DatasetConfig.DatasetType;
 import org.apache.asterix.common.functions.FunctionSignature;
 import org.apache.asterix.common.metadata.DataverseName;
 import org.apache.asterix.metadata.api.IMetadataEntity;
-import org.apache.asterix.metadata.entities.CompactionPolicy;
-import org.apache.asterix.metadata.entities.Database;
-import org.apache.asterix.metadata.entities.Dataset;
-import org.apache.asterix.metadata.entities.DatasourceAdapter;
-import org.apache.asterix.metadata.entities.Datatype;
-import org.apache.asterix.metadata.entities.Dataverse;
-import org.apache.asterix.metadata.entities.Feed;
-import org.apache.asterix.metadata.entities.FeedConnection;
-import org.apache.asterix.metadata.entities.FeedPolicyEntity;
-import org.apache.asterix.metadata.entities.FullTextConfigMetadataEntity;
-import org.apache.asterix.metadata.entities.FullTextFilterMetadataEntity;
-import org.apache.asterix.metadata.entities.Function;
-import org.apache.asterix.metadata.entities.Index;
-import org.apache.asterix.metadata.entities.Library;
-import org.apache.asterix.metadata.entities.NodeGroup;
-import org.apache.asterix.metadata.entities.Synonym;
+import org.apache.asterix.metadata.entities.*;
 import org.apache.asterix.metadata.utils.IndexUtil;
 import org.apache.asterix.runtime.fulltext.FullTextConfigDescriptor;
 
@@ -946,6 +931,15 @@ public class MetadataCache {
         } else {
             op.entity.dropFromCache(this);
         }
+    }
+
+    public SchedulerConfigMetadataEntity getSchedulerConfig(String database, DataverseName dataverseName, String configName) {
+    }
+
+    public SchedulerConfigMetadataEntity addSchedulerConfigIfNotExists(SchedulerConfigMetadataEntity schedulerConfigMetadataEntity) {
+    }
+
+    public SchedulerConfigMetadataEntity dropSchedulerConfig(SchedulerConfigMetadataEntity schedulerConfigMetadataEntity) {
     }
 
     /**
