@@ -147,6 +147,7 @@ import org.apache.asterix.lang.common.statement.CreateIndexStatement;
 import org.apache.asterix.lang.common.statement.CreateSynonymStatement;
 import org.apache.asterix.lang.common.statement.CreateFullTextFilterStatement;
 import org.apache.asterix.lang.common.statement.CreateFullTextConfigStatement;
+import org.apache.asterix.lang.common.statement.CreateSchedulerConfigStatement;
 import org.apache.asterix.lang.common.statement.CreateViewStatement;
 import org.apache.asterix.lang.common.statement.DatabaseDropStatement;
 import org.apache.asterix.lang.common.statement.DatasetDecl;
@@ -1071,7 +1072,7 @@ Statement CreateStatement() throws ParseException:
     | stmt = CreateFeedPolicyStatement(startToken)
     | stmt = CreateFullTextStatement(startToken)
     | stmt = CreateViewStatement(startToken, false)
-    | stmt = CreateSchedulerConfigStatement(startToken, false)
+    | stmt = CreateSchedulerConfigStatement(startToken)
   )
   {
     return stmt;
@@ -2187,7 +2188,7 @@ CreateFullTextConfigStatement CreateFullTextConfigSpec(Token startStmtToken) thr
   }
 }
 
-Statement CreateSchedulerStatement(Token startStmtToken) throws ParseException:
+Statement CreateSchedulerConfigStatement(Token startStmtToken) throws ParseException:
 {
   Statement stmt = null;
 }
@@ -2206,7 +2207,7 @@ Statement CreateSchedulerStatement(Token startStmtToken) throws ParseException:
 
 CreateSchedulerConfigStatement CreateSchedulerConfigSpec(Token startStmtToken) throws ParseException:
 {
-  CreateSchedulerConfig stmt = null;
+  CreateSchedulerConfigStatement stmt = null;
   Pair<Namespace,Identifier> nameComponents = null;
   boolean ifNotExists = false;
   RecordConstructor expr = null;
@@ -6045,6 +6046,7 @@ TOKEN [IGNORE_CASE]:
   | <RTREE : "rtree">
   | <RUN : "run">
   | <SATISFIES : "satisfies">
+  | <SCHEDULER: "scheduler" >
   | <SECONDARY : "secondary">
   | <SELECT : "select">
   | <SET : "set">
