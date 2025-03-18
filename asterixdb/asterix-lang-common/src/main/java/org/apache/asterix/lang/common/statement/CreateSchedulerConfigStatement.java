@@ -41,11 +41,11 @@ public class CreateSchedulerConfigStatement extends AbstractStatement {
     private final AdmObjectNode configNode;
 
     public static final String FIELD_NAME_DEFAULT_PRIORITY = "defaultPriority";
-    public static final String FIELD_NAME_SHORT_MEMORY_QUOTA = "shortMemoryQuota";
+    public static final String FIELD_NAME_SHORT_MEMORY_QUOTA = "shortMemoryPercent";
     public static final String FIELD_NAME_SHORT_CPU_QUOTA = "shortCPUQuota";
     public static final String FIELD_NAME_QUERY_GROUP = "queryGroup";
     public static final String FIELD_NAME_QG_PRIORITY = "priority";
-    public static final String FIELD_NAME_QG_GROUPLIST = "groupList";
+    public static final String FIELD_NAME_QG_GROUPLIST = "grouplist";
 
     public CreateSchedulerConfigStatement(Namespace namespace, String configName, boolean ifNotExists,
             RecordConstructor expr) throws CompilationException {
@@ -112,7 +112,7 @@ public class CreateSchedulerConfigStatement extends AbstractStatement {
             long priority = abin.get();
 
             List<String> groupNames = new ArrayList<>();
-            AdmArrayNode groupListNode = (AdmArrayNode) configNode.get(FIELD_NAME_QG_GROUPLIST);
+            AdmArrayNode groupListNode = (AdmArrayNode) abn.get(FIELD_NAME_QG_GROUPLIST);
             for(IAdmNode groupName: groupListNode) {
                 groupNames.add(((AdmStringNode) groupName).get());
             }

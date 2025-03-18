@@ -24,54 +24,7 @@ import org.apache.asterix.lang.common.expression.OrderedListTypeDefinition;
 import org.apache.asterix.lang.common.expression.RecordTypeDefinition;
 import org.apache.asterix.lang.common.expression.TypeReferenceExpression;
 import org.apache.asterix.lang.common.expression.UnorderedListTypeDefinition;
-import org.apache.asterix.lang.common.statement.AdapterDropStatement;
-import org.apache.asterix.lang.common.statement.AnalyzeDropStatement;
-import org.apache.asterix.lang.common.statement.AnalyzeStatement;
-import org.apache.asterix.lang.common.statement.CompactStatement;
-import org.apache.asterix.lang.common.statement.ConnectFeedStatement;
-import org.apache.asterix.lang.common.statement.CopyFromStatement;
-import org.apache.asterix.lang.common.statement.CopyToStatement;
-import org.apache.asterix.lang.common.statement.CreateAdapterStatement;
-import org.apache.asterix.lang.common.statement.CreateDatabaseStatement;
-import org.apache.asterix.lang.common.statement.CreateDataverseStatement;
-import org.apache.asterix.lang.common.statement.CreateFeedPolicyStatement;
-import org.apache.asterix.lang.common.statement.CreateFeedStatement;
-import org.apache.asterix.lang.common.statement.CreateFullTextConfigStatement;
-import org.apache.asterix.lang.common.statement.CreateFullTextFilterStatement;
-import org.apache.asterix.lang.common.statement.CreateFunctionStatement;
-import org.apache.asterix.lang.common.statement.CreateIndexStatement;
-import org.apache.asterix.lang.common.statement.CreateLibraryStatement;
-import org.apache.asterix.lang.common.statement.CreateSynonymStatement;
-import org.apache.asterix.lang.common.statement.CreateViewStatement;
-import org.apache.asterix.lang.common.statement.DatabaseDropStatement;
-import org.apache.asterix.lang.common.statement.DatasetDecl;
-import org.apache.asterix.lang.common.statement.DataverseDecl;
-import org.apache.asterix.lang.common.statement.DataverseDropStatement;
-import org.apache.asterix.lang.common.statement.DeleteStatement;
-import org.apache.asterix.lang.common.statement.DisconnectFeedStatement;
-import org.apache.asterix.lang.common.statement.DropDatasetStatement;
-import org.apache.asterix.lang.common.statement.FeedDropStatement;
-import org.apache.asterix.lang.common.statement.FeedPolicyDropStatement;
-import org.apache.asterix.lang.common.statement.FullTextConfigDropStatement;
-import org.apache.asterix.lang.common.statement.FullTextFilterDropStatement;
-import org.apache.asterix.lang.common.statement.FunctionDecl;
-import org.apache.asterix.lang.common.statement.FunctionDropStatement;
-import org.apache.asterix.lang.common.statement.IndexDropStatement;
-import org.apache.asterix.lang.common.statement.InsertStatement;
-import org.apache.asterix.lang.common.statement.LibraryDropStatement;
-import org.apache.asterix.lang.common.statement.LoadStatement;
-import org.apache.asterix.lang.common.statement.NodeGroupDropStatement;
-import org.apache.asterix.lang.common.statement.NodegroupDecl;
-import org.apache.asterix.lang.common.statement.Query;
-import org.apache.asterix.lang.common.statement.SetStatement;
-import org.apache.asterix.lang.common.statement.StartFeedStatement;
-import org.apache.asterix.lang.common.statement.StopFeedStatement;
-import org.apache.asterix.lang.common.statement.SynonymDropStatement;
-import org.apache.asterix.lang.common.statement.TypeDecl;
-import org.apache.asterix.lang.common.statement.TypeDropStatement;
-import org.apache.asterix.lang.common.statement.UpdateStatement;
-import org.apache.asterix.lang.common.statement.ViewDecl;
-import org.apache.asterix.lang.common.statement.ViewDropStatement;
+import org.apache.asterix.lang.common.statement.*;
 
 public abstract class AbstractQueryExpressionVisitor<R, T> implements ILangVisitor<R, T> {
 
@@ -222,6 +175,10 @@ public abstract class AbstractQueryExpressionVisitor<R, T> implements ILangVisit
 
     @Override
     public R visit(CreateFullTextConfigStatement del, T arg) throws CompilationException {
+        return null;
+    }
+    @Override
+    public R visit(CreateSchedulerConfigStatement del, T arg) throws CompilationException {
         return null;
     }
 

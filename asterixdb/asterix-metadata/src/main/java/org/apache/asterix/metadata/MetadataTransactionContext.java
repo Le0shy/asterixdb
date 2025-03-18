@@ -30,6 +30,7 @@ import org.apache.asterix.external.dataset.adapter.AdapterIdentifier;
 import org.apache.asterix.metadata.entities.*;
 import org.apache.asterix.runtime.fulltext.AbstractFullTextFilterDescriptor;
 import org.apache.asterix.runtime.fulltext.FullTextConfigDescriptor;
+import org.apache.asterix.runtime.scheduler.SchedulerConfigDescriptor;
 import org.apache.hyracks.storage.am.lsm.invertedindex.fulltext.FullTextFilterType;
 import org.apache.hyracks.storage.am.lsm.invertedindex.fulltext.IFullTextFilterEvaluatorFactory;
 
@@ -149,6 +150,9 @@ public class MetadataTransactionContext extends MetadataCache {
         logAndApply(new MetadataLogicalOperation(feedConnection, true));
     }
 
+    public void addSchedulerConfig(SchedulerConfigMetadataEntity configMetadataEntity) {
+    }
+
     public void dropDataset(String database, DataverseName dataverseName, String datasetName) {
         Dataset dataset = new Dataset(database, dataverseName, datasetName, null, null, null, null, null, null, null,
                 null, null, -1, MetadataUtil.PENDING_NO_OP);
@@ -247,6 +251,15 @@ public class MetadataTransactionContext extends MetadataCache {
         logAndApply(new MetadataLogicalOperation(feedConnection, false));
     }
 
+    public void dropSchedulerConfig(String database, DataverseName dataverseName, String configName) {
+        SchedulerConfigDescriptor config = new SchedulerConfigDescriptor(database, dataverseName, configName,
+                0, 0, 0, null);
+        SchedulerConfigMetadataEntity configMetadataEntity = new SchedulerConfigMetadataEntity(config);
+
+        droppedCache.addSchedulerConfigIfNotExists(configMetadataEntity);
+        logAndApply(new MetadataLogicalOperation(configMetadataEntity, false));
+    }
+
     public void logAndApply(MetadataLogicalOperation op) {
         opLog.add(op);
         doOperation(op);
@@ -316,6 +329,10 @@ public class MetadataTransactionContext extends MetadataCache {
         return droppedCache.getFullTextFilter(databaseName, dataverseName, filterName) != null;
     }
 
+    public boolean schedulerConfigIsDropped(String databaseName, DataverseName dataverseName, String configName) {
+        return droppedCache.getSchedulerConfig(databaseName, dataverseName, configName) != null;
+    }
+
     public List<MetadataLogicalOperation> getOpLog() {
         return opLog;
     }
@@ -327,12 +344,9 @@ public class MetadataTransactionContext extends MetadataCache {
         opLog.clear();
     }
 
-    public void addSchedulerConfig(SchedulerConfigMetadataEntity configMetadataEntity) {
-    }
 
-    public SchedulerConfigMetadataEntity getSchedulerConfig(String database, DataverseName dataverseName, String configName) {
-    }
 
-    public boolean schedulerConfigIsDropped(String database, DataverseName dataverseName, String configName) {
-    }
+
+
+
 }

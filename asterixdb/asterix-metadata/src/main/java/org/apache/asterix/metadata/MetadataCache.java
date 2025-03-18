@@ -32,12 +32,12 @@ import org.apache.asterix.metadata.api.IMetadataEntity;
 import org.apache.asterix.metadata.entities.*;
 import org.apache.asterix.metadata.utils.IndexUtil;
 import org.apache.asterix.runtime.fulltext.FullTextConfigDescriptor;
+import org.apache.asterix.runtime.scheduler.SchedulerConfigDescriptor;
 
 /**
- * Caches metadata entities such that the MetadataManager does not have to
- * contact the MetadataNode. The cache is updated transactionally via logical
- * logging in the MetadataTransactionContext. Note that transaction abort is
- * simply ignored, i.e., updates are not applied to the cache.
+ * Caches metadata entities such that the MetadataManager does not have to contact the MetadataNode. The cache is
+ * updated transactionally via logical logging in the MetadataTransactionContext. Note that transaction abort is simply
+ * ignored, i.e., updates are not applied to the cache.
  */
 public class MetadataCache {
 
@@ -74,6 +74,8 @@ public class MetadataCache {
             new HashMap<>();
     // Key is DataverseName. Key of value map is the full-text config name
     protected final Map<String, Map<DataverseName, Map<String, FullTextConfigMetadataEntity>>> fullTextConfigs =
+            new HashMap<>();
+    protected final Map<String, Map<DataverseName, Map<String, SchedulerConfigMetadataEntity>>> schedulerConfigs =
             new HashMap<>();
 
     // Atomically executes all metadata operations in ctx's log.
@@ -112,23 +114,26 @@ public class MetadataCache {
                                 synchronized (functions) {
                                     synchronized (fullTextConfigs) {
                                         synchronized (fullTextFilters) {
-                                            synchronized (adapters) {
-                                                synchronized (libraries) {
-                                                    synchronized (compactionPolicies) {
-                                                        synchronized (synonyms) {
-                                                            databases.clear();
-                                                            dataverses.clear();
-                                                            nodeGroups.clear();
-                                                            datasets.clear();
-                                                            indexes.clear();
-                                                            datatypes.clear();
-                                                            functions.clear();
-                                                            fullTextConfigs.clear();
-                                                            fullTextFilters.clear();
-                                                            adapters.clear();
-                                                            libraries.clear();
-                                                            compactionPolicies.clear();
-                                                            synonyms.clear();
+                                            synchronized (schedulerConfigs) {
+                                                synchronized (adapters) {
+                                                    synchronized (libraries) {
+                                                        synchronized (compactionPolicies) {
+                                                            synchronized (synonyms) {
+                                                                databases.clear();
+                                                                dataverses.clear();
+                                                                nodeGroups.clear();
+                                                                datasets.clear();
+                                                                indexes.clear();
+                                                                datatypes.clear();
+                                                                functions.clear();
+                                                                fullTextConfigs.clear();
+                                                                fullTextFilters.clear();
+                                                                schedulerConfigs.clear();
+                                                                adapters.clear();
+                                                                libraries.clear();
+                                                                compactionPolicies.clear();
+                                                                synonyms.clear();
+                                                            }
                                                         }
                                                     }
                                                 }
@@ -316,79 +321,87 @@ public class MetadataCache {
                         synchronized (functions) {
                             synchronized (fullTextConfigs) {
                                 synchronized (fullTextFilters) {
-                                    synchronized (adapters) {
-                                        synchronized (libraries) {
-                                            synchronized (feeds) {
-                                                synchronized (compactionPolicies) {
-                                                    synchronized (synonyms) {
-                                                        String databaseName = dataverse.getDatabaseName();
-                                                        DataverseName dataverseName = dataverse.getDataverseName();
-                                                        Map<DataverseName, Map<String, Dataset>> ds =
-                                                                datasets.get(databaseName);
-                                                        if (ds != null) {
-                                                            ds.remove(dataverseName);
-                                                        }
-                                                        Map<DataverseName, Map<String, Map<String, Index>>> idx =
-                                                                indexes.get(databaseName);
-                                                        if (idx != null) {
-                                                            idx.remove(dataverseName);
-                                                        }
-                                                        Map<DataverseName, Map<String, Datatype>> dt =
-                                                                datatypes.get(databaseName);
-                                                        if (dt != null) {
-                                                            dt.remove(dataverseName);
-                                                        }
-                                                        Map<DataverseName, Map<String, DatasourceAdapter>> ad =
-                                                                adapters.get(databaseName);
-                                                        if (ad != null) {
-                                                            ad.remove(dataverseName);
-                                                        }
-                                                        Map<DataverseName, Map<String, CompactionPolicy>> cp =
-                                                                compactionPolicies.get(databaseName);
-                                                        if (cp != null) {
-                                                            cp.remove(dataverseName);
-                                                        }
-
-                                                        List<FunctionSignature> markedFunctionsForRemoval =
-                                                                new ArrayList<>();
-                                                        for (FunctionSignature signature : functions.keySet()) {
-                                                            if (signature.getDatabaseName().equals(databaseName)
-                                                                    && signature.getDataverseName()
-                                                                            .equals(dataverseName)) {
-                                                                markedFunctionsForRemoval.add(signature);
+                                    synchronized (schedulerConfigs) {
+                                        synchronized (adapters) {
+                                            synchronized (libraries) {
+                                                synchronized (feeds) {
+                                                    synchronized (compactionPolicies) {
+                                                        synchronized (synonyms) {
+                                                            String databaseName = dataverse.getDatabaseName();
+                                                            DataverseName dataverseName = dataverse.getDataverseName();
+                                                            Map<DataverseName, Map<String, Dataset>> ds =
+                                                                    datasets.get(databaseName);
+                                                            if (ds != null) {
+                                                                ds.remove(dataverseName);
                                                             }
+                                                            Map<DataverseName, Map<String, Map<String, Index>>> idx =
+                                                                    indexes.get(databaseName);
+                                                            if (idx != null) {
+                                                                idx.remove(dataverseName);
+                                                            }
+                                                            Map<DataverseName, Map<String, Datatype>> dt =
+                                                                    datatypes.get(databaseName);
+                                                            if (dt != null) {
+                                                                dt.remove(dataverseName);
+                                                            }
+                                                            Map<DataverseName, Map<String, DatasourceAdapter>> ad =
+                                                                    adapters.get(databaseName);
+                                                            if (ad != null) {
+                                                                ad.remove(dataverseName);
+                                                            }
+                                                            Map<DataverseName, Map<String, CompactionPolicy>> cp =
+                                                                    compactionPolicies.get(databaseName);
+                                                            if (cp != null) {
+                                                                cp.remove(dataverseName);
+                                                            }
+
+                                                            List<FunctionSignature> markedFunctionsForRemoval =
+                                                                    new ArrayList<>();
+                                                            for (FunctionSignature signature : functions.keySet()) {
+                                                                if (signature.getDatabaseName()
+                                                                        .equals(databaseName) && signature.getDataverseName()
+                                                                        .equals(dataverseName)) {
+                                                                    markedFunctionsForRemoval.add(signature);
+                                                                }
+                                                            }
+                                                            for (FunctionSignature signature : markedFunctionsForRemoval) {
+                                                                functions.remove(signature);
+                                                            }
+                                                            Map<DataverseName, Map<String, FullTextConfigMetadataEntity>>
+                                                                    ftc = fullTextConfigs.get(databaseName);
+                                                            if (ftc != null) {
+                                                                ftc.remove(dataverseName);
+                                                            }
+                                                            Map<DataverseName, Map<String, SchedulerConfigMetadataEntity>>
+                                                                    sc = schedulerConfigs.get(databaseName);
+                                                            if (sc != null) {
+                                                                sc.remove(dataverseName);
+                                                            }
+                                                            Map<DataverseName, Map<String, FullTextFilterMetadataEntity>>
+                                                                    ftf = fullTextFilters.get(databaseName);
+                                                            if (ftf != null) {
+                                                                ftf.remove(dataverseName);
+                                                            }
+                                                            Map<DataverseName, Map<String, Library>> lib =
+                                                                    libraries.get(databaseName);
+                                                            if (lib != null) {
+                                                                lib.remove(dataverseName);
+                                                            }
+                                                            //TODO(DB): how about feedConnections, feedPolicies?
+                                                            Map<DataverseName, Map<String, Feed>> fd =
+                                                                    feeds.get(databaseName);
+                                                            if (fd != null) {
+                                                                fd.remove(dataverseName);
+                                                            }
+                                                            Map<DataverseName, Map<String, Synonym>> syn =
+                                                                    synonyms.get(databaseName);
+                                                            if (syn != null) {
+                                                                syn.remove(dataverseName);
+                                                            }
+                                                            Map<DataverseName, Dataverse> dv =
+                                                                    dataverses.get(databaseName);
+                                                            return dv == null ? null : dv.remove(dataverseName);
                                                         }
-                                                        for (FunctionSignature signature : markedFunctionsForRemoval) {
-                                                            functions.remove(signature);
-                                                        }
-                                                        Map<DataverseName, Map<String, FullTextConfigMetadataEntity>> ftc =
-                                                                fullTextConfigs.get(databaseName);
-                                                        if (ftc != null) {
-                                                            ftc.remove(dataverseName);
-                                                        }
-                                                        Map<DataverseName, Map<String, FullTextFilterMetadataEntity>> ftf =
-                                                                fullTextFilters.get(databaseName);
-                                                        if (ftf != null) {
-                                                            ftf.remove(dataverseName);
-                                                        }
-                                                        Map<DataverseName, Map<String, Library>> lib =
-                                                                libraries.get(databaseName);
-                                                        if (lib != null) {
-                                                            lib.remove(dataverseName);
-                                                        }
-                                                        //TODO(DB): how about feedConnections, feedPolicies?
-                                                        Map<DataverseName, Map<String, Feed>> fd =
-                                                                feeds.get(databaseName);
-                                                        if (fd != null) {
-                                                            fd.remove(dataverseName);
-                                                        }
-                                                        Map<DataverseName, Map<String, Synonym>> syn =
-                                                                synonyms.get(databaseName);
-                                                        if (syn != null) {
-                                                            syn.remove(dataverseName);
-                                                        }
-                                                        Map<DataverseName, Dataverse> dv = dataverses.get(databaseName);
-                                                        return dv == null ? null : dv.remove(dataverseName);
                                                     }
                                                 }
                                             }
@@ -617,8 +630,9 @@ public class MetadataCache {
 
     public Function addFunctionIfNotExists(Function function) {
         synchronized (functions) {
-            FunctionSignature signature = new FunctionSignature(function.getDatabaseName(), function.getDataverseName(),
-                    function.getName(), function.getArity());
+            FunctionSignature signature =
+                    new FunctionSignature(function.getDatabaseName(), function.getDataverseName(), function.getName(),
+                            function.getArity());
             Function fun = functions.get(signature);
             if (fun == null) {
                 return functions.put(signature, function);
@@ -629,8 +643,9 @@ public class MetadataCache {
 
     public Function dropFunction(Function function) {
         synchronized (functions) {
-            FunctionSignature signature = new FunctionSignature(function.getDatabaseName(), function.getDataverseName(),
-                    function.getName(), function.getArity());
+            FunctionSignature signature =
+                    new FunctionSignature(function.getDatabaseName(), function.getDataverseName(), function.getName(),
+                            function.getArity());
             Function fun = functions.get(signature);
             if (fun == null) {
                 return null;
@@ -933,13 +948,60 @@ public class MetadataCache {
         }
     }
 
-    public SchedulerConfigMetadataEntity getSchedulerConfig(String database, DataverseName dataverseName, String configName) {
+    public SchedulerConfigMetadataEntity getSchedulerConfig(String databaseName, DataverseName dataverseName,
+            String configName) {
+        synchronized (schedulerConfigs) {
+            Map<DataverseName, Map<String, SchedulerConfigMetadataEntity>> db = schedulerConfigs.get(databaseName);
+            if (db == null) {
+                return null;
+            }
+            Map<String, SchedulerConfigMetadataEntity> m = db.get(dataverseName);
+            if (m == null) {
+                return null;
+            }
+            return m.get(configName);
+        }
     }
 
-    public SchedulerConfigMetadataEntity addSchedulerConfigIfNotExists(SchedulerConfigMetadataEntity schedulerConfigMetadataEntity) {
+    public SchedulerConfigMetadataEntity addSchedulerConfigIfNotExists(
+            SchedulerConfigMetadataEntity configMetadataEntity) {
+        SchedulerConfigDescriptor config = configMetadataEntity.getSchedulerConfig();
+        String databaseName = config.getDatabaseName();
+        DataverseName dataverseName = config.getDataverseName();
+        String configName = config.getName();
+        synchronized (schedulerConfigs) {
+            Map<DataverseName, Map<String, SchedulerConfigMetadataEntity>> databaseDataverses =
+                    schedulerConfigs.computeIfAbsent(databaseName, k -> new HashMap<>());
+            Map<String, SchedulerConfigMetadataEntity> m = databaseDataverses.get(dataverseName);
+            if (m == null) {
+                m = new HashMap<>();
+                databaseDataverses.put(dataverseName, m);
+            }
+            if (!m.containsKey(configName)) {
+                return m.put(configName, configMetadataEntity);
+            }
+            return null;
+        }
     }
 
-    public SchedulerConfigMetadataEntity dropSchedulerConfig(SchedulerConfigMetadataEntity schedulerConfigMetadataEntity) {
+    public SchedulerConfigMetadataEntity dropSchedulerConfig(SchedulerConfigMetadataEntity configMetadataEntity) {
+        SchedulerConfigDescriptor config = configMetadataEntity.getSchedulerConfig();
+        DataverseName dataverseName = config.getDataverseName();
+        String configName = config.getName();
+        synchronized (schedulerConfigs) {
+            Map<DataverseName, Map<String, SchedulerConfigMetadataEntity>> databaseDataverses =
+                    schedulerConfigs.get(config.getDatabaseName());
+            if (databaseDataverses == null) {
+                return null;
+            }
+
+            Map<String, SchedulerConfigMetadataEntity> m = databaseDataverses.get(dataverseName);
+            if (m == null) {
+                return null;
+            }
+            return m.remove(configName);
+        }
+
     }
 
     /**

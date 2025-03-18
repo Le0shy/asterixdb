@@ -65,6 +65,9 @@ public class SchedulerConfigDescriptor implements ISchedulerConfigDescriptor {
     }
 
     private Map<String, Long> createMapping(Map<Long, List<String>> priorityToGroup) {
+        if(priorityToGroup == null) {
+            return null;
+        }
         Map<String, Long> groupToPriority = new HashMap<>();
         for(long priority: priorityToGroup.keySet()) {
             List<String> groups = priorityToGroups.get(priority);
@@ -78,6 +81,9 @@ public class SchedulerConfigDescriptor implements ISchedulerConfigDescriptor {
 
     private Map<Long, List<String>> createMapping(Map<String, Long> groupToPriority, boolean bound) {
         Map<Long, List<String>> priorityToGroups = new HashMap<>();
+        if (groupToPriority == null) {
+            return null;
+        }
         for(String group: groupToPriority.keySet()) {
             long priority = groupToPriority.get(group);
             priorityToGroups.putIfAbsent(priority, new ArrayList<>());

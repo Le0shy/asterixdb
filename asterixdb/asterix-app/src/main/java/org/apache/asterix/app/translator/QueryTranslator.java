@@ -1740,7 +1740,9 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
             If IF NOT EXISTS is specified and also the config already exists, it skips creation instead of failing.
             Otherwise, it throws an error (SCHEDULER_CONFIG_ALREADY_EXISTS).
         */
+
         try {
+            /* TODO */
             SchedulerConfigMetadataEntity existingConfig =
                     MetadataManager.INSTANCE.getSchedulerConfig(mdTxnCtx, databaseName, dataverseName, configName);
             if (existingConfig != null) {

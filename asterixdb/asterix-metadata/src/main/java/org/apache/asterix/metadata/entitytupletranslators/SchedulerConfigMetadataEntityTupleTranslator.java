@@ -1,6 +1,7 @@
 package org.apache.asterix.metadata.entitytupletranslators;
 
 import org.apache.asterix.builders.IARecordBuilder;
+import org.apache.asterix.builders.OrderedListBuilder;
 import org.apache.asterix.builders.RecordBuilder;
 import org.apache.asterix.builders.UnorderedListBuilder;
 import org.apache.asterix.common.metadata.DataverseName;
@@ -9,6 +10,7 @@ import org.apache.asterix.metadata.bootstrap.MetadataRecordTypes;
 import org.apache.asterix.metadata.bootstrap.SchedulerConfigEntity;
 import org.apache.asterix.metadata.entities.SchedulerConfigMetadataEntity;
 import org.apache.asterix.om.base.*;
+import org.apache.asterix.om.types.AOrderedListType;
 import org.apache.asterix.om.types.AUnorderedListType;
 import org.apache.asterix.om.types.BuiltinType;
 import org.apache.asterix.runtime.scheduler.SchedulerConfigDescriptor;
@@ -24,6 +26,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+
+import static org.apache.asterix.metadata.bootstrap.MetadataRecordTypes.SCHEDULER_COFING_QUERY_GROUPS_RECORDTYPE;
 
 public class SchedulerConfigMetadataEntityTupleTranslator extends AbstractTupleTranslator<SchedulerConfigMetadataEntity>{
 
@@ -68,7 +72,7 @@ public class SchedulerConfigMetadataEntityTupleTranslator extends AbstractTupleT
         long shortCPUQuota = ((AInt64)aRecord.getValueByPos(schedulerConfigEntity.shortCPUQuotaIndex())).getLongValue();
 
         IACursor cursor =
-                ((AUnorderedList) aRecord.getValueByPos(schedulerConfigEntity.queryGroupsIndex())).getCursor();
+                ((AOrderedList) aRecord.getValueByPos(schedulerConfigEntity.queryGroupsIndex())).getCursor();
         Map<String, Long> groupToPriority  = new HashMap<>();
 
         while (cursor.next()) {
@@ -76,7 +80,7 @@ public class SchedulerConfigMetadataEntityTupleTranslator extends AbstractTupleT
             long priority = ((AInt64) field.getValueByPos(0)).getLongValue();
 
             IACursor groupNamesCursor =
-                    ((AUnorderedList) (field.getValueByPos(1))).getCursor();
+                    ((AOrderedList) (field.getValueByPos(1))).getCursor();
             while (groupNamesCursor.next()) {
                 String qgname = ((AString) groupNamesCursor.get()).getStringValue();
                 groupToPriority.put(qgname, priority);
@@ -163,9 +167,8 @@ public class SchedulerConfigMetadataEntityTupleTranslator extends AbstractTupleT
             priorityToGroup.get(priority).add(name);
         }
 
-        UnorderedListBuilder listBuilder = new UnorderedListBuilder();
-        listBuilder.reset((AUnorderedListType) schedulerConfigEntity.getRecordType().
-                getFieldTypes()[schedulerConfigEntity.queryGroupsIndex()]);
+        OrderedListBuilder listBuilder = new OrderedListBuilder();
+        listBuilder.reset(new AOrderedListType(SCHEDULER_COFING_QUERY_GROUPS_RECORDTYPE, null));
 
         ArrayBackedValueStorage itemValue = new ArrayBackedValueStorage();
         for (Map.Entry<Long, List<String>> pair : priorityToGroup.entrySet()) {
@@ -200,8 +203,8 @@ public class SchedulerConfigMetadataEntityTupleTranslator extends AbstractTupleT
         qgRecordBuilder.addField(0, fieldValue);
 
         // write field 1
-        UnorderedListBuilder listBuilder = new UnorderedListBuilder();
-        listBuilder.reset(new AUnorderedListType(BuiltinType.ASTRING, null));
+        OrderedListBuilder listBuilder = new OrderedListBuilder();
+        listBuilder.reset(new AOrderedListType(BuiltinType.ASTRING, null));
         ArrayBackedValueStorage itemValue = new ArrayBackedValueStorage();
 
         for (String s : groupNames) {
@@ -213,7 +216,7 @@ public class SchedulerConfigMetadataEntityTupleTranslator extends AbstractTupleT
 
         fieldValue.reset();
         listBuilder.write(fieldValue.getDataOutput(), true);
-        recordBuilder.addField(1, fieldValue);
+        qgRecordBuilder.addField(1, fieldValue);
 
         qgRecordBuilder.write(out, true);
     }

@@ -63,13 +63,13 @@ public class SchedulerConfigUtil {
     private static ARecordType getSchedulerConfigRecordType() {
         /* union type - query group */
         final String[] qgFieldNames = {FIELD_NAME_QG_PRIORITY, FIELD_NAME_QG_GROUPLIST};
-        final IAType[] qgFieldTypes = { BuiltinType.AINT32, new AUnorderedListType(BuiltinType.ASTRING, null) };
+        final IAType[] qgFieldTypes = { BuiltinType.AINT64, new AOrderedListType(BuiltinType.ASTRING, null) };
         IAType qgUnionType = new ARecordType("qgRecordType", qgFieldNames, qgFieldTypes, true);
 
         final String[] fieldNames = { FIELD_NAME_DEFAULT_PRIORITY, FIELD_NAME_SHORT_MEMORY_QUOTA,
                 FIELD_NAME_SHORT_CPU_QUOTA, FIELD_NAME_QUERY_GROUP };
-        final IAType[] fieldTypes = { BuiltinType.AINT32, BuiltinType.ADOUBLE, BuiltinType.ADOUBLE,
-                new AUnorderedListType(qgUnionType, null) };
+        final IAType[] fieldTypes = { BuiltinType.AINT64, BuiltinType.ADOUBLE, BuiltinType.AINT64,
+                new AOrderedListType(qgUnionType, null) };
 
         return new ARecordType("SchedulerConfigRecordType", fieldNames, fieldTypes, true);
     }
