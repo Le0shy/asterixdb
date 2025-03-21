@@ -97,7 +97,9 @@ public interface Statement extends ILangExpression {
         CREATE_FULL_TEXT_FILTER,
         CREATE_FULL_TEXT_CONFIG,
         CREATE_SCHEDULER_CONFIG,
-
+        DROP_SCHEDULER_CONFIG,
+        UPSERT_QGROUP,
+        DELETE_QGROUP,
         INDEX_DROP,
         FULL_TEXT_FILTER_DROP,
         FULL_TEXT_CONFIG_DROP,

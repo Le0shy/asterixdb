@@ -669,6 +669,21 @@ public class MetadataNode implements IMetadataNode {
         return results.get(0);
     }
 
+    public void dropSchedulerConfig(TxnId txnId, String database, DataverseName dataverseName, String configName)
+            throws AlgebricksException {
+        dropSchedulerConfigDescriptor(txnId, database, dataverseName, configName);
+    }
+
+    private void dropSchedulerConfigDescriptor(TxnId txnId, String database, DataverseName dataverseName,
+            String configName) throws AlgebricksException {
+        try {
+            ITupleReference key = createTuple(database, dataverseName, configName);
+            deleteTupleFromIndex(txnId, mdIndexesProvider.getSchedulerConfigEntity().getIndex(), key);
+        } catch (HyracksDataException e) {
+            throw new AsterixException(METADATA_ERROR, e, e.getMessage());
+        }
+    }
+
 
     private void insertTupleIntoIndex(TxnId txnId, IMetadataIndex metadataIndex, ITupleReference tuple)
             throws HyracksDataException {

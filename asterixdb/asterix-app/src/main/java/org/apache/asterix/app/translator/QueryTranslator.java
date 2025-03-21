@@ -336,6 +336,8 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
                     case CREATE_SCHEDULER_CONFIG:
                         handleCreateSchedulerConfigStatement(metadataProvider, stmt);
                         break;
+                    case DROP_SCHEDULER_CONFIG:
+                        handleSchedulerConfigDropStatement(metadataProvider, stmt, hcc, requestParameters);
                     case TYPE_DECL:
                         handleCreateTypeStatement(metadataProvider, stmt);
                         break;
@@ -1771,6 +1773,56 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
             throw e;
         }
     }
+    protected void handleSchedulerConfigDropStatement(MetadataProvider metadataProvider, Statement stmt,
+            IHyracksClientConnection hcc, IRequestParameters requestParameters)
+            throws AlgebricksException, RemoteException {
+        SchedulerConfigDropStatement stmtConfigDrop = (SchedulerConfigDropStatement) stmt;
+        Namespace stmtActiveNamespace = getActiveNamespace(stmtConfigDrop.getNamespace());
+        DataverseName dataverseName = stmtActiveNamespace.getDataverseName();
+        String databaseName = stmtActiveNamespace.getDatabaseName();
+        String configName = stmtConfigDrop.getConfigName();
+
+        if (isCompileOnly()) {
+            return;
+        }
+        lockUtil.dropFullTextConfigBegin(lockManager, metadataProvider.getLocks(), databaseName, dataverseName,
+                configName);
+        try {
+            doDropSchedulerConfig(metadataProvider, stmtConfigDrop, databaseName, dataverseName, hcc, requestParameters);
+        } finally {
+            metadataProvider.getLocks().unlock();
+        }
+    }
+
+    private void doDropSchedulerConfig(MetadataProvider metadataProvider, SchedulerConfigDropStatement stmtConfigDrop,
+            String databaseName, DataverseName dataverseName, IHyracksClientConnection hcc,
+            IRequestParameters requestParameters) throws RemoteException, AlgebricksException {
+
+        MetadataTransactionContext mdTxnCtx = MetadataManager.INSTANCE.beginTransaction();
+        metadataProvider.setMetadataTxnContext(mdTxnCtx);
+        String schedulerConfigName = stmtConfigDrop.getConfigName();
+
+        try {
+            SchedulerConfigMetadataEntity configMetadataEntity = MetadataManager.INSTANCE.getSchedulerConfig(mdTxnCtx,
+                    databaseName, dataverseName, schedulerConfigName);
+            if (configMetadataEntity == null) {
+                if (stmtConfigDrop.getIfExists()) {
+                    MetadataManager.INSTANCE.commitTransaction(mdTxnCtx);
+                    return;
+                } else {
+                    throw new CompilationException(ErrorCode.SCHEDULER_CONFIG_NOT_FOUND,
+                            stmtConfigDrop.getSourceLocation(), schedulerConfigName);
+                }
+            }
+
+            MetadataManager.INSTANCE.dropSchedulerConfig(mdTxnCtx, databaseName, dataverseName, schedulerConfigName);
+            MetadataManager.INSTANCE.commitTransaction(mdTxnCtx);
+        } catch (Exception e) {
+            abort(e, e, mdTxnCtx);
+            throw e;
+        }
+    }
+
 
     private void doCreateIndexImpl(IHyracksClientConnection hcc, MetadataProvider metadataProvider, Dataset ds,
             Index index, EnumSet<JobFlag> jobFlags, SourceLocation sourceLoc) throws Exception {

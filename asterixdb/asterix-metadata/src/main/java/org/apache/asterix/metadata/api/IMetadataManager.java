@@ -611,6 +611,9 @@ public interface IMetadataManager extends IMetadataBootstrap {
     void dropFeed(MetadataTransactionContext ctx, String database, DataverseName dataverse, String feedName)
             throws AlgebricksException;
 
+    void dropSchedulerConfig(MetadataTransactionContext mdTxnCtx, String database, DataverseName dataverseName,
+            String configName) throws AlgebricksException, RemoteException;
+
     /**
      * @param ctx
      * @param policy

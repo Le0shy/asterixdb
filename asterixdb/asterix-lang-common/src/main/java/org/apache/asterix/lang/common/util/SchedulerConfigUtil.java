@@ -36,8 +36,8 @@ public class SchedulerConfigUtil {
         Example of full-text config create statement
         CREATE SCHEDULER CONFIG s_config_1 {
             "defaultPriority": 1,
-            "shortMemoryPercent": 10,
-            "shortCPUQuota": 20
+            "shortMemoryPercent": 10.0,
+            "shortCPUQuota": 20,
             "queryGroup":
     	[
             {
@@ -84,4 +84,20 @@ public class SchedulerConfigUtil {
         return node;
     }
 
+    public static AdmObjectNode validateUpsertQgroupNode(RecordConstructor recordConstructor)
+            throws CompilationException {
+        final ConfigurationTypeValidator validator = new ConfigurationTypeValidator();
+        final AdmObjectNode node = ExpressionUtils.toNode(recordConstructor);
+        validator.validateType(SCHEDULER_CONFIG_RECORD_TYPE, node);
+        return node;
+    }
+
+
+    public static AdmObjectNode validateDeleteQgroupNode(RecordConstructor recordConstructor)
+            throws CompilationException {
+        final ConfigurationTypeValidator validator = new ConfigurationTypeValidator();
+        final AdmObjectNode node = ExpressionUtils.toNode(recordConstructor);
+        validator.validateType(SCHEDULER_CONFIG_RECORD_TYPE, node);
+        return node;
+    }
 }

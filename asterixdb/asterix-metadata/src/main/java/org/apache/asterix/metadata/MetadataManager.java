@@ -907,6 +907,17 @@ public abstract class MetadataManager implements IMetadataManager {
         return configMetadataEntity;
     }
     @Override
+    public void dropSchedulerConfig(MetadataTransactionContext mdTxnCtx, String database, DataverseName dataverseName,
+            String configName) throws AlgebricksException,RemoteException {
+        try {
+            Objects.requireNonNull(database);
+            metadataNode.dropSchedulerConfig(mdTxnCtx.getTxnId(), database, dataverseName, configName);
+        } catch (RemoteException e) {
+            throw new MetadataException(ErrorCode.REMOTE_EXCEPTION_WHEN_CALLING_METADATA_NODE, e);
+        }
+        mdTxnCtx.dropSchedulerConfig(database, dataverseName, configName);
+    }
+    @Override
     public void addFeedPolicy(MetadataTransactionContext mdTxnCtx, FeedPolicyEntity feedPolicy)
             throws AlgebricksException {
         try {

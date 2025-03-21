@@ -172,6 +172,7 @@ import org.apache.asterix.lang.common.statement.CopyToStatement;
 import org.apache.asterix.lang.common.statement.NodeGroupDropStatement;
 import org.apache.asterix.lang.common.statement.NodegroupDecl;
 import org.apache.asterix.lang.common.statement.Query;
+import org.apache.asterix.lang.common.statement.SchedulerConfigDropStatement;
 import org.apache.asterix.lang.common.statement.SetStatement;
 import org.apache.asterix.lang.common.statement.SynonymDropStatement;
 import org.apache.asterix.lang.common.statement.TypeDecl;
@@ -1022,6 +1023,8 @@ Statement SingleStatement() throws ParseException:
     | stmt = DeleteStatement()
     | stmt = UpdateStatement()
     | stmt = UpsertStatement()
+    | stmt = UpsertQGroupStatement()
+    | stmt = DeleteQGroupStatement()
     | stmt = ConnectionStatement()
     | stmt = CompactStatement()
     | stmt = AnalyzeStatement()
@@ -2432,6 +2435,7 @@ Statement DropStatement() throws ParseException:
     | stmt = DropSynonymStatement(startToken)
     | stmt = DropFullTextStatement(startToken)
     | stmt = DropViewStatement(startToken)
+    | stmt = DropSchedulerConfigStatement(startToken)
   )
   {
     return stmt;
@@ -2509,6 +2513,35 @@ IndexDropStatement DropIndexSpecification(Token startStmtToken) throws ParseExce
     return addSourceLocation(stmt, startStmtToken);
   }
 }
+
+Statement DropSchedulerConfigStatement(Token startStmtToken) throws ParseException:
+{
+  Statement stmt = null;
+}
+{
+  <SCHEDULER>
+  (
+    <IDENTIFIER> { expectToken(CONFIG); } stmt = DropSchedulerConfigSpec(startStmtToken)
+  )
+  {
+    return stmt;
+  }
+}
+
+SchedulerConfigDropStatement DropSchedulerConfigSpec(Token startStmtToken) throws ParseException:
+{
+  SchedulerConfigDropStatement stmt = null;
+  Pair<Namespace,Identifier> nameComponents = null;
+  boolean ifExists = false;
+}
+{
+  nameComponents = QualifiedName() ifExists = IfExists()
+  {
+    stmt = new SchedulerConfigDropStatement(nameComponents.first, nameComponents.second.getValue(), ifExists);
+    return addSourceLocation(stmt, startStmtToken);
+  }
+}
+
 
 Statement DropFullTextStatement(Token startStmtToken) throws ParseException:
 {
@@ -2831,6 +2864,47 @@ UpsertStatement UpsertStatement() throws ParseException:
       return addSourceLocation(stmt, startToken);
     }
 }
+
+UpsertQGroupStatement UpsertQGroupStatement() throws ParseException:
+{
+    Token startToken = null;
+    Pair<Namespace, Identifier> nameComponents = null;
+    RecordConstructor expr = null;
+}
+{
+    <UPSERT> <QGROUP> { startToken = token; }
+    <INTO> nameComponents = QualifiedName() ifNotExists
+    expr = RecordConstructor()
+    {
+        try {
+            UpsertQGroupStatement stmt = new UpsertQGroupStatement(nameComponents.first, nameComponents.second.getValue(), expr);
+            return addSourceLocation(stmt, startToken);
+        } catch (CompilationException e) {
+            throw new SqlppParseException(getSourceLocation(startStmtToken), e.getMessage());
+        }
+    }
+}
+
+DeleteQGroupStatement DeleteQGroupStatement() throws ParseException:
+{
+  Token startToken = null;
+  Pair<Namespace, Identifier> nameComponents = null;
+  List<String> groupList = new ArrayList<String>();
+}
+{
+  <DELETE> <QGROUP> <FROM> { startToken = token; } nameComponents = QualifiedName()
+  <LEFTBRACE> <LEFTBRACKET>
+  groupList = StringList()
+  <RIGHTBRACKET> <RIGHTBRACE>
+  try {
+    return addSourceLocation(new DeleteGroupFromConfigStatement(
+      nameComponents.first, nameComponents.second.getValue(), groupList
+    ), startToken);
+  } catch (CompilationException e) {
+    throw new SqlppParseException(getSourceLocation(startStmtToken), e.getMessage());
+  }
+}
+
 
 DeleteStatement DeleteStatement() throws ParseException:
 {
@@ -6039,6 +6113,7 @@ TOKEN [IGNORE_CASE]:
   | <POLICY : "policy">
   | <PRESORTED : "pre-sorted">
   | <PRIMARY : "primary">
+  | <QGROUP: "qgroup">
   | <RAW : "raw">
   | <RETURN : "return">
   | <RETURNING : "returning">
