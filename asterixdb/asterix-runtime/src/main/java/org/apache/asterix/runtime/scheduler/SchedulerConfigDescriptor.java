@@ -19,6 +19,8 @@
 
 package org.apache.asterix.runtime.scheduler;
 
+import org.apache.asterix.common.exceptions.CompilationException;
+import org.apache.asterix.common.exceptions.ErrorCode;
 import org.apache.asterix.common.metadata.DataverseName;
 
 import java.util.ArrayList;
@@ -128,5 +130,22 @@ public class SchedulerConfigDescriptor implements ISchedulerConfigDescriptor {
     @Override
     public Map<String, Long> getGroupToPriority() {
         return groupToPriority;
+    }
+
+    @Override
+    public void upsertQueryGroup(Map<String, Long> upsertQueryGroups) {
+        groupToPriority.putAll(upsertQueryGroups);
+    }
+
+    @Override
+    public boolean deleteQueryGroup(List<String> deleteQueryGroups) {
+        for(String name: deleteQueryGroups) {
+            if (groupToPriority.containsKey(name)) {
+                groupToPriority.remove(name);
+            } else {
+                return false;
+            }
+        }
+        return true;
     }
 }

@@ -134,8 +134,8 @@ public final class MetadataRecordTypes {
     public static final String FIELD_NAME_SCHEDULER_CONFIG_QUERY_GROUPS = "QueryGroups";
     public static final ARecordType SCHEDULER_COFING_QUERY_GROUPS_RECORDTYPE = createRecordType(
            null,
-            new String[]{"priority", "grouplist"},
-            new IAType[]{BuiltinType.AINT64, new AOrderedListType(BuiltinType.ASTRING, null)},
+            new String[]{"name", "priority"},
+            new IAType[]{BuiltinType.ASTRING, BuiltinType.AINT64},
             true
     );
 

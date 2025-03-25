@@ -188,7 +188,11 @@ public interface ILangVisitor<R, T> {
 
     R visit(IVisitorExtension ve, T arg) throws CompilationException;
 
-    R visit(CreateSchedulerConfigStatement del, T arg) throws CompilationException;
+    R visit(CreateSchedulerConfigStatement cs, T arg) throws CompilationException;
 
-    R visit(SchedulerConfigDropStatement del, T arg) throws CompilationException;
+    R visit(SchedulerConfigDropStatement cs, T arg) throws CompilationException;
+
+    R visit(UpsertQGroupStatement uq, T arg) throws CompilationException;
+
+    R visit(DeleteQGroupStatement dq, T arg) throws CompilationException;
 }

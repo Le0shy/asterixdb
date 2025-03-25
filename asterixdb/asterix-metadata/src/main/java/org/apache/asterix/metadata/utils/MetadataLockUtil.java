@@ -391,14 +391,21 @@ public class MetadataLockUtil implements IMetadataLockUtil {
     }
     @Override
     public void createSchedulerConfigBegin(IMetadataLockManager lockMgr, LockList locks, String database,
-            DataverseName dataverseName, String fullTextConfigName)
+            DataverseName dataverseName, String schedulerConfigName)
             throws AlgebricksException {
         lockMgr.acquireDatabaseReadLock(locks, database);
         lockMgr.acquireDataverseReadLock(locks, database, dataverseName);
-        lockMgr.acquireSchedulerConfigWriteLock(locks, database, dataverseName, fullTextConfigName);
+        lockMgr.acquireSchedulerConfigWriteLock(locks, database, dataverseName, schedulerConfigName);
     }
 
-    //TODO: DROP SCHEDULER CONFIG
+    @Override
+    public void dropSchedulerConfigBegin(IMetadataLockManager lockMgr, LockList locks, String database,
+            DataverseName dataverseName, String schedulerConfigName)
+            throws AlgebricksException {
+        lockMgr.acquireDatabaseReadLock(locks, database);
+        lockMgr.acquireDataverseReadLock(locks, database, dataverseName);
+        lockMgr.acquireSchedulerConfigWriteLock(locks, database, dataverseName, schedulerConfigName);
+    }
 
     private static void lockIfDifferentNamespace(IMetadataLockManager lockMgr, LockList locks, String lockedDatabase,
             DataverseName lockedDataverse, String toBeLockedDatabase, DataverseName toBeLockedDataverse)

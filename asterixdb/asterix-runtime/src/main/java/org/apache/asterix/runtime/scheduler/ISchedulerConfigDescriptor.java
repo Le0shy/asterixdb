@@ -6,13 +6,17 @@ import java.util.Map;
 public interface ISchedulerConfigDescriptor {
     String getName();
 
-    public long getDefaultPriority();
+    long getDefaultPriority();
 
-    public double getShortMemoryPercent();
+    double getShortMemoryPercent();
 
-    public long getShortCPUQuota();
+    long getShortCPUQuota();
 
-    public Map<String, Long> getGroupToPriority();
+    Map<String, Long> getGroupToPriority();
 
-    public Map<Long, List<String>> getPriorityToGroup();
+    Map<Long, List<String>> getPriorityToGroup();
+
+    void upsertQueryGroup(Map<String, Long> upsertQueryGroups);
+
+    boolean deleteQueryGroup(List<String> deleteQueryGroups);
 }

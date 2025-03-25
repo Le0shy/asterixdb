@@ -57,6 +57,24 @@ public class SchedulerConfigUtil {
             }
     	]
         };
+
+        UPSERT QGROUP INTO s_config_1 {[
+		{
+			"priority": 10,
+			"name": "ingest"
+		},
+
+		{
+			"priority": 6,
+			"name": "management"
+		}
+        ]};
+
+        DELETE GROUP FROM s_config_1 {[
+	        "analytics", "ingest"
+        ]};
+
+
         */
 
 
@@ -74,7 +92,24 @@ public class SchedulerConfigUtil {
         return new ARecordType("SchedulerConfigRecordType", fieldNames, fieldTypes, true);
     }
 
+    private static ARecordType getUpsertQGroupRecordType() {
+        final String[] qgFieldNames = {"priority", "name"};
+        final IAType[] qgFieldTypes = { BuiltinType.AINT64, BuiltinType.ASTRING };
+        IAType pairType = new ARecordType("qgPairType", qgFieldNames, qgFieldTypes, false);
+
+        return new ARecordType("UpsertQGroupRecordType", new String[]{"list"},
+                new IAType[]{new AOrderedListType(pairType, null)}, true);
+    }
+
+    private static ARecordType getDeleteQGroupRecordType() {
+        return new ARecordType("DeleteQGroupRecordType", new String[]{"list"},
+                new IAType[]{new AOrderedListType(BuiltinType.ASTRING, null)}, true);
+    }
+
+
     private static final ARecordType SCHEDULER_CONFIG_RECORD_TYPE = getSchedulerConfigRecordType();
+    private static final ARecordType SCHEDULER_UPSERT_QGROUP_TYPE = getUpsertQGroupRecordType();
+    private static final ARecordType SCHEDULER_DELETE_QGROUP_TYPE = getDeleteQGroupRecordType();
 
     public static AdmObjectNode validateAndGetConfigNode(RecordConstructor recordConstructor)
             throws CompilationException {
@@ -88,7 +123,7 @@ public class SchedulerConfigUtil {
             throws CompilationException {
         final ConfigurationTypeValidator validator = new ConfigurationTypeValidator();
         final AdmObjectNode node = ExpressionUtils.toNode(recordConstructor);
-        validator.validateType(SCHEDULER_CONFIG_RECORD_TYPE, node);
+        validator.validateType(SCHEDULER_UPSERT_QGROUP_TYPE, node);
         return node;
     }
 
@@ -97,7 +132,7 @@ public class SchedulerConfigUtil {
             throws CompilationException {
         final ConfigurationTypeValidator validator = new ConfigurationTypeValidator();
         final AdmObjectNode node = ExpressionUtils.toNode(recordConstructor);
-        validator.validateType(SCHEDULER_CONFIG_RECORD_TYPE, node);
+        validator.validateType(SCHEDULER_DELETE_QGROUP_TYPE, node);
         return node;
     }
 }

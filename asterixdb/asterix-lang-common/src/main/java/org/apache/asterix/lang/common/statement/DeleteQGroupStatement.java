@@ -1,48 +1,46 @@
 package org.apache.asterix.lang.common.statement;
 import org.apache.asterix.common.exceptions.CompilationException;
+import org.apache.asterix.common.metadata.DataverseName;
+import org.apache.asterix.common.metadata.Namespace;
 import org.apache.asterix.lang.common.base.AbstractStatement;
+import org.apache.asterix.lang.common.expression.RecordConstructor;
 import org.apache.asterix.lang.common.util.SchedulerConfigUtil;
 import org.apache.asterix.lang.common.visitor.base.ILangVisitor;
 import org.apache.asterix.object.base.*;
-import org.apache.iceberg.data.Record;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 public class DeleteQGroupStatement extends AbstractStatement {
     private final String configName;
     private final AdmObjectNode deleteNode;
+    private final Namespace namespace;
 
-    public UpsertQGroupStatement(String configName, Record expr) {
+    public DeleteQGroupStatement(Namespace namespace, String configName, RecordConstructor expr)
+            throws CompilationException {
+        this.namespace = namespace;
         this.configName = configName;
         this.deleteNode = SchedulerConfigUtil.validateDeleteQgroupNode(expr);
     }
 
+    public Namespace getNamespace() {
+        return namespace;
+    }
+
+    public DataverseName getDataverseName() {
+        return namespace == null ? null : namespace.getDataverseName();
+    }
     public String getConfigName() {
         return configName;
     };
 
-    public Map<Long, List<String>> getUpsertQueryGroups() {
-        AdmArrayNode arrayNode = (AdmArrayNode) deleteNode.get(FIELD_NAME_QUERY_GROUP);
-        Map<Long, List<String>> priorityToGroup = new HashMap<>();
+    public List<String> getDeleteQueryGroups() {
+        List<String> deleteQGroups = new ArrayList<>();
+        AdmArrayNode arrayNode = (AdmArrayNode) deleteNode.get("list");
 
         for (IAdmNode iAdmNode : arrayNode) {
-            AdmObjectNode abn = (AdmObjectNode)iAdmNode;
-            AdmBigIntNode abin = (AdmBigIntNode) abn.get(FIELD_NAME_QG_PRIORITY);
-            long priority = abin.get();
-
-            List<String> groupNames = new ArrayList<>();
-            AdmArrayNode groupListNode = (AdmArrayNode) abn.get(FIELD_NAME_QG_GROUPLIST);
-            for(IAdmNode groupName: groupListNode) {
-                groupNames.add(((AdmStringNode) groupName).get());
-            }
-
-            priorityToGroup.put(priority, groupNames);
+            deleteQGroups.add(((AdmStringNode) iAdmNode).get());
         }
-
-        return priorityToGroup;
+        return deleteQGroups;
     }
 
     @Override

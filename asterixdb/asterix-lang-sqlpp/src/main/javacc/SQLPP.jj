@@ -154,6 +154,7 @@ import org.apache.asterix.lang.common.statement.DatasetDecl;
 import org.apache.asterix.lang.common.statement.DataverseDecl;
 import org.apache.asterix.lang.common.statement.DataverseDropStatement;
 import org.apache.asterix.lang.common.statement.DeleteStatement;
+import org.apache.asterix.lang.common.statement.DeleteQGroupStatement;
 import org.apache.asterix.lang.common.statement.DisconnectFeedStatement;
 import org.apache.asterix.lang.common.statement.DropDatasetStatement;
 import org.apache.asterix.lang.common.statement.ExternalDetailsDecl;
@@ -179,6 +180,7 @@ import org.apache.asterix.lang.common.statement.TypeDecl;
 import org.apache.asterix.lang.common.statement.TypeDropStatement;
 import org.apache.asterix.lang.common.statement.UpdateStatement;
 import org.apache.asterix.lang.common.statement.UpsertStatement;
+import org.apache.asterix.lang.common.statement.UpsertQGroupStatement;
 import org.apache.asterix.lang.common.statement.ViewDecl;
 import org.apache.asterix.lang.common.statement.ViewDropStatement;
 import org.apache.asterix.lang.common.struct.Identifier;
@@ -1020,11 +1022,11 @@ Statement SingleStatement() throws ParseException:
     | stmt = DropStatement()
     | stmt = SetStatement()
     | stmt = InsertStatement()
+    | LOOKAHEAD(2) stmt = UpsertQGroupStatement()
+    | LOOKAHEAD(2) stmt = DeleteQGroupStatement()
     | stmt = DeleteStatement()
     | stmt = UpdateStatement()
     | stmt = UpsertStatement()
-    | stmt = UpsertQGroupStatement()
-    | stmt = DeleteQGroupStatement()
     | stmt = ConnectionStatement()
     | stmt = CompactStatement()
     | stmt = AnalyzeStatement()
@@ -2865,6 +2867,7 @@ UpsertStatement UpsertStatement() throws ParseException:
     }
 }
 
+
 UpsertQGroupStatement UpsertQGroupStatement() throws ParseException:
 {
     Token startToken = null;
@@ -2873,14 +2876,14 @@ UpsertQGroupStatement UpsertQGroupStatement() throws ParseException:
 }
 {
     <UPSERT> <QGROUP> { startToken = token; }
-    <INTO> nameComponents = QualifiedName() ifNotExists
+    <INTO> nameComponents = QualifiedName()
     expr = RecordConstructor()
     {
         try {
             UpsertQGroupStatement stmt = new UpsertQGroupStatement(nameComponents.first, nameComponents.second.getValue(), expr);
             return addSourceLocation(stmt, startToken);
         } catch (CompilationException e) {
-            throw new SqlppParseException(getSourceLocation(startStmtToken), e.getMessage());
+            throw new SqlppParseException(getSourceLocation(startToken), e.getMessage());
         }
     }
 }
@@ -2889,22 +2892,21 @@ DeleteQGroupStatement DeleteQGroupStatement() throws ParseException:
 {
   Token startToken = null;
   Pair<Namespace, Identifier> nameComponents = null;
-  List<String> groupList = new ArrayList<String>();
+  RecordConstructor expr = null;
 }
 {
-  <DELETE> <QGROUP> <FROM> { startToken = token; } nameComponents = QualifiedName()
-  <LEFTBRACE> <LEFTBRACKET>
-  groupList = StringList()
-  <RIGHTBRACKET> <RIGHTBRACE>
+  <DELETE> <QGROUP> { startToken = token; }
+  <FROM>  nameComponents = QualifiedName()
+  expr = RecordConstructor()
+  {
   try {
-    return addSourceLocation(new DeleteGroupFromConfigStatement(
-      nameComponents.first, nameComponents.second.getValue(), groupList
+      return addSourceLocation(new DeleteQGroupStatement(nameComponents.first, nameComponents.second.getValue(), expr
     ), startToken);
   } catch (CompilationException e) {
-    throw new SqlppParseException(getSourceLocation(startStmtToken), e.getMessage());
+        throw new SqlppParseException(getSourceLocation(startToken), e.getMessage());
+    }
   }
 }
-
 
 DeleteStatement DeleteStatement() throws ParseException:
 {

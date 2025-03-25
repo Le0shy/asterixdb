@@ -337,7 +337,14 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
                         handleCreateSchedulerConfigStatement(metadataProvider, stmt);
                         break;
                     case DROP_SCHEDULER_CONFIG:
-                        handleSchedulerConfigDropStatement(metadataProvider, stmt, hcc, requestParameters);
+                        handleSchedulerConfigDropStatement(metadataProvider, stmt);
+                        break;
+                    case UPSERT_QGROUP:
+                        handleUpsertQGroup(metadataProvider, stmt);
+                        break;
+                    case DELETE_QGROUP:
+                        handleDeleteQGroup(metadataProvider, stmt);
+                        break;
                     case TYPE_DECL:
                         handleCreateTypeStatement(metadataProvider, stmt);
                         break;
@@ -1773,8 +1780,7 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
             throw e;
         }
     }
-    protected void handleSchedulerConfigDropStatement(MetadataProvider metadataProvider, Statement stmt,
-            IHyracksClientConnection hcc, IRequestParameters requestParameters)
+    protected void handleSchedulerConfigDropStatement(MetadataProvider metadataProvider, Statement stmt)
             throws AlgebricksException, RemoteException {
         SchedulerConfigDropStatement stmtConfigDrop = (SchedulerConfigDropStatement) stmt;
         Namespace stmtActiveNamespace = getActiveNamespace(stmtConfigDrop.getNamespace());
@@ -1785,18 +1791,17 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
         if (isCompileOnly()) {
             return;
         }
-        lockUtil.dropFullTextConfigBegin(lockManager, metadataProvider.getLocks(), databaseName, dataverseName,
+        lockUtil.dropSchedulerConfigBegin(lockManager, metadataProvider.getLocks(), databaseName, dataverseName,
                 configName);
         try {
-            doDropSchedulerConfig(metadataProvider, stmtConfigDrop, databaseName, dataverseName, hcc, requestParameters);
+            doDropSchedulerConfig(metadataProvider, stmtConfigDrop, databaseName, dataverseName);
         } finally {
             metadataProvider.getLocks().unlock();
         }
     }
 
     private void doDropSchedulerConfig(MetadataProvider metadataProvider, SchedulerConfigDropStatement stmtConfigDrop,
-            String databaseName, DataverseName dataverseName, IHyracksClientConnection hcc,
-            IRequestParameters requestParameters) throws RemoteException, AlgebricksException {
+            String databaseName, DataverseName dataverseName) throws RemoteException, AlgebricksException {
 
         MetadataTransactionContext mdTxnCtx = MetadataManager.INSTANCE.beginTransaction();
         metadataProvider.setMetadataTxnContext(mdTxnCtx);
@@ -1816,6 +1821,100 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
             }
 
             MetadataManager.INSTANCE.dropSchedulerConfig(mdTxnCtx, databaseName, dataverseName, schedulerConfigName);
+            MetadataManager.INSTANCE.commitTransaction(mdTxnCtx);
+        } catch (Exception e) {
+            abort(e, e, mdTxnCtx);
+            throw e;
+        }
+    }
+
+    protected void handleUpsertQGroup(MetadataProvider metadataProvider, Statement stmt)
+            throws AlgebricksException, RemoteException {
+        UpsertQGroupStatement stmtUpsert = (UpsertQGroupStatement) stmt;
+        Namespace stmtActiveNamespace = getActiveNamespace(stmtUpsert.getNamespace());
+        DataverseName dataverseName = stmtActiveNamespace.getDataverseName();
+        String databaseName = stmtActiveNamespace.getDatabaseName();
+        String configName = stmtUpsert.getConfigName();
+
+        if (isCompileOnly()) {
+            return;
+        }
+        lockUtil.createSchedulerConfigBegin(lockManager, metadataProvider.getLocks(), databaseName, dataverseName,
+                configName);
+        try {
+            doUpsertQGroup(metadataProvider, stmtUpsert, databaseName, dataverseName);
+        } finally {
+            metadataProvider.getLocks().unlock();
+        }
+    }
+
+    private void doUpsertQGroup(MetadataProvider metadataProvider, UpsertQGroupStatement stmtUpsert,
+            String databaseName, DataverseName dataverseName) throws RemoteException, AlgebricksException {
+        MetadataTransactionContext mdTxnCtx = MetadataManager.INSTANCE.beginTransaction();
+        metadataProvider.setMetadataTxnContext(mdTxnCtx);
+        String schedulerConfigName = stmtUpsert.getConfigName();
+
+        try {
+            SchedulerConfigMetadataEntity configMetadataEntity = MetadataManager.INSTANCE.getSchedulerConfig(mdTxnCtx,
+                    databaseName, dataverseName, schedulerConfigName);
+
+            if (configMetadataEntity == null) {
+                throw new CompilationException(ErrorCode.SCHEDULER_CONFIG_NOT_FOUND,
+                            stmtUpsert.getSourceLocation(), schedulerConfigName);
+            }
+
+            configMetadataEntity.upsertQueryGroup(stmtUpsert.getUpsertQueryGroups());
+            MetadataManager.INSTANCE.dropSchedulerConfig(mdTxnCtx, databaseName, dataverseName, schedulerConfigName);
+            MetadataManager.INSTANCE.addSchedulerConfig(mdTxnCtx, configMetadataEntity);
+            MetadataManager.INSTANCE.commitTransaction(mdTxnCtx);
+        } catch (Exception e) {
+            abort(e, e, mdTxnCtx);
+            throw e;
+        }
+    }
+
+    protected void handleDeleteQGroup(MetadataProvider metadataProvider, Statement stmt)
+            throws AlgebricksException, RemoteException {
+        DeleteQGroupStatement stmtDelete = (DeleteQGroupStatement) stmt;
+        Namespace stmtActiveNamespace = getActiveNamespace(stmtDelete.getNamespace());
+        DataverseName dataverseName = stmtActiveNamespace.getDataverseName();
+        String databaseName = stmtActiveNamespace.getDatabaseName();
+        String configName = stmtDelete.getConfigName();
+
+        if (isCompileOnly()) {
+            return;
+        }
+        lockUtil.createSchedulerConfigBegin(lockManager, metadataProvider.getLocks(), databaseName, dataverseName,
+                configName);
+        try {
+            doDeleteQGroup(metadataProvider, stmtDelete, databaseName, dataverseName);
+        } finally {
+            metadataProvider.getLocks().unlock();
+        }
+    }
+
+    private void doDeleteQGroup(MetadataProvider metadataProvider, DeleteQGroupStatement stmtDelete,
+            String databaseName, DataverseName dataverseName) throws RemoteException, AlgebricksException {
+        MetadataTransactionContext mdTxnCtx = MetadataManager.INSTANCE.beginTransaction();
+        metadataProvider.setMetadataTxnContext(mdTxnCtx);
+        String schedulerConfigName = stmtDelete.getConfigName();
+
+        try {
+            SchedulerConfigMetadataEntity configMetadataEntity = MetadataManager.INSTANCE.getSchedulerConfig(mdTxnCtx,
+                    databaseName, dataverseName, schedulerConfigName);
+
+            if (configMetadataEntity == null) {
+                throw new CompilationException(ErrorCode.SCHEDULER_CONFIG_NOT_FOUND,
+                        stmtDelete.getSourceLocation(), schedulerConfigName);
+            }
+
+            if(!configMetadataEntity.deleteQueryGroup(stmtDelete.getDeleteQueryGroups())) {
+                throw new CompilationException(ErrorCode.SCHEDULER_GROUP_NOT_FOUND,
+                        stmtDelete.getSourceLocation(), schedulerConfigName);
+            }
+
+            MetadataManager.INSTANCE.dropSchedulerConfig(mdTxnCtx, databaseName, dataverseName, schedulerConfigName);
+            MetadataManager.INSTANCE.addSchedulerConfig(mdTxnCtx, configMetadataEntity);
             MetadataManager.INSTANCE.commitTransaction(mdTxnCtx);
         } catch (Exception e) {
             abort(e, e, mdTxnCtx);

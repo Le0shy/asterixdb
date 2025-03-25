@@ -789,6 +789,20 @@ public abstract class FormatPrintVisitor implements ILangVisitor<Void, Integer> 
     }
 
     @Override
+    public Void visit(UpsertQGroupStatement cis, Integer step) throws CompilationException {
+        out.print(skip(step) + "upsert query group into" + cis.getConfigName());
+        out.println(SEMICOLON);
+        return null;
+    }
+
+    @Override
+    public Void visit(DeleteQGroupStatement cis, Integer step) throws CompilationException {
+        out.print(skip(step) + "delete query group from" + cis.getConfigName());
+        out.println(SEMICOLON);
+        return null;
+    }
+
+    @Override
     public Void visit(IndexDropStatement del, Integer step) throws CompilationException {
         out.print(skip(step) + "drop index ");
         out.print(generateFullName(del.getDataverseName(), del.getDatasetName()));
