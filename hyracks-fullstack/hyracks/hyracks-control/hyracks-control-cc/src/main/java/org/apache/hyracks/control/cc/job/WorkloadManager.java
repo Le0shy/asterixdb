@@ -111,7 +111,7 @@ public class WorkloadManager extends JobManager {
     }
 
     @Override
-    public int getDefaultQueuePriority() {
+    public long getDefaultQueuePriority() {
         return jobTypeManager.getDefaultPriority();
     }
 

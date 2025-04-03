@@ -32,18 +32,7 @@ import org.apache.asterix.common.metadata.DataverseName;
 import org.apache.asterix.common.metadata.MetadataConstants;
 import org.apache.asterix.metadata.MetadataManager;
 import org.apache.asterix.metadata.MetadataTransactionContext;
-import org.apache.asterix.metadata.entities.Dataset;
-import org.apache.asterix.metadata.entities.DatasourceAdapter;
-import org.apache.asterix.metadata.entities.Datatype;
-import org.apache.asterix.metadata.entities.Feed;
-import org.apache.asterix.metadata.entities.FeedConnection;
-import org.apache.asterix.metadata.entities.FeedPolicyEntity;
-import org.apache.asterix.metadata.entities.FullTextConfigMetadataEntity;
-import org.apache.asterix.metadata.entities.FullTextFilterMetadataEntity;
-import org.apache.asterix.metadata.entities.Index;
-import org.apache.asterix.metadata.entities.InternalDatasetDetails;
-import org.apache.asterix.metadata.entities.NodeGroup;
-import org.apache.asterix.metadata.entities.Synonym;
+import org.apache.asterix.metadata.entities.*;
 import org.apache.asterix.om.types.ARecordType;
 import org.apache.asterix.om.types.IAType;
 import org.apache.asterix.om.utils.ProjectionFiltrationTypeUtil;
@@ -224,6 +213,11 @@ public class MetadataManagerUtil {
     public static DataSource findDataSource(IClusterStateManager clusterStateManager,
             MetadataTransactionContext mdTxnCtx, DataSourceId id) throws AlgebricksException {
         return lookupSourceInMetadata(clusterStateManager, mdTxnCtx, id);
+    }
+
+    public static SchedulerConfigMetadataEntity findSchedulerConfigDescriptor(MetadataTransactionContext mdTxnCtx,
+            String database, DataverseName dataverseName,  String schedulerConfigName) throws AlgebricksException {
+        return MetadataManager.INSTANCE.getSchedulerConfig(mdTxnCtx, database, dataverseName, schedulerConfigName);
     }
 
     public static DataSource lookupSourceInMetadata(IClusterStateManager clusterStateManager,

@@ -6,5 +6,5 @@ public interface IJobTypeManager {
 
     void setJobType(JobRun jobRun);
 
-    int getDefaultPriority();
+    long getDefaultPriority();
 }

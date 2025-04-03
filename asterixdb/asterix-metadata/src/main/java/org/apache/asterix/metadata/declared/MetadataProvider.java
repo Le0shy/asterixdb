@@ -75,19 +75,7 @@ import org.apache.asterix.metadata.MetadataManager;
 import org.apache.asterix.metadata.MetadataTransactionContext;
 import org.apache.asterix.metadata.api.ICCExtensionManager;
 import org.apache.asterix.metadata.dataset.hints.DatasetHints.DatasetCardinalityHint;
-import org.apache.asterix.metadata.entities.Dataset;
-import org.apache.asterix.metadata.entities.DatasourceAdapter;
-import org.apache.asterix.metadata.entities.Datatype;
-import org.apache.asterix.metadata.entities.Dataverse;
-import org.apache.asterix.metadata.entities.EntityDetails;
-import org.apache.asterix.metadata.entities.Feed;
-import org.apache.asterix.metadata.entities.FeedConnection;
-import org.apache.asterix.metadata.entities.FeedPolicyEntity;
-import org.apache.asterix.metadata.entities.FullTextConfigMetadataEntity;
-import org.apache.asterix.metadata.entities.FullTextFilterMetadataEntity;
-import org.apache.asterix.metadata.entities.Function;
-import org.apache.asterix.metadata.entities.Index;
-import org.apache.asterix.metadata.entities.Synonym;
+import org.apache.asterix.metadata.entities.*;
 import org.apache.asterix.metadata.feeds.FeedMetadataUtil;
 import org.apache.asterix.metadata.provider.ExternalWriterProvider;
 import org.apache.asterix.metadata.utils.DataPartitioningProvider;
@@ -527,6 +515,11 @@ public class MetadataProvider implements IMetadataProvider<DataSourceId, String>
     public FullTextFilterMetadataEntity findFullTextFilter(String database, DataverseName dataverseName,
             String ftFilterName) throws AlgebricksException {
         return MetadataManagerUtil.findFullTextFilterDescriptor(mdTxnCtx, database, dataverseName, ftFilterName);
+    }
+
+    public SchedulerConfigMetadataEntity findSchedulerConfig(String database, DataverseName dataverseName,
+            String ftConfigName) throws AlgebricksException {
+        return MetadataManagerUtil.findSchedulerConfigDescriptor(mdTxnCtx, database, dataverseName, ftConfigName);
     }
 
     @Override

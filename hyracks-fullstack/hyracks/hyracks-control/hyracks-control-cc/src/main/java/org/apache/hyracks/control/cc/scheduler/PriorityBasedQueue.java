@@ -18,7 +18,7 @@ public class PriorityBasedQueue implements IJobQueue {
     private final IJobManager jobManager;
     private final CapacityControllerGuard capacityControllerGuard;
     /* default queue's priority can be modified */
-    private int defaultQueuePriority;
+    private long defaultQueuePriority;
     private final Map<JobId, MPLQueue> jobIdToQueueMap = new HashMap<>();
     private final Random random = new Random();
     private final Map<Integer, MPLQueue> queues;
@@ -98,7 +98,7 @@ public class PriorityBasedQueue implements IJobQueue {
 
     /* Binary search for left boundary: it returns idx whose values is the smallest number
     greater than 'target' when idx not exists. */
-    private int searchSelected(int[] distribution, int target) {
+    private int searchSelected(long[] distribution, long target) {
         int left = 0;
         int right = distribution.length;
         while (left < right) {
@@ -151,7 +151,7 @@ public class PriorityBasedQueue implements IJobQueue {
         if (numNonEmptyQueues == 0) {
             return jobRuns;
         }
-        int[] distribution = new int[numNonEmptyQueues + 1];
+        long[] distribution = new long[numNonEmptyQueues + 1];
         distribution[0] = 0;
         if (!defaultJobQueue.isEmpty()) {
             distribution[1] = defaultQueuePriority;
@@ -172,7 +172,7 @@ public class PriorityBasedQueue implements IJobQueue {
             }
         }
 
-        int generatedRandomInteger = random.nextInt(1, distribution[numNonEmptyQueues] + 1);
+        long generatedRandomInteger = random.nextLong(1, distribution[numNonEmptyQueues] + 1);
         int selectedIdx = searchSelected(distribution, generatedRandomInteger);
 
         if (!defaultJobQueue.isEmpty() && selectedIdx == 1) {

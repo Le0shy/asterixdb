@@ -340,7 +340,8 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
                         handleSchedulerConfigDropStatement(metadataProvider, stmt);
                         break;
                     case UPSERT_QGROUP:
-                        handleUpsertQGroup(metadataProvider, stmt);
+                        metadataProvider.setResultSetId(new ResultSetId(resultSetIdCounter.getAndInc()));
+                        handleUpsertQGroup(metadataProvider, stmt, hcc, requestParameters, resultSet, resultDelivery, stats);
                         break;
                     case DELETE_QGROUP:
                         handleDeleteQGroup(metadataProvider, stmt);
@@ -1828,8 +1829,10 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
         }
     }
 
-    protected void handleUpsertQGroup(MetadataProvider metadataProvider, Statement stmt)
-            throws AlgebricksException, RemoteException {
+    protected void handleUpsertQGroup(MetadataProvider metadataProvider, Statement stmt, IHyracksClientConnection hcc,
+            IRequestParameters requestParameters, IResultSet resultSet, IStatementExecutor.ResultDelivery resultDelivery,
+            Stats stats)
+            throws Exception {
         UpsertQGroupStatement stmtUpsert = (UpsertQGroupStatement) stmt;
         Namespace stmtActiveNamespace = getActiveNamespace(stmtUpsert.getNamespace());
         DataverseName dataverseName = stmtActiveNamespace.getDataverseName();
@@ -1843,6 +1846,8 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
                 configName);
         try {
             doUpsertQGroup(metadataProvider, stmtUpsert, databaseName, dataverseName);
+            deliverToScheduler(hcc, jobFlags, null, resultSet, resultDelivery ,requestParameters, appCtx,
+                    metadataProvider, stats);
         } finally {
             metadataProvider.getLocks().unlock();
         }
@@ -5560,6 +5565,78 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
             EnumSet<JobFlag> jobFlags, List<String> statOperatorNames) throws Exception {
         Pair<JobId, List<IOperatorStats>> p = JobUtils.runJob(hcc, jobSpec, jobFlags, true, statOperatorNames);
         return p.second;
+    }
+
+    /*
+    jobId = runTrackJob(hcc, jobSpec, jobFlags, reqId, requestParameters.getClientContextId(), clientRequest);
+    */
+    private void deliverToScheduler(IHyracksClientConnection hcc, EnumSet<JobFlag> jobFlags, Mutable<JobId> jId,
+            IResultSet resultSet, ResultDelivery resultDelivery, IRequestParameters requestParameters,
+            ICcApplicationContext appCtx, MetadataProvider metadataProvider, Stats stats) throws Exception {
+        String reqId = requestParameters.getRequestReference().getUuid();
+        final ResultSetId resultSetId = metadataProvider.getResultSetId();
+
+        final IRequestTracker requestTracker = appCtx.getRequestTracker();
+        final ClientRequest clientRequest = (ClientRequest) requestTracker.get(reqId);
+        final IMetadataLocker locker = new IMetadataLocker() {
+            @Override
+            public void lock() throws RuntimeDataException, InterruptedException {
+                try {
+                    compilationLock.readLock().lockInterruptibly();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    ensureNotCancelled(clientRequest);
+                    throw e;
+                }
+            }
+
+            @Override
+            public void unlock() {
+                metadataProvider.getLocks().unlock();
+                compilationLock.readLock().unlock();
+            }
+        };
+
+        IResultPrinter printer = id -> {
+            final ResultReader resultReader = new ResultReader(resultSet, id, resultSetId);
+            updateJobStats(id, stats, metadataProvider.getResultSetId(), clientRequest);
+            responsePrinter.addResultPrinter(new ResultsPrinter(appCtx, resultReader,
+                    metadataProvider.findOutputRecordType(), stats, sessionOutput));
+            responsePrinter.printResults();
+        };
+
+        /* TODO */
+        final JobSpecification jobSpec = null;
+
+
+        locker.lock();
+        JobId jobId = null;
+        try {
+            jobId = runTrackJob(hcc, jobSpec, jobFlags, reqId, requestParameters.getClientContextId(), clientRequest);
+            if (jId != null) {
+                jId.setValue(jobId);
+            }
+            if (ResultDelivery.ASYNC == resultDelivery) {
+                printer.print(jobId);
+                hcc.waitForCompletion(jobId);
+            } else {
+                hcc.waitForCompletion(jobId);
+                ensureNotCancelled(clientRequest);
+                printer.print(jobId);
+            }
+        }catch (Exception e) {
+            if (org.apache.hyracks.api.util.ExceptionUtils.getRootCause(e) instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+                throw new RuntimeDataException(ErrorCode.REQUEST_CANCELLED, clientRequest.getId());
+            }
+            throw e;
+        } finally {
+            // complete async jobs after their job completes
+            if (ResultDelivery.ASYNC == resultDelivery) {
+                requestTracker.complete(clientRequest.getId());
+            }
+            locker.unlock();
+        }
     }
 
     private void createAndRunJob(IHyracksClientConnection hcc, EnumSet<JobFlag> jobFlags, Mutable<JobId> jId,
