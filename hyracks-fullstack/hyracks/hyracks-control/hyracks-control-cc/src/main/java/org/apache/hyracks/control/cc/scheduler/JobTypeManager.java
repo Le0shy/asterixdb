@@ -2,7 +2,10 @@ package org.apache.hyracks.control.cc.scheduler;
 
 import org.apache.hyracks.api.job.JobSpecification;
 import org.apache.hyracks.control.cc.job.JobRun;
+import org.ini4j.Registry;
 
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 public class JobTypeManager implements IJobTypeManager {
@@ -18,22 +21,13 @@ public class JobTypeManager implements IJobTypeManager {
     }
 
     /* TODO: get config while system bootstraps
-       fetching from metadata provider or otherwise?
-    public JobManager() {
-
+       fetching from metadata provider or otherwise? */
+    public JobTypeManager() {
+        queryGroupToPriority = new HashMap<>();
     }
-
-    */
-
 
     @Override
     public void setJobType(JobRun jobRun) {
-        /* *
-        * TODO: add field to job specification;
-        *       if the job is to change defaultPriority/ queryGroupToPriority
-        * might call deleteGroup/upsertGroup accordingly
-        * */
-
         JobSpecification job = jobRun.getJobSpecification();
         int jobPriority = job.getPriority();
         if (jobPriority == 0) {
@@ -50,20 +44,34 @@ public class JobTypeManager implements IJobTypeManager {
         jobRun.setPriority(jobPriority);
     }
 
-    public boolean deleteGroup(String groupName) {
-        /* TODO */
-        return false;
-    }
-
-    public void upsertGroup(String groupName, long priority) {
-        /* TODO */
-    }
-
+    @Override
     public void setDefaultPriority(long dp) {
         defaultPriority = dp;
     }
 
+    @Override
+    public void setWorkloadConfig(HashMap<String, Long> groupsToPriorities) {
+        queryGroupToPriority = groupsToPriorities;
+    }
+
+    @Override
+    public void addGroups(Map<String, Long> groupsToAdd) {
+        for(String groupName: groupsToAdd.keySet()) {
+            queryGroupToPriority.put(groupName, groupsToAdd.get(groupName));
+        }
+    }
+
+    @Override
+    public void removeGroups(List<String> groupsToRemove) {
+        for(String groupName: groupsToRemove) {
+            queryGroupToPriority.remove(groupName);
+        }
+    }
+
+    @Override
     public long getDefaultPriority() {
         return defaultPriority;
     }
+
+
 }

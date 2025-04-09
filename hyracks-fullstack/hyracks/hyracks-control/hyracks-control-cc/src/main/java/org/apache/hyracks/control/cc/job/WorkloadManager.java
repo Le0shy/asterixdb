@@ -9,15 +9,13 @@ import org.apache.hyracks.api.job.resource.IJobCapacityController;
 import org.apache.hyracks.api.util.ExceptionUtils;
 import org.apache.hyracks.control.cc.ClusterControllerService;
 import org.apache.hyracks.control.cc.application.CCServiceContext;
-import org.apache.hyracks.control.cc.scheduler.CapacityControllerGuard;
-import org.apache.hyracks.control.cc.scheduler.CompositeQueue;
-import org.apache.hyracks.control.cc.scheduler.IJobTypeManager;
-import org.apache.hyracks.control.cc.scheduler.JobTypeManager;
+import org.apache.hyracks.control.cc.scheduler.*;
 import org.apache.hyracks.control.common.controllers.CCConfig;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.util.List;
+import java.util.Map;
 
 public class WorkloadManager extends JobManager {
 
@@ -98,7 +96,6 @@ public class WorkloadManager extends JobManager {
         }
     }
 
-
     private void releaseJobCapacity(JobRun jobRun) {
         workloadCapacityController.release(jobRun);
     }
@@ -110,9 +107,27 @@ public class WorkloadManager extends JobManager {
         }
     }
 
-    @Override
     public long getDefaultQueuePriority() {
         return jobTypeManager.getDefaultPriority();
+    }
+
+    public void enableSchedulerConfig(WorkloadConfig workloadConfig) {
+        jobTypeManager.setWorkloadConfig(workloadConfig.getGroupsToPriorities());
+        setWorkloadParameters(workloadConfig);
+    }
+
+    public void addQueryGroups(Map<String, Long> groupsToAdd){
+        jobTypeManager.addGroups(groupsToAdd);
+    }
+
+    public void removeQueryGroups(List<String> groupsToRemove) {
+        jobTypeManager.removeGroups(groupsToRemove);
+    }
+
+    public void setWorkloadParameters(WorkloadConfig workloadConfig) {
+        jobTypeManager.setDefaultPriority(workloadConfig.getDefaultPriority());
+        workloadCapacityController.setCPUQuota(workloadConfig.getShortCPUQuota());
+        workloadCapacityController.setMemoryPercentAllocatedToShort(workloadConfig.getShortMemoryPercent());
     }
 
 }

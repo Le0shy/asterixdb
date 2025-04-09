@@ -150,8 +150,4 @@ public interface IJobManager {
      * @return total rejected jobs
      */
     long getTotalRejectedJobs();
-
-    public default long getDefaultQueuePriority() {
-        return 1;
-    }
 }

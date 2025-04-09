@@ -203,6 +203,8 @@ import org.apache.hyracks.api.job.profiling.IOperatorStats;
 import org.apache.hyracks.api.result.IResultSet;
 import org.apache.hyracks.api.result.ResultSetId;
 import org.apache.hyracks.control.cc.ClusterControllerService;
+import org.apache.hyracks.control.cc.job.IJobManager;
+import org.apache.hyracks.control.cc.job.WorkloadManager;
 import org.apache.hyracks.control.common.controllers.CCConfig;
 import org.apache.hyracks.storage.am.common.dataflow.IndexDropOperatorDescriptor.DropOption;
 import org.apache.hyracks.storage.am.lsm.common.api.ILSMMergePolicyFactory;
@@ -1855,6 +1857,10 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
 
     private void doUpsertQGroup(MetadataProvider metadataProvider, UpsertQGroupStatement stmtUpsert,
             String databaseName, DataverseName dataverseName) throws RemoteException, AlgebricksException {
+        /* access wlm from ccs */
+        ClusterControllerService ccs = (ClusterControllerService) (appCtx.getServiceContext()).getControllerService();
+        WorkloadManager wlm = (WorkloadManager) ccs.getJobManager();
+
         MetadataTransactionContext mdTxnCtx = MetadataManager.INSTANCE.beginTransaction();
         metadataProvider.setMetadataTxnContext(mdTxnCtx);
         String schedulerConfigName = stmtUpsert.getConfigName();
@@ -1872,6 +1878,8 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
             MetadataManager.INSTANCE.dropSchedulerConfig(mdTxnCtx, databaseName, dataverseName, schedulerConfigName);
             MetadataManager.INSTANCE.addSchedulerConfig(mdTxnCtx, configMetadataEntity);
             MetadataManager.INSTANCE.commitTransaction(mdTxnCtx);
+            /* deliver added groups to wlm */
+            wlm.addQueryGroups(stmtUpsert.getUpsertQueryGroups());
         } catch (Exception e) {
             abort(e, e, mdTxnCtx);
             throw e;
@@ -1900,6 +1908,10 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
 
     private void doDeleteQGroup(MetadataProvider metadataProvider, DeleteQGroupStatement stmtDelete,
             String databaseName, DataverseName dataverseName) throws RemoteException, AlgebricksException {
+        /* access wlm from ccs */
+        ClusterControllerService ccs = (ClusterControllerService) (appCtx.getServiceContext()).getControllerService();
+        WorkloadManager wlm = (WorkloadManager) ccs.getJobManager();
+
         MetadataTransactionContext mdTxnCtx = MetadataManager.INSTANCE.beginTransaction();
         metadataProvider.setMetadataTxnContext(mdTxnCtx);
         String schedulerConfigName = stmtDelete.getConfigName();
@@ -1921,6 +1933,8 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
             MetadataManager.INSTANCE.dropSchedulerConfig(mdTxnCtx, databaseName, dataverseName, schedulerConfigName);
             MetadataManager.INSTANCE.addSchedulerConfig(mdTxnCtx, configMetadataEntity);
             MetadataManager.INSTANCE.commitTransaction(mdTxnCtx);
+            /* deliver deleted groups to wlm */
+            wlm.removeQueryGroups(stmtDelete.getDeleteQueryGroups());
         } catch (Exception e) {
             abort(e, e, mdTxnCtx);
             throw e;
