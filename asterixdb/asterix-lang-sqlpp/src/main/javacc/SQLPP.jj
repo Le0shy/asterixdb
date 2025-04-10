@@ -1031,6 +1031,7 @@ Statement SingleStatement() throws ParseException:
     | stmt = CompactStatement()
     | stmt = AnalyzeStatement()
     | stmt = Query()
+    | stmt = EnableSchedulerStatement()
   )
   {
     return stmt;
@@ -4009,6 +4010,26 @@ Query Query() throws ParseException:
   }
 }
 
+
+EnableSchedulerStatement EnableSchedulerStatement() throws ParseException:
+{
+    Token startToken = null;
+    Pair<Namespace, Identifier> nameComponents = null;
+    RecordConstructor expr = null;
+}
+{
+    <ENABLE> <SCHEDULER> <CONFIG> { startToken = token; }
+    nameComponents = QualifiedName()
+    {
+        try {
+            EnableSchedulerStatement stmt = new EnableSchedulerStatement(nameComponents.first,
+            nameComponents.second.getValue(), expr);
+            return addSourceLocation(stmt, startToken);
+        } catch (CompilationException e) {
+            throw new SqlppParseException(getSourceLocation(startToken), e.getMessage());
+        }
+    }
+}
 
 Expression Expression():
 {

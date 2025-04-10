@@ -851,7 +851,7 @@ public abstract class MetadataManager implements IMetadataManager {
     public void addSchedulerConfig(MetadataTransactionContext mdTxnCtx,
             SchedulerConfigMetadataEntity configMetadataEntity) throws AlgebricksException {
         if (Strings.isNullOrEmpty(configMetadataEntity.getSchedulerConfig().getName())) {
-            throw new MetadataException(ErrorCode.FULL_TEXT_CONFIG_ALREADY_EXISTS);
+            throw new MetadataException(ErrorCode.SCHEDULER_CONFIG_ALREADY_EXISTS);
         }
 
         try {

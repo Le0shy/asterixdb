@@ -127,5 +127,6 @@ public interface Statement extends ILangExpression {
         EXTENSION,
         COPY_FROM,
         COPY_TO,
+        ENABLE_SCHEDULER_CONFIG,
     }
 }

@@ -803,6 +803,13 @@ public abstract class FormatPrintVisitor implements ILangVisitor<Void, Integer> 
     }
 
     @Override
+    public Void visit(EnableSchedulerStatement cis, Integer step) throws CompilationException {
+        out.print(skip(step) + "delete query group from" + cis.getConfigName());
+        out.println(SEMICOLON);
+        return null;
+    }
+
+    @Override
     public Void visit(IndexDropStatement del, Integer step) throws CompilationException {
         out.print(skip(step) + "drop index ");
         out.print(generateFullName(del.getDataverseName(), del.getDatasetName()));

@@ -196,6 +196,11 @@ public abstract class AbstractQueryExpressionVisitor<R, T> implements ILangVisit
     }
 
     @Override
+    public R visit(EnableSchedulerStatement dq, T arg) throws CompilationException {
+        return null;
+    }
+
+    @Override
     public R visit(FullTextConfigDropStatement del, T arg) throws CompilationException {
         return null;
     }

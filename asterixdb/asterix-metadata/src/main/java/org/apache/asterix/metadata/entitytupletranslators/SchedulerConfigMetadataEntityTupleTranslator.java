@@ -3,15 +3,18 @@ package org.apache.asterix.metadata.entitytupletranslators;
 import org.apache.asterix.builders.IARecordBuilder;
 import org.apache.asterix.builders.OrderedListBuilder;
 import org.apache.asterix.builders.RecordBuilder;
+import org.apache.asterix.common.exceptions.AsterixException;
 import org.apache.asterix.common.metadata.DataverseName;
 import org.apache.asterix.common.metadata.MetadataUtil;
 import org.apache.asterix.metadata.bootstrap.MetadataRecordTypes;
-import org.apache.asterix.metadata.bootstrap.SchedulerConfigEntity;
+import org.apache.asterix.metadata.bootstrap.SchedulerConfigRecordEntity;
+import org.apache.asterix.metadata.bootstrap.SchedulerConfigStateEntity;
 import org.apache.asterix.metadata.entities.SchedulerConfigMetadataEntity;
 import org.apache.asterix.om.base.*;
 import org.apache.asterix.om.types.AOrderedListType;
-import org.apache.asterix.om.types.BuiltinType;
-import org.apache.asterix.runtime.scheduler.SchedulerConfigDescriptor;
+import org.apache.asterix.runtime.scheduler.ISchedulerConfigDescriptor;
+import org.apache.asterix.runtime.scheduler.SchedulerConfigRecordDescriptor;
+import org.apache.asterix.runtime.scheduler.SchedulerConfigStateDescriptor;
 import org.apache.hyracks.algebricks.common.exceptions.AlgebricksException;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
 import org.apache.hyracks.data.std.util.ArrayBackedValueStorage;
@@ -27,15 +30,30 @@ import static org.apache.asterix.metadata.bootstrap.MetadataRecordTypes.SCHEDULE
 
 public class SchedulerConfigMetadataEntityTupleTranslator extends AbstractTupleTranslator<SchedulerConfigMetadataEntity>{
 
-    private final SchedulerConfigEntity schedulerConfigEntity;
+    private final SchedulerConfigRecordEntity schedulerConfigRecordEntity;
+    private final SchedulerConfigStateEntity schedulerConfigStateEntity;
     protected final ArrayTupleReference tuple;
 
     protected AMutableInt64 aInt64;
     protected AMutableDouble aDouble;
 
-    protected SchedulerConfigMetadataEntityTupleTranslator(boolean getTuple, SchedulerConfigEntity schedulerConfigEntity) {
-        super(getTuple, schedulerConfigEntity.getIndex(), schedulerConfigEntity.payloadPosition());
-        this.schedulerConfigEntity = schedulerConfigEntity;
+    protected SchedulerConfigMetadataEntityTupleTranslator(boolean getTuple, SchedulerConfigRecordEntity schedulerConfigRecordEntity) {
+        super(getTuple, schedulerConfigRecordEntity.getIndex(), schedulerConfigRecordEntity.payloadPosition());
+        this.schedulerConfigRecordEntity = schedulerConfigRecordEntity;
+        this.schedulerConfigStateEntity = null;
+        if (getTuple) {
+            tuple = new ArrayTupleReference();
+            aInt64 = new AMutableInt64(-1);
+            aDouble = new AMutableDouble(-1);
+        } else {
+            tuple = null;
+        }
+    }
+
+    protected SchedulerConfigMetadataEntityTupleTranslator(boolean getTuple, SchedulerConfigStateEntity schedulerConfigStateEntity) {
+        super(getTuple, schedulerConfigStateEntity.getIndex(), schedulerConfigStateEntity.payloadPosition());
+        this.schedulerConfigRecordEntity = null;
+        this.schedulerConfigStateEntity = schedulerConfigStateEntity;
         if (getTuple) {
             tuple = new ArrayTupleReference();
             aInt64 = new AMutableInt64(-1);
@@ -48,9 +66,17 @@ public class SchedulerConfigMetadataEntityTupleTranslator extends AbstractTupleT
     @Override
     protected SchedulerConfigMetadataEntity createMetadataEntityFromARecord(ARecord aRecord)
             throws HyracksDataException, AlgebricksException {
+        if(schedulerConfigRecordEntity != null) {
+            return createMetadataEntityRecordFromARecord(aRecord);
+        }
+        return createMetadatEntityStateFromARecord(aRecord);
+    }
+
+    private SchedulerConfigMetadataEntity createMetadataEntityRecordFromARecord(ARecord aRecord)
+            throws AsterixException {
         DataverseName dataverseName = DataverseName.createFromCanonicalForm(
-                ((AString) aRecord.getValueByPos(schedulerConfigEntity.dataverseNameIndex())).getStringValue());
-        int databaseNameIndex = schedulerConfigEntity.databaseNameIndex();
+                ((AString) aRecord.getValueByPos(schedulerConfigRecordEntity.dataverseNameIndex())).getStringValue());
+        int databaseNameIndex = schedulerConfigRecordEntity.databaseNameIndex();
 
         String databaseName;
         if (databaseNameIndex >= 0) {
@@ -59,17 +85,17 @@ public class SchedulerConfigMetadataEntityTupleTranslator extends AbstractTupleT
             databaseName = MetadataUtil.databaseFor(dataverseName);
         }
 
-        String name = ((AString) aRecord.getValueByPos(schedulerConfigEntity.configNameIndex())).getStringValue();
+        String name = ((AString) aRecord.getValueByPos(schedulerConfigRecordEntity.configNameIndex())).getStringValue();
 
-        long defaultPriority = ((AInt64)aRecord.getValueByPos(schedulerConfigEntity.defaultPriorityIndex())).getLongValue();
+        long defaultPriority = ((AInt64)aRecord.getValueByPos(schedulerConfigRecordEntity.defaultPriorityIndex())).getLongValue();
 
-        double shortMemoryPercent = ((ADouble)aRecord.getValueByPos(schedulerConfigEntity.shortMemoryPercentIndex())).getDoubleValue();
+        double shortMemoryPercent = ((ADouble)aRecord.getValueByPos(schedulerConfigRecordEntity.shortMemoryPercentIndex())).getDoubleValue();
 
-        long shortCPUQuota = ((AInt64)aRecord.getValueByPos(schedulerConfigEntity.shortCPUQuotaIndex())).getLongValue();
+        long shortCPUQuota = ((AInt64)aRecord.getValueByPos(schedulerConfigRecordEntity.shortCPUQuotaIndex())).getLongValue();
 
 
         IACursor cursor =
-                ((AOrderedList) aRecord.getValueByPos(schedulerConfigEntity.queryGroupsIndex())).getCursor();
+                ((AOrderedList) aRecord.getValueByPos(schedulerConfigRecordEntity.queryGroupsIndex())).getCursor();
         Map<String, Long> groupToPriority  = new HashMap<>();
 
         while (cursor.next()) {
@@ -79,18 +105,45 @@ public class SchedulerConfigMetadataEntityTupleTranslator extends AbstractTupleT
             groupToPriority.put(qgname, priority);
         }
 
-        SchedulerConfigDescriptor configDescriptor = new SchedulerConfigDescriptor(databaseName, dataverseName, name,
+        ISchedulerConfigDescriptor
+                configDescriptor = new SchedulerConfigRecordDescriptor(databaseName, dataverseName, name,
                 defaultPriority, shortMemoryPercent, shortCPUQuota, groupToPriority, true);
+        return new SchedulerConfigMetadataEntity(configDescriptor);
+    }
+
+    private SchedulerConfigMetadataEntity createMetadatEntityStateFromARecord(ARecord aRecord) throws AsterixException {
+        DataverseName dataverseName = DataverseName.createFromCanonicalForm(
+                ((AString) aRecord.getValueByPos(schedulerConfigStateEntity.dataverseNameIndex())).getStringValue());
+        int databaseNameIndex = schedulerConfigStateEntity.databaseNameIndex();
+
+        String databaseName;
+        if (databaseNameIndex >= 0) {
+            databaseName = ((AString) aRecord.getValueByPos(databaseNameIndex)).getStringValue();
+        } else {
+            databaseName = MetadataUtil.databaseFor(dataverseName);
+        }
+
+        String configName = ((AString) aRecord.getValueByPos(schedulerConfigStateEntity.configNameIndex())).getStringValue();
+        String enabledConfigName = ((AString) aRecord.getValueByPos(schedulerConfigStateEntity.enabledConfigNameIndex())).getStringValue();
+
+        ISchedulerConfigDescriptor
+                configDescriptor = new SchedulerConfigStateDescriptor(databaseName, dataverseName, configName, enabledConfigName);
         return new SchedulerConfigMetadataEntity(configDescriptor);
     }
 
     private void writeIndex(String databaseName, String dataverseName, String configName,
             ArrayTupleBuilder tupleBuilder) throws HyracksDataException {
-        if (schedulerConfigEntity.databaseNameIndex() >= 0) {
+        if (schedulerConfigStateEntity != null && schedulerConfigRecordEntity.databaseNameIndex() >= 0) {
             aString.setValue(databaseName);
             stringSerde.serialize(aString, tupleBuilder.getDataOutput());
             tupleBuilder.addFieldEndOffset();
         }
+        if(schedulerConfigStateEntity != null && schedulerConfigStateEntity.databaseNameIndex() >= 0) {
+            aString.setValue(databaseName);
+            stringSerde.serialize(aString, tupleBuilder.getDataOutput());
+            tupleBuilder.addFieldEndOffset();
+        }
+
         aString.setValue(dataverseName);
         stringSerde.serialize(aString, tupleBuilder.getDataOutput());
         tupleBuilder.addFieldEndOffset();
@@ -103,50 +156,77 @@ public class SchedulerConfigMetadataEntityTupleTranslator extends AbstractTupleT
     @Override
     public ITupleReference getTupleFromMetadataEntity(SchedulerConfigMetadataEntity configMetadataEntity)
             throws HyracksDataException {
+        ISchedulerConfigDescriptor configDescriptor = configMetadataEntity.getSchedulerConfig();
+        if(configDescriptor instanceof SchedulerConfigRecordDescriptor) {
+            return getTupleFromMetadataEntityRecord(configMetadataEntity);
+        }
+        return getTupleFromMetadataEntityState(configMetadataEntity);
+    }
+
+    private ITupleReference getTupleFromMetadataEntityState(SchedulerConfigMetadataEntity configMetadataEntity)
+            throws HyracksDataException {
+        SchedulerConfigStateDescriptor configDescriptor = (SchedulerConfigStateDescriptor) configMetadataEntity.getSchedulerConfig();
         tupleBuilder.reset();
-
-        SchedulerConfigDescriptor configDescriptor = configMetadataEntity.getSchedulerConfig();
-
         writeIndex(configDescriptor.getDatabaseName(), configDescriptor.getDataverseName().getCanonicalForm(),
                 configDescriptor.getName(), tupleBuilder);
 
-        recordBuilder.reset(schedulerConfigEntity.getRecordType());
+        // write config name
+        fieldValue.reset();
+        aString.setValue(configDescriptor.getEnabledConfigName());
+        stringSerde.serialize(aString, fieldValue.getDataOutput());
+        recordBuilder.addField(schedulerConfigStateEntity.enabledConfigNameIndex(), fieldValue);
 
-        if (schedulerConfigEntity.databaseNameIndex() >= 0) {
+        // write record
+        recordBuilder.write(tupleBuilder.getDataOutput(), true);
+        tupleBuilder.addFieldEndOffset();
+        tuple.reset(tupleBuilder.getFieldEndOffsets(), tupleBuilder.getByteArray());
+        return tuple;
+    }
+
+    private ITupleReference getTupleFromMetadataEntityRecord(SchedulerConfigMetadataEntity configMetadataEntity)
+            throws HyracksDataException {
+        SchedulerConfigRecordDescriptor configDescriptor = (SchedulerConfigRecordDescriptor) configMetadataEntity.getSchedulerConfig();
+        tupleBuilder.reset();
+        writeIndex(configDescriptor.getDatabaseName(), configDescriptor.getDataverseName().getCanonicalForm(),
+                configDescriptor.getName(), tupleBuilder);
+
+        recordBuilder.reset(schedulerConfigRecordEntity.getRecordType());
+
+        if (schedulerConfigRecordEntity.databaseNameIndex() >= 0) {
             fieldValue.reset();
             aString.setValue(configDescriptor.getDatabaseName());
             stringSerde.serialize(aString, fieldValue.getDataOutput());
-            recordBuilder.addField(schedulerConfigEntity.databaseNameIndex(), fieldValue);
+            recordBuilder.addField(schedulerConfigRecordEntity.databaseNameIndex(), fieldValue);
         }
         // write dataverse name
         fieldValue.reset();
         aString.setValue(configDescriptor.getDataverseName().getCanonicalForm());
         stringSerde.serialize(aString, fieldValue.getDataOutput());
-        recordBuilder.addField(schedulerConfigEntity.dataverseNameIndex(), fieldValue);
+        recordBuilder.addField(schedulerConfigRecordEntity.dataverseNameIndex(), fieldValue);
 
         // write config name
         fieldValue.reset();
         aString.setValue(configDescriptor.getName());
         stringSerde.serialize(aString, fieldValue.getDataOutput());
-        recordBuilder.addField(schedulerConfigEntity.configNameIndex(), fieldValue);
+        recordBuilder.addField(schedulerConfigRecordEntity.configNameIndex(), fieldValue);
 
         // write default priority
         fieldValue.reset();
         aInt64.setValue(configDescriptor.getDefaultPriority());
         int64Serde.serialize(aInt64, fieldValue.getDataOutput());
-        recordBuilder.addField(schedulerConfigEntity.defaultPriorityIndex(), fieldValue);
+        recordBuilder.addField(schedulerConfigRecordEntity.defaultPriorityIndex(), fieldValue);
 
         // write short memory percent
         fieldValue.reset();
         aDouble.setValue(configDescriptor.getShortMemoryPercent());
         doubleSerde.serialize(aDouble, fieldValue.getDataOutput());
-        recordBuilder.addField(schedulerConfigEntity.shortMemoryPercentIndex(), fieldValue);
+        recordBuilder.addField(schedulerConfigRecordEntity.shortMemoryPercentIndex(), fieldValue);
 
         // write short CPU quota
         fieldValue.reset();
         aInt64.setValue(configDescriptor.getShortCPUQuota());
         int64Serde.serialize(aInt64, fieldValue.getDataOutput());
-        recordBuilder.addField(schedulerConfigEntity.shortCPUQuotaIndex(), fieldValue);
+        recordBuilder.addField(schedulerConfigRecordEntity.shortCPUQuotaIndex(), fieldValue);
 
         // write query groups
         OrderedListBuilder listBuilder = new OrderedListBuilder();
@@ -162,7 +242,7 @@ public class SchedulerConfigMetadataEntityTupleTranslator extends AbstractTupleT
         }
         fieldValue.reset();
         listBuilder.write(fieldValue.getDataOutput(), true);
-        recordBuilder.addField(schedulerConfigEntity.queryGroupsIndex(), fieldValue);
+        recordBuilder.addField(schedulerConfigRecordEntity.queryGroupsIndex(), fieldValue);
 
         // write record
         recordBuilder.write(tupleBuilder.getDataOutput(), true);

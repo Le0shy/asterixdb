@@ -32,7 +32,7 @@ import org.apache.asterix.metadata.api.IMetadataEntity;
 import org.apache.asterix.metadata.entities.*;
 import org.apache.asterix.metadata.utils.IndexUtil;
 import org.apache.asterix.runtime.fulltext.FullTextConfigDescriptor;
-import org.apache.asterix.runtime.scheduler.SchedulerConfigDescriptor;
+import org.apache.asterix.runtime.scheduler.ISchedulerConfigDescriptor;
 
 /**
  * Caches metadata entities such that the MetadataManager does not have to contact the MetadataNode. The cache is
@@ -965,7 +965,7 @@ public class MetadataCache {
 
     public SchedulerConfigMetadataEntity addSchedulerConfigIfNotExists(
             SchedulerConfigMetadataEntity configMetadataEntity) {
-        SchedulerConfigDescriptor config = configMetadataEntity.getSchedulerConfig();
+        ISchedulerConfigDescriptor config = configMetadataEntity.getSchedulerConfig();
         String databaseName = config.getDatabaseName();
         DataverseName dataverseName = config.getDataverseName();
         String configName = config.getName();
@@ -985,7 +985,7 @@ public class MetadataCache {
     }
 
     public SchedulerConfigMetadataEntity dropSchedulerConfig(SchedulerConfigMetadataEntity configMetadataEntity) {
-        SchedulerConfigDescriptor config = configMetadataEntity.getSchedulerConfig();
+        ISchedulerConfigDescriptor config = configMetadataEntity.getSchedulerConfig();
         DataverseName dataverseName = config.getDataverseName();
         String configName = config.getName();
         synchronized (schedulerConfigs) {

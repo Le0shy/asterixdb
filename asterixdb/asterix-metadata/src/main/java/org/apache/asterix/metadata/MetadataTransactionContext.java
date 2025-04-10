@@ -30,7 +30,7 @@ import org.apache.asterix.external.dataset.adapter.AdapterIdentifier;
 import org.apache.asterix.metadata.entities.*;
 import org.apache.asterix.runtime.fulltext.AbstractFullTextFilterDescriptor;
 import org.apache.asterix.runtime.fulltext.FullTextConfigDescriptor;
-import org.apache.asterix.runtime.scheduler.SchedulerConfigDescriptor;
+import org.apache.asterix.runtime.scheduler.SchedulerConfigRecordDescriptor;
 import org.apache.hyracks.storage.am.lsm.invertedindex.fulltext.FullTextFilterType;
 import org.apache.hyracks.storage.am.lsm.invertedindex.fulltext.IFullTextFilterEvaluatorFactory;
 
@@ -252,7 +252,8 @@ public class MetadataTransactionContext extends MetadataCache {
     }
 
     public void dropSchedulerConfig(String database, DataverseName dataverseName, String configName) {
-        SchedulerConfigDescriptor config = new SchedulerConfigDescriptor(database, dataverseName, configName,
+        SchedulerConfigRecordDescriptor
+                config = new SchedulerConfigRecordDescriptor(database, dataverseName, configName,
                 0, 0, 0, null);
         SchedulerConfigMetadataEntity configMetadataEntity = new SchedulerConfigMetadataEntity(config);
 

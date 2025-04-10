@@ -8,11 +8,11 @@ import java.util.List;
 import static org.apache.asterix.metadata.bootstrap.MetadataPrimaryIndexes.PROPERTIES_SCHEDULER_CONFIG;
 import static org.apache.asterix.metadata.bootstrap.MetadataRecordTypes.*;
 
-public class SchedulerConfigEntity {
-    private static final SchedulerConfigEntity SCHEDULER_CONFIG = new SchedulerConfigEntity(
+public class SchedulerConfigRecordEntity {
+    private static final SchedulerConfigRecordEntity SCHEDULER_CONFIG = new SchedulerConfigRecordEntity(
             new MetadataIndex(PROPERTIES_SCHEDULER_CONFIG, 3, new IAType[] { BuiltinType.ASTRING, BuiltinType.ASTRING },
                     Arrays.asList(List.of(FIELD_NAME_DATAVERSE_NAME), List.of(FIELD_NAME_SCHEDULER_CONFIG_NAME)), 0,
-                    schedulerConfigType(), true, new int[] { 0, 1 }), 2, -1);
+                    schedulerConfigRecordType(), true, new int[] { 0, 1 }), 2, -1);
 
     private final int payloadPosition;
     private final MetadataIndex index;
@@ -24,7 +24,7 @@ public class SchedulerConfigEntity {
     private final int shortCPUQuotaIndex;
     private final int queryGroupsIndex;
 
-    private SchedulerConfigEntity(MetadataIndex index, int payloadPosition, int startIndex) {
+    private SchedulerConfigRecordEntity(MetadataIndex index, int payloadPosition, int startIndex) {
         this.index = index;
         this.payloadPosition = payloadPosition;
         this.databaseNameIndex = startIndex++;
@@ -36,7 +36,7 @@ public class SchedulerConfigEntity {
         this.queryGroupsIndex = startIndex++;
     }
 
-    public static SchedulerConfigEntity of(boolean usingDatabase) {
+    public static SchedulerConfigRecordEntity of(boolean usingDatabase) {
         return SCHEDULER_CONFIG;
     }
 
@@ -80,7 +80,7 @@ public class SchedulerConfigEntity {
         return queryGroupsIndex;
     }
 
-    private static ARecordType schedulerConfigType() {
+    private static ARecordType schedulerConfigRecordType() {
         return MetadataRecordTypes.createRecordType(RECORD_NAME_SCHEDULER_CONFIG,
                 new String[] { FIELD_NAME_DATAVERSE_NAME,
                         FIELD_NAME_SCHEDULER_CONFIG_NAME,
