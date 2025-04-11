@@ -116,7 +116,8 @@ public class MetadataIndexesProvider {
                     getFeedPolicyEntity().getIndex(), getLibraryEntity().getIndex(),
                     getCompactionPolicyEntity().getIndex(), getExternalFileEntity().getIndex(),
                     getFeedConnectionEntity().getIndex(), getFullTextConfigEntity().getIndex(),
-                    getFullTextFilterEntity().getIndex(), getSchedulerConfigRecordEntity().getIndex() };
+                    getFullTextFilterEntity().getIndex(), getSchedulerConfigRecordEntity().getIndex(),
+                    getSchedulerConfigStateEntity().getIndex() };
         } else {
             return new IMetadataIndex[] { getDataverseEntity().getIndex(), getDatasetEntity().getIndex(),
                     getDatatypeEntity().getIndex(), getIndexEntity().getIndex(), getSynonymEntity().getIndex(),
@@ -125,7 +126,8 @@ public class MetadataIndexesProvider {
                     getFeedPolicyEntity().getIndex(), getLibraryEntity().getIndex(),
                     getCompactionPolicyEntity().getIndex(), getExternalFileEntity().getIndex(),
                     getFeedConnectionEntity().getIndex(), getFullTextConfigEntity().getIndex(),
-                    getFullTextFilterEntity().getIndex(), getSchedulerConfigRecordEntity().getIndex() };
+                    getFullTextFilterEntity().getIndex(), getSchedulerConfigRecordEntity().getIndex(),
+                    getSchedulerConfigStateEntity().getIndex() };
         }
     }
 

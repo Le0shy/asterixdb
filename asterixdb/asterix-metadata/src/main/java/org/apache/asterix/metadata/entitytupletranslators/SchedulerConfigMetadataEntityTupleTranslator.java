@@ -133,7 +133,7 @@ public class SchedulerConfigMetadataEntityTupleTranslator extends AbstractTupleT
 
     private void writeIndex(String databaseName, String dataverseName, String configName,
             ArrayTupleBuilder tupleBuilder) throws HyracksDataException {
-        if (schedulerConfigStateEntity != null && schedulerConfigRecordEntity.databaseNameIndex() >= 0) {
+        if (schedulerConfigRecordEntity != null && schedulerConfigRecordEntity.databaseNameIndex() >= 0) {
             aString.setValue(databaseName);
             stringSerde.serialize(aString, tupleBuilder.getDataOutput());
             tupleBuilder.addFieldEndOffset();
@@ -170,7 +170,27 @@ public class SchedulerConfigMetadataEntityTupleTranslator extends AbstractTupleT
         writeIndex(configDescriptor.getDatabaseName(), configDescriptor.getDataverseName().getCanonicalForm(),
                 configDescriptor.getName(), tupleBuilder);
 
+        recordBuilder.reset(schedulerConfigStateEntity.getRecordType());
+
+        if (schedulerConfigStateEntity.databaseNameIndex() >= 0) {
+            fieldValue.reset();
+            aString.setValue(configDescriptor.getDatabaseName());
+            stringSerde.serialize(aString, fieldValue.getDataOutput());
+            recordBuilder.addField(schedulerConfigStateEntity.databaseNameIndex(), fieldValue);
+        }
+        // write dataverse name
+        fieldValue.reset();
+        aString.setValue(configDescriptor.getDataverseName().getCanonicalForm());
+        stringSerde.serialize(aString, fieldValue.getDataOutput());
+        recordBuilder.addField(schedulerConfigStateEntity.dataverseNameIndex(), fieldValue);
+
         // write config name
+        fieldValue.reset();
+        aString.setValue(configDescriptor.getName());
+        stringSerde.serialize(aString, fieldValue.getDataOutput());
+        recordBuilder.addField(schedulerConfigStateEntity.configNameIndex(), fieldValue);
+
+        // write enabled config name
         fieldValue.reset();
         aString.setValue(configDescriptor.getEnabledConfigName());
         stringSerde.serialize(aString, fieldValue.getDataOutput());

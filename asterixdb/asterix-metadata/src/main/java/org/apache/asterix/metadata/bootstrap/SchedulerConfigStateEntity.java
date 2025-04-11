@@ -47,6 +47,10 @@ public class SchedulerConfigStateEntity {
         return payloadPosition;
     }
 
+    public ARecordType getRecordType() {
+        return index.getPayloadRecordType();
+    }
+
     public MetadataIndex getIndex() {
         return index;
     }

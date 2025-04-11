@@ -157,6 +157,7 @@ import org.apache.asterix.lang.common.statement.DeleteStatement;
 import org.apache.asterix.lang.common.statement.DeleteQGroupStatement;
 import org.apache.asterix.lang.common.statement.DisconnectFeedStatement;
 import org.apache.asterix.lang.common.statement.DropDatasetStatement;
+import org.apache.asterix.lang.common.statement.EnableSchedulerStatement;
 import org.apache.asterix.lang.common.statement.ExternalDetailsDecl;
 import org.apache.asterix.lang.common.statement.FeedDropStatement;
 import org.apache.asterix.lang.common.statement.FeedPolicyDropStatement;
@@ -4015,15 +4016,15 @@ EnableSchedulerStatement EnableSchedulerStatement() throws ParseException:
 {
     Token startToken = null;
     Pair<Namespace, Identifier> nameComponents = null;
-    RecordConstructor expr = null;
 }
 {
-    <ENABLE> <SCHEDULER> <CONFIG> { startToken = token; }
+    <ENABLE> <SCHEDULER> {startToken = token;}
+    <IDENTIFIER> { expectToken(CONFIG);}
     nameComponents = QualifiedName()
     {
         try {
             EnableSchedulerStatement stmt = new EnableSchedulerStatement(nameComponents.first,
-            nameComponents.second.getValue(), expr);
+            nameComponents.second.getValue());
             return addSourceLocation(stmt, startToken);
         } catch (CompilationException e) {
             throw new SqlppParseException(getSourceLocation(startToken), e.getMessage());
@@ -6081,6 +6082,7 @@ TOKEN [IGNORE_CASE]:
   | <EXPLAIN : "explain">
   | <ELSE : "else">
   | <ENFORCED : "enforced">
+  | <ENABLE: "enable">
   | <END : "end">
   | <EVERY : "every">
   | <EXCEPT : "except">

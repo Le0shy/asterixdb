@@ -607,6 +607,7 @@ public class MetadataBootstrap {
                 && index != mdIndexesProvider.getFullTextConfigEntity().getIndex()
                 && index != mdIndexesProvider.getFullTextFilterEntity().getIndex()
                 && index != mdIndexesProvider.getSchedulerConfigRecordEntity().getIndex()
+                && index != mdIndexesProvider.getSchedulerConfigStateEntity().getIndex()
         ) {
             throw new IllegalStateException(
                     "attempt to create metadata index " + index.getIndexName() + ". Index should already exist");

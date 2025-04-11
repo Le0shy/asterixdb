@@ -1968,6 +1968,7 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
                 configStateEntity = new SchedulerConfigMetadataEntity(new SchedulerConfigStateDescriptor(databaseName,
                         dataverseName, SCHEDULER_STATE, schedulerConfigName));
                 MetadataManager.INSTANCE.addSchedulerConfig(mdTxnCtx, configStateEntity);
+                MetadataManager.INSTANCE.commitTransaction(mdTxnCtx);
                 return;
             }
 
