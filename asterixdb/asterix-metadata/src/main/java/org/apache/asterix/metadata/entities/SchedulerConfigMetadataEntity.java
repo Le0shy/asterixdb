@@ -48,4 +48,9 @@ public class SchedulerConfigMetadataEntity implements IMetadataEntity<SchedulerC
         SchedulerConfigStateDescriptor scsd = (SchedulerConfigStateDescriptor)schedulerConfig;
         scsd.setEnabledConfigName(setEnabledConfigName);
     }
+
+    public String getEnabled() {
+        SchedulerConfigStateDescriptor scsd = (SchedulerConfigStateDescriptor)schedulerConfig;
+        return scsd.getEnabledConfigName();
+    }
 }

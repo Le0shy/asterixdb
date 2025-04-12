@@ -1961,6 +1961,7 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
                 throw new CompilationException(ErrorCode.SCHEDULER_CONFIG_NOT_FOUND,
                         stmtEnable.getSourceLocation(), schedulerConfigName);
             }
+
             /* set config enabled */
             SchedulerConfigMetadataEntity configStateEntity = MetadataManager.INSTANCE.getSchedulerConfig(mdTxnCtx,
                     databaseName, dataverseName, SCHEDULER_STATE);
@@ -1971,7 +1972,10 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
                 MetadataManager.INSTANCE.commitTransaction(mdTxnCtx);
                 return;
             }
-
+            /* if the config has already been enabled */
+            if(configStateEntity.getEnabled().equals(schedulerConfigName)) {
+                return;
+            }
             configStateEntity.setEnabled(schedulerConfigName);
             MetadataManager.INSTANCE.dropSchedulerConfig(mdTxnCtx, databaseName, dataverseName, SCHEDULER_STATE);
             MetadataManager.INSTANCE.addSchedulerConfig(mdTxnCtx, configStateEntity);

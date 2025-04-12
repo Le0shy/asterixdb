@@ -702,7 +702,11 @@ public class MetadataNode implements IMetadataNode {
             String configName) throws AlgebricksException {
         try {
             ITupleReference key = createTuple(database, dataverseName, configName);
-            deleteTupleFromIndex(txnId, mdIndexesProvider.getSchedulerConfigRecordEntity().getIndex(), key);
+            if(configName.equals(SCHEDULER_STATE)) {
+                deleteTupleFromIndex(txnId, mdIndexesProvider.getSchedulerConfigStateEntity().getIndex(), key);
+            } else {
+                deleteTupleFromIndex(txnId, mdIndexesProvider.getSchedulerConfigRecordEntity().getIndex(), key);
+            }
         } catch (HyracksDataException e) {
             throw new AsterixException(METADATA_ERROR, e, e.getMessage());
         }

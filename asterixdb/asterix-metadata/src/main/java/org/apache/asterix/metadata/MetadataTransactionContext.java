@@ -30,9 +30,13 @@ import org.apache.asterix.external.dataset.adapter.AdapterIdentifier;
 import org.apache.asterix.metadata.entities.*;
 import org.apache.asterix.runtime.fulltext.AbstractFullTextFilterDescriptor;
 import org.apache.asterix.runtime.fulltext.FullTextConfigDescriptor;
+import org.apache.asterix.runtime.scheduler.ISchedulerConfigDescriptor;
 import org.apache.asterix.runtime.scheduler.SchedulerConfigRecordDescriptor;
+import org.apache.asterix.runtime.scheduler.SchedulerConfigStateDescriptor;
 import org.apache.hyracks.storage.am.lsm.invertedindex.fulltext.FullTextFilterType;
 import org.apache.hyracks.storage.am.lsm.invertedindex.fulltext.IFullTextFilterEvaluatorFactory;
+
+import static org.apache.asterix.metadata.entities.SchedulerConfigMetadataEntity.SCHEDULER_STATE;
 
 /**
  * Used to implement serializable transactions against the MetadataCache.
@@ -151,6 +155,7 @@ public class MetadataTransactionContext extends MetadataCache {
     }
 
     public void addSchedulerConfig(SchedulerConfigMetadataEntity configMetadataEntity) {
+        // TODO
     }
 
     public void dropDataset(String database, DataverseName dataverseName, String datasetName) {
@@ -252,10 +257,15 @@ public class MetadataTransactionContext extends MetadataCache {
     }
 
     public void dropSchedulerConfig(String database, DataverseName dataverseName, String configName) {
-        SchedulerConfigRecordDescriptor
-                config = new SchedulerConfigRecordDescriptor(database, dataverseName, configName,
-                0, 0, 0, null);
-        SchedulerConfigMetadataEntity configMetadataEntity = new SchedulerConfigMetadataEntity(config);
+        ISchedulerConfigDescriptor schedulerConfigDescriptor;
+        if(configName.equals(SCHEDULER_STATE)) {
+            schedulerConfigDescriptor =
+                    new SchedulerConfigStateDescriptor(database, dataverseName, configName, null);
+        } else {
+            schedulerConfigDescriptor =
+                    new SchedulerConfigRecordDescriptor(database, dataverseName, configName, 0, 0, 0, null);
+        }
+        SchedulerConfigMetadataEntity configMetadataEntity = new SchedulerConfigMetadataEntity(schedulerConfigDescriptor);
 
         droppedCache.addSchedulerConfigIfNotExists(configMetadataEntity);
         logAndApply(new MetadataLogicalOperation(configMetadataEntity, false));
@@ -333,7 +343,6 @@ public class MetadataTransactionContext extends MetadataCache {
     public boolean schedulerConfigIsDropped(String databaseName, DataverseName dataverseName, String configName) {
         return droppedCache.getSchedulerConfig(databaseName, dataverseName, configName) != null;
     }
-
     public List<MetadataLogicalOperation> getOpLog() {
         return opLog;
     }
