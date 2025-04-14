@@ -111,9 +111,9 @@ public class WorkloadManager extends JobManager {
         return jobTypeManager.getDefaultPriority();
     }
 
-    public void enableSchedulerConfig(WorkloadConfig workloadConfig) {
-        jobTypeManager.setWorkloadConfig(workloadConfig.getGroupsToPriorities());
-        setWorkloadParameters(workloadConfig);
+    public void enableSchedulerConfig(EnableConfigInfo enableConfig) {
+        jobTypeManager.setWorkloadConfig(enableConfig.getGroupsToPriorities());
+        setWorkloadParameters(enableConfig);
     }
 
     public void addQueryGroups(Map<String, Long> groupsToAdd){
@@ -124,7 +124,7 @@ public class WorkloadManager extends JobManager {
         jobTypeManager.removeGroups(groupsToRemove);
     }
 
-    public void setWorkloadParameters(WorkloadConfig workloadConfig) {
+    public void setWorkloadParameters(EnableConfigInfo workloadConfig) {
         jobTypeManager.setDefaultPriority(workloadConfig.getDefaultPriority());
         workloadCapacityController.setCPUQuota(workloadConfig.getShortCPUQuota());
         workloadCapacityController.setMemoryPercentAllocatedToShort(workloadConfig.getShortMemoryPercent());
