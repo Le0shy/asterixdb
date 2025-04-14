@@ -350,6 +350,9 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
                     case ENABLE_SCHEDULER_CONFIG:
                         handleEnableSchedulerConfig(metadataProvider, stmt);
                         break;
+                    case UPDATE_SCHEDULER:
+                        handleUpdateSchedulerConfig(metadataProvider, stmt);
+                        break;
                     case TYPE_DECL:
                         handleCreateTypeStatement(metadataProvider, stmt);
                         break;
@@ -1985,6 +1988,52 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
             throw e;
         }
     }
+
+    protected void handleUpdateSchedulerConfig(MetadataProvider metadataProvider, Statement stmt)
+            throws AlgebricksException, RemoteException {
+        UpdateSchedulerStatement stmtUpdate = (UpdateSchedulerStatement) stmt;
+        Namespace stmtActiveNamespace = getActiveNamespace(stmtUpdate.getNamespace());
+        DataverseName dataverseName = stmtActiveNamespace.getDataverseName();
+        String databaseName = stmtActiveNamespace.getDatabaseName();
+        String configName = stmtUpdate.getConfigName();
+
+        if (isCompileOnly()) {
+            return;
+        }
+        lockUtil.createSchedulerConfigBegin(lockManager, metadataProvider.getLocks(), databaseName, dataverseName,
+                configName);
+        try {
+            doUpdateSchedulerConfig(metadataProvider, stmtUpdate, databaseName, dataverseName);
+        } finally {
+            metadataProvider.getLocks().unlock();
+        }
+    }
+
+    private void doUpdateSchedulerConfig(MetadataProvider metadataProvider, UpdateSchedulerStatement stmtUpdate,
+            String databaseName, DataverseName dataverseName) throws RemoteException, AlgebricksException {
+        MetadataTransactionContext mdTxnCtx = MetadataManager.INSTANCE.beginTransaction();
+        metadataProvider.setMetadataTxnContext(mdTxnCtx);
+        String schedulerConfigName = stmtUpdate.getConfigName();
+        try {
+            SchedulerConfigMetadataEntity configMetadataEntity = MetadataManager.INSTANCE.getSchedulerConfig(mdTxnCtx,
+                    databaseName, dataverseName, schedulerConfigName);
+
+            if (configMetadataEntity == null) {
+                throw new CompilationException(ErrorCode.SCHEDULER_CONFIG_NOT_FOUND,
+                        stmtUpdate.getSourceLocation(), schedulerConfigName);
+            }
+
+            configMetadataEntity.updateConfigParameters(stmtUpdate.getDefaultPriority(),
+                    stmtUpdate.getShortMemoryPercent(), stmtUpdate.getShortCPUQuota());
+            MetadataManager.INSTANCE.dropSchedulerConfig(mdTxnCtx, databaseName, dataverseName, schedulerConfigName);
+            MetadataManager.INSTANCE.addSchedulerConfig(mdTxnCtx, configMetadataEntity);
+            MetadataManager.INSTANCE.commitTransaction(mdTxnCtx);
+        } catch (Exception e) {
+            abort(e, e, mdTxnCtx);
+            throw e;
+        }
+    }
+
     private void doCreateIndexImpl(IHyracksClientConnection hcc, MetadataProvider metadataProvider, Dataset ds,
             Index index, EnumSet<JobFlag> jobFlags, SourceLocation sourceLoc) throws Exception {
         ProgressState progress = ProgressState.NO_PROGRESS;

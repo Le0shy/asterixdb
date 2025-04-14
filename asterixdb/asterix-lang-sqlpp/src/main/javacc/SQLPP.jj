@@ -180,6 +180,7 @@ import org.apache.asterix.lang.common.statement.SynonymDropStatement;
 import org.apache.asterix.lang.common.statement.TypeDecl;
 import org.apache.asterix.lang.common.statement.TypeDropStatement;
 import org.apache.asterix.lang.common.statement.UpdateStatement;
+import org.apache.asterix.lang.common.statement.UpdateSchedulerStatement;
 import org.apache.asterix.lang.common.statement.UpsertStatement;
 import org.apache.asterix.lang.common.statement.UpsertQGroupStatement;
 import org.apache.asterix.lang.common.statement.ViewDecl;
@@ -1025,6 +1026,7 @@ Statement SingleStatement() throws ParseException:
     | stmt = InsertStatement()
     | LOOKAHEAD(2) stmt = UpsertQGroupStatement()
     | LOOKAHEAD(2) stmt = DeleteQGroupStatement()
+    | LOOKAHEAD(2) stmt = UpdateSchedulerStatement()
     | stmt = DeleteStatement()
     | stmt = UpdateStatement()
     | stmt = UpsertStatement()
@@ -2903,6 +2905,26 @@ DeleteQGroupStatement DeleteQGroupStatement() throws ParseException:
   {
   try {
       return addSourceLocation(new DeleteQGroupStatement(nameComponents.first, nameComponents.second.getValue(), expr
+    ), startToken);
+  } catch (CompilationException e) {
+        throw new SqlppParseException(getSourceLocation(startToken), e.getMessage());
+    }
+  }
+}
+UpdateSchedulerStatement UpdateSchedulerStatement() throws ParseException:
+{
+  Token startToken = null;
+  Pair<Namespace, Identifier> nameComponents = null;
+  RecordConstructor expr = null;
+}
+{
+  <UPDATE> <SCHEDULER> { startToken = token; }
+  <IDENTIFIER> { expectToken(CONFIG);}
+  nameComponents = QualifiedName()
+  expr = RecordConstructor()
+  {
+  try {
+      return addSourceLocation(new UpdateSchedulerStatement(nameComponents.first, nameComponents.second.getValue(), expr
     ), startToken);
   } catch (CompilationException e) {
         throw new SqlppParseException(getSourceLocation(startToken), e.getMessage());

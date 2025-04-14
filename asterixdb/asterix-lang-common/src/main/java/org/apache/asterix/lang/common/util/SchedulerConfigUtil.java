@@ -106,10 +106,19 @@ public class SchedulerConfigUtil {
                 new IAType[]{new AOrderedListType(BuiltinType.ASTRING, null)}, true);
     }
 
+    private static ARecordType getUpdateSchedulerRecordType() {
+        return new ARecordType("UpdateSchedulerRecordType",
+                new String[]{"defaultPriority", "shortMemoryPercent", "shortCPUQuota"},
+                new IAType[]{BuiltinType.AINT64, BuiltinType.ADOUBLE, BuiltinType.AINT64},
+                true
+        );
+    }
+
 
     private static final ARecordType SCHEDULER_CONFIG_RECORD_TYPE = getSchedulerConfigRecordType();
     private static final ARecordType SCHEDULER_UPSERT_QGROUP_TYPE = getUpsertQGroupRecordType();
     private static final ARecordType SCHEDULER_DELETE_QGROUP_TYPE = getDeleteQGroupRecordType();
+    private static final ARecordType SCHEDULER_UPDATE_SCHEDULER_TYPE = getUpdateSchedulerRecordType();
 
     public static AdmObjectNode validateAndGetConfigNode(RecordConstructor recordConstructor)
             throws CompilationException {
@@ -133,6 +142,14 @@ public class SchedulerConfigUtil {
         final ConfigurationTypeValidator validator = new ConfigurationTypeValidator();
         final AdmObjectNode node = ExpressionUtils.toNode(recordConstructor);
         validator.validateType(SCHEDULER_DELETE_QGROUP_TYPE, node);
+        return node;
+    }
+
+    public static AdmObjectNode validateUpdateSchedulerNode(RecordConstructor recordConstructor)
+            throws CompilationException {
+        final ConfigurationTypeValidator validator = new ConfigurationTypeValidator();
+        final AdmObjectNode node = ExpressionUtils.toNode(recordConstructor);
+        validator.validateType(SCHEDULER_UPDATE_SCHEDULER_TYPE, node);
         return node;
     }
 }

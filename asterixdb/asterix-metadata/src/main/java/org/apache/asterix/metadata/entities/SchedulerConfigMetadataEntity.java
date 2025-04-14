@@ -48,6 +48,12 @@ public class SchedulerConfigMetadataEntity implements IMetadataEntity<SchedulerC
         SchedulerConfigStateDescriptor scsd = (SchedulerConfigStateDescriptor)schedulerConfig;
         scsd.setEnabledConfigName(setEnabledConfigName);
     }
+    public void updateConfigParameters(long defaultPriority, double shortMemoryPercent, long shortCPUQuota) {
+        SchedulerConfigRecordDescriptor scrd = (SchedulerConfigRecordDescriptor)schedulerConfig;
+        scrd.setDefaultPriority(defaultPriority);
+        scrd.setShortMemoryPercent(shortMemoryPercent);
+        scrd.setShortCPUQuota(shortCPUQuota);
+    }
 
     public String getEnabled() {
         SchedulerConfigStateDescriptor scsd = (SchedulerConfigStateDescriptor)schedulerConfig;

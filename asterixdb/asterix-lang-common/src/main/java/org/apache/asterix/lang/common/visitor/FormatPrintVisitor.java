@@ -776,35 +776,42 @@ public abstract class FormatPrintVisitor implements ILangVisitor<Void, Integer> 
 
     @Override
     public Void visit(CreateSchedulerConfigStatement cis, Integer step) throws CompilationException {
-        out.print(skip(step) + "create scheduler config " + cis.getConfigName());
+        out.print(skip(step) + "create scheduler config: " + cis.getConfigName());
         out.println(SEMICOLON);
         return null;
     }
 
     @Override
     public Void visit(SchedulerConfigDropStatement cis, Integer step) throws CompilationException {
-        out.print(skip(step) + "drop scheduler config " + cis.getConfigName());
+        out.print(skip(step) + "drop scheduler config: " + cis.getConfigName());
         out.println(SEMICOLON);
         return null;
     }
 
     @Override
     public Void visit(UpsertQGroupStatement cis, Integer step) throws CompilationException {
-        out.print(skip(step) + "upsert query group into" + cis.getConfigName());
+        out.print(skip(step) + "upsert query group into: " + cis.getConfigName());
         out.println(SEMICOLON);
         return null;
     }
 
     @Override
     public Void visit(DeleteQGroupStatement cis, Integer step) throws CompilationException {
-        out.print(skip(step) + "delete query group from" + cis.getConfigName());
+        out.print(skip(step) + "delete query group from: " + cis.getConfigName());
         out.println(SEMICOLON);
         return null;
     }
 
     @Override
     public Void visit(EnableSchedulerStatement cis, Integer step) throws CompilationException {
-        out.print(skip(step) + "delete query group from" + cis.getConfigName());
+        out.print(skip(step) + "enable scheduler config: " + cis.getConfigName());
+        out.println(SEMICOLON);
+        return null;
+    }
+
+    @Override
+    public Void visit(UpdateSchedulerStatement cis, Integer step) throws CompilationException {
+        out.print(skip(step) + "update scheduler config: " + cis.getConfigName());
         out.println(SEMICOLON);
         return null;
     }

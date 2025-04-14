@@ -32,9 +32,9 @@ public class SchedulerConfigRecordDescriptor implements ISchedulerConfigDescript
     private final String databaseName;
     private final DataverseName dataverseName;
     private final String name;
-    private final long defaultPriority;
-    private final double shortMemoryPercent;
-    private final long shortCPUQuota;
+    private long defaultPriority;
+    private double shortMemoryPercent;
+    private long shortCPUQuota;
     private final Map<Long, List<String>> priorityToGroups;
     private final Map<String, Long> groupToPriority;
     public SchedulerConfigRecordDescriptor(String databaseName, DataverseName dataverseName, String name,
@@ -138,5 +138,17 @@ public class SchedulerConfigRecordDescriptor implements ISchedulerConfigDescript
             }
         }
         return true;
+    }
+
+    public void setDefaultPriority(long defaultPriority) {
+        this.defaultPriority = defaultPriority;
+    }
+
+    public void setShortMemoryPercent(double shortMemoryPercent) {
+        this.shortMemoryPercent = shortMemoryPercent;
+    }
+
+    public void setShortCPUQuota(long shortCPUQuota) {
+        this.shortCPUQuota = shortCPUQuota;
     }
 }

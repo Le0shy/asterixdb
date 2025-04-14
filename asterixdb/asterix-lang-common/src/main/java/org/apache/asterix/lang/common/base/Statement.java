@@ -99,6 +99,7 @@ public interface Statement extends ILangExpression {
         CREATE_SCHEDULER_CONFIG,
         DROP_SCHEDULER_CONFIG,
         UPSERT_QGROUP,
+        UPDATE_SCHEDULER,
         DELETE_QGROUP,
         INDEX_DROP,
         FULL_TEXT_FILTER_DROP,
