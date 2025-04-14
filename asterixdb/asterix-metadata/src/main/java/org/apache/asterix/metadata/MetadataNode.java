@@ -56,6 +56,7 @@ import static org.apache.asterix.common.exceptions.ErrorCode.UNKNOWN_NODEGROUP;
 import static org.apache.asterix.common.exceptions.ErrorCode.UNKNOWN_SYNONYM;
 import static org.apache.asterix.common.exceptions.ErrorCode.UNKNOWN_TYPE;
 import static org.apache.asterix.common.utils.IdentifierUtil.dataset;
+import static org.apache.asterix.metadata.entities.SchedulerConfigMetadataEntity.SCHEDULER_STATE;
 
 import java.io.PrintStream;
 import java.rmi.RemoteException;
@@ -103,6 +104,7 @@ import org.apache.asterix.metadata.api.IMetadataNode;
 import org.apache.asterix.metadata.api.IValueExtractor;
 import org.apache.asterix.metadata.bootstrap.MetadataBuiltinEntities;
 import org.apache.asterix.metadata.bootstrap.MetadataIndexesProvider;
+import org.apache.asterix.metadata.bootstrap.SchedulerConfigRecordEntity;
 import org.apache.asterix.metadata.entities.*;
 import org.apache.asterix.metadata.entitytupletranslators.*;
 import org.apache.asterix.metadata.utils.DatasetUtil;
@@ -121,6 +123,8 @@ import org.apache.asterix.om.types.AbstractComplexType;
 import org.apache.asterix.om.types.BuiltinType;
 import org.apache.asterix.om.types.IAType;
 import org.apache.asterix.runtime.fulltext.FullTextConfigDescriptor;
+import org.apache.asterix.runtime.scheduler.SchedulerConfigRecordDescriptor;
+import org.apache.asterix.runtime.scheduler.SchedulerConfigStateDescriptor;
 import org.apache.asterix.transaction.management.opcallbacks.AbstractIndexModificationOperationCallback.Operation;
 import org.apache.asterix.transaction.management.opcallbacks.NoOpModificationOpCallback;
 import org.apache.asterix.transaction.management.opcallbacks.SecondaryIndexModificationOperationCallback;
@@ -629,10 +633,18 @@ public class MetadataNode implements IMetadataNode {
     private void insertSchedulerConfigMetadataEntityToCatalog(TxnId txnId, SchedulerConfigMetadataEntity config)
             throws AlgebricksException {
         try {
-            SchedulerConfigMetadataEntityTupleTranslator tupleReaderWriter =
-                    tupleTranslatorProvider.getSchedulerConfigTupleTranslator(true);
-            ITupleReference configTuple = tupleReaderWriter.getTupleFromMetadataEntity(config);
-            insertTupleIntoIndex(txnId, mdIndexesProvider.getSchedulerConfigEntity().getIndex(), configTuple);
+            SchedulerConfigMetadataEntityTupleTranslator tupleReaderWriter;
+            if(config.getSchedulerConfig() instanceof SchedulerConfigRecordDescriptor) {
+                tupleReaderWriter = tupleTranslatorProvider.
+                        getSchedulerConfigTupleTranslator(true, true);
+                ITupleReference configTuple = tupleReaderWriter.getTupleFromMetadataEntity(config);
+                insertTupleIntoIndex(txnId, mdIndexesProvider.getSchedulerConfigRecordEntity().getIndex(), configTuple);
+            } else if (config.getSchedulerConfig() instanceof SchedulerConfigStateDescriptor) {
+                tupleReaderWriter = tupleTranslatorProvider.
+                        getSchedulerConfigTupleTranslator(true, false);
+                ITupleReference configTuple = tupleReaderWriter.getTupleFromMetadataEntity(config);
+                insertTupleIntoIndex(txnId, mdIndexesProvider.getSchedulerConfigStateEntity().getIndex(), configTuple);
+            }
         } catch (HyracksDataException e) {
             throw new AsterixException(METADATA_ERROR, e, e.getMessage());
         }
@@ -647,8 +659,15 @@ public class MetadataNode implements IMetadataNode {
     @Override
     public SchedulerConfigMetadataEntity getSchedulerConfig(TxnId txnId, String database, DataverseName dataverseName,
             String configName) throws AlgebricksException {
-        SchedulerConfigMetadataEntityTupleTranslator translator =
-                tupleTranslatorProvider.getSchedulerConfigTupleTranslator(true);
+        SchedulerConfigMetadataEntityTupleTranslator translator;
+        /* initialize tuple translator */
+        if(configName.equals(SCHEDULER_STATE)) {
+            translator =
+                    tupleTranslatorProvider.getSchedulerConfigTupleTranslator(true, false);
+        } else{
+            translator =
+                    tupleTranslatorProvider.getSchedulerConfigTupleTranslator(true, true);
+        }
 
         ITupleReference searchKey;
         List<SchedulerConfigMetadataEntity> results = new ArrayList<>();
@@ -656,8 +675,13 @@ public class MetadataNode implements IMetadataNode {
             searchKey = createTuple(database, dataverseName, configName);
             IValueExtractor<SchedulerConfigMetadataEntity> valueExtractor =
                     new MetadataEntityValueExtractor<>(translator);
-            searchIndex(txnId, mdIndexesProvider.getSchedulerConfigEntity().getIndex(), searchKey, valueExtractor,
-                    results);
+            if(configName.equals(SCHEDULER_STATE)) {
+                searchIndex(txnId, mdIndexesProvider.getSchedulerConfigStateEntity().getIndex(), searchKey, valueExtractor,
+                        results);
+            } else {
+                searchIndex(txnId, mdIndexesProvider.getSchedulerConfigRecordEntity().getIndex(), searchKey, valueExtractor,
+                        results);
+            }
         } catch (HyracksDataException e) {
             throw new AsterixException(METADATA_ERROR, e, e.getMessage());
         }
@@ -678,7 +702,11 @@ public class MetadataNode implements IMetadataNode {
             String configName) throws AlgebricksException {
         try {
             ITupleReference key = createTuple(database, dataverseName, configName);
-            deleteTupleFromIndex(txnId, mdIndexesProvider.getSchedulerConfigEntity().getIndex(), key);
+            if(configName.equals(SCHEDULER_STATE)) {
+                deleteTupleFromIndex(txnId, mdIndexesProvider.getSchedulerConfigStateEntity().getIndex(), key);
+            } else {
+                deleteTupleFromIndex(txnId, mdIndexesProvider.getSchedulerConfigRecordEntity().getIndex(), key);
+            }
         } catch (HyracksDataException e) {
             throw new AsterixException(METADATA_ERROR, e, e.getMessage());
         }

@@ -157,6 +157,7 @@ import org.apache.asterix.lang.common.statement.DeleteStatement;
 import org.apache.asterix.lang.common.statement.DeleteQGroupStatement;
 import org.apache.asterix.lang.common.statement.DisconnectFeedStatement;
 import org.apache.asterix.lang.common.statement.DropDatasetStatement;
+import org.apache.asterix.lang.common.statement.EnableSchedulerStatement;
 import org.apache.asterix.lang.common.statement.ExternalDetailsDecl;
 import org.apache.asterix.lang.common.statement.FeedDropStatement;
 import org.apache.asterix.lang.common.statement.FeedPolicyDropStatement;
@@ -179,6 +180,7 @@ import org.apache.asterix.lang.common.statement.SynonymDropStatement;
 import org.apache.asterix.lang.common.statement.TypeDecl;
 import org.apache.asterix.lang.common.statement.TypeDropStatement;
 import org.apache.asterix.lang.common.statement.UpdateStatement;
+import org.apache.asterix.lang.common.statement.UpdateSchedulerStatement;
 import org.apache.asterix.lang.common.statement.UpsertStatement;
 import org.apache.asterix.lang.common.statement.UpsertQGroupStatement;
 import org.apache.asterix.lang.common.statement.ViewDecl;
@@ -1024,6 +1026,7 @@ Statement SingleStatement() throws ParseException:
     | stmt = InsertStatement()
     | LOOKAHEAD(2) stmt = UpsertQGroupStatement()
     | LOOKAHEAD(2) stmt = DeleteQGroupStatement()
+    | LOOKAHEAD(2) stmt = UpdateSchedulerStatement()
     | stmt = DeleteStatement()
     | stmt = UpdateStatement()
     | stmt = UpsertStatement()
@@ -1031,6 +1034,7 @@ Statement SingleStatement() throws ParseException:
     | stmt = CompactStatement()
     | stmt = AnalyzeStatement()
     | stmt = Query()
+    | stmt = EnableSchedulerStatement()
   )
   {
     return stmt;
@@ -2907,6 +2911,26 @@ DeleteQGroupStatement DeleteQGroupStatement() throws ParseException:
     }
   }
 }
+UpdateSchedulerStatement UpdateSchedulerStatement() throws ParseException:
+{
+  Token startToken = null;
+  Pair<Namespace, Identifier> nameComponents = null;
+  RecordConstructor expr = null;
+}
+{
+  <UPDATE> <SCHEDULER> { startToken = token; }
+  <IDENTIFIER> { expectToken(CONFIG);}
+  nameComponents = QualifiedName()
+  expr = RecordConstructor()
+  {
+  try {
+      return addSourceLocation(new UpdateSchedulerStatement(nameComponents.first, nameComponents.second.getValue(), expr
+    ), startToken);
+  } catch (CompilationException e) {
+        throw new SqlppParseException(getSourceLocation(startToken), e.getMessage());
+    }
+  }
+}
 
 DeleteStatement DeleteStatement() throws ParseException:
 {
@@ -4009,6 +4033,26 @@ Query Query() throws ParseException:
   }
 }
 
+
+EnableSchedulerStatement EnableSchedulerStatement() throws ParseException:
+{
+    Token startToken = null;
+    Pair<Namespace, Identifier> nameComponents = null;
+}
+{
+    <ENABLE> <SCHEDULER> {startToken = token;}
+    <IDENTIFIER> { expectToken(CONFIG);}
+    nameComponents = QualifiedName()
+    {
+        try {
+            EnableSchedulerStatement stmt = new EnableSchedulerStatement(nameComponents.first,
+            nameComponents.second.getValue());
+            return addSourceLocation(stmt, startToken);
+        } catch (CompilationException e) {
+            throw new SqlppParseException(getSourceLocation(startToken), e.getMessage());
+        }
+    }
+}
 
 Expression Expression():
 {
@@ -6060,6 +6104,7 @@ TOKEN [IGNORE_CASE]:
   | <EXPLAIN : "explain">
   | <ELSE : "else">
   | <ENFORCED : "enforced">
+  | <ENABLE: "enable">
   | <END : "end">
   | <EVERY : "every">
   | <EXCEPT : "except">

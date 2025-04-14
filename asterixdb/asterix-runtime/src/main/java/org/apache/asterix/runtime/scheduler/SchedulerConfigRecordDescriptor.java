@@ -19,8 +19,6 @@
 
 package org.apache.asterix.runtime.scheduler;
 
-import org.apache.asterix.common.exceptions.CompilationException;
-import org.apache.asterix.common.exceptions.ErrorCode;
 import org.apache.asterix.common.metadata.DataverseName;
 
 import java.util.ArrayList;
@@ -28,18 +26,18 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-public class SchedulerConfigDescriptor implements ISchedulerConfigDescriptor {
+public class SchedulerConfigRecordDescriptor implements ISchedulerConfigDescriptor {
     private static final long serialVersionUID = 3L;
 
     private final String databaseName;
     private final DataverseName dataverseName;
     private final String name;
-    private final long defaultPriority;
-    private final double shortMemoryPercent;
-    private final long shortCPUQuota;
+    private long defaultPriority;
+    private double shortMemoryPercent;
+    private long shortCPUQuota;
     private final Map<Long, List<String>> priorityToGroups;
     private final Map<String, Long> groupToPriority;
-    public SchedulerConfigDescriptor(String databaseName, DataverseName dataverseName, String name,
+    public SchedulerConfigRecordDescriptor(String databaseName, DataverseName dataverseName, String name,
              long defaultPriority, double shortMemoryPercent, long shortCPUQuota,
             Map<Long, List<String>> priorityToGroups) {
         //TODO(DB): database name should not be null
@@ -53,7 +51,7 @@ public class SchedulerConfigDescriptor implements ISchedulerConfigDescriptor {
         this.groupToPriority = createMapping(this.priorityToGroups);
     }
 
-    public SchedulerConfigDescriptor(String databaseName, DataverseName dataverseName, String name,
+    public SchedulerConfigRecordDescriptor(String databaseName, DataverseName dataverseName, String name,
             long defaultPriority, double shortMemoryPercent, long shortCPUQuota,
             Map<String, Long> groupToPriority, boolean bound) {
         this.databaseName = databaseName;
@@ -93,11 +91,11 @@ public class SchedulerConfigDescriptor implements ISchedulerConfigDescriptor {
         }
         return priorityToGroups;
     }
-
+    @Override
     public String getDatabaseName() {
         return databaseName;
     }
-
+    @Override
     public DataverseName getDataverseName() {
         return dataverseName;
     }
@@ -107,37 +105,30 @@ public class SchedulerConfigDescriptor implements ISchedulerConfigDescriptor {
         return name;
     }
 
-    @Override
     public long getDefaultPriority() {
         return defaultPriority;
     }
 
-    @Override
     public double getShortMemoryPercent(){
         return shortMemoryPercent;
     }
 
-    @Override
     public long getShortCPUQuota() {
         return shortCPUQuota;
     }
 
-    @Override
     public Map<Long, List<String>> getPriorityToGroup() {
         return priorityToGroups;
     }
 
-    @Override
     public Map<String, Long> getGroupToPriority() {
         return groupToPriority;
     }
 
-    @Override
     public void upsertQueryGroup(Map<String, Long> upsertQueryGroups) {
         groupToPriority.putAll(upsertQueryGroups);
     }
 
-    @Override
     public boolean deleteQueryGroup(List<String> deleteQueryGroups) {
         for(String name: deleteQueryGroups) {
             if (groupToPriority.containsKey(name)) {
@@ -147,5 +138,17 @@ public class SchedulerConfigDescriptor implements ISchedulerConfigDescriptor {
             }
         }
         return true;
+    }
+
+    public void setDefaultPriority(long defaultPriority) {
+        this.defaultPriority = defaultPriority;
+    }
+
+    public void setShortMemoryPercent(double shortMemoryPercent) {
+        this.shortMemoryPercent = shortMemoryPercent;
+    }
+
+    public void setShortCPUQuota(long shortCPUQuota) {
+        this.shortCPUQuota = shortCPUQuota;
     }
 }
