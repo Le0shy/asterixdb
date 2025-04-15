@@ -1,5 +1,8 @@
 package org.apache.asterix.lang.common.statement;
 
+import java.util.HashMap;
+import java.util.Map;
+
 import org.apache.asterix.common.exceptions.CompilationException;
 import org.apache.asterix.common.metadata.DataverseName;
 import org.apache.asterix.common.metadata.Namespace;
@@ -8,9 +11,6 @@ import org.apache.asterix.lang.common.expression.RecordConstructor;
 import org.apache.asterix.lang.common.util.SchedulerConfigUtil;
 import org.apache.asterix.lang.common.visitor.base.ILangVisitor;
 import org.apache.asterix.object.base.*;
-
-import java.util.HashMap;
-import java.util.Map;
 
 public class UpsertQGroupStatement extends AbstractStatement {
     private final String configName;

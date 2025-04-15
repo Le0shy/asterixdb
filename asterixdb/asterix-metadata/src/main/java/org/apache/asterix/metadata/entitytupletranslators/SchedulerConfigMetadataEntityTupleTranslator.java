@@ -1,5 +1,11 @@
 package org.apache.asterix.metadata.entitytupletranslators;
 
+import static org.apache.asterix.metadata.bootstrap.MetadataRecordTypes.SCHEDULER_COFING_QUERY_GROUPS_RECORDTYPE;
+
+import java.io.DataOutput;
+import java.util.HashMap;
+import java.util.Map;
+
 import org.apache.asterix.builders.IARecordBuilder;
 import org.apache.asterix.builders.OrderedListBuilder;
 import org.apache.asterix.builders.RecordBuilder;
@@ -22,13 +28,8 @@ import org.apache.hyracks.dataflow.common.comm.io.ArrayTupleBuilder;
 import org.apache.hyracks.dataflow.common.comm.io.ArrayTupleReference;
 import org.apache.hyracks.dataflow.common.data.accessors.ITupleReference;
 
-import java.io.DataOutput;
-import java.util.HashMap;
-import java.util.Map;
-
-import static org.apache.asterix.metadata.bootstrap.MetadataRecordTypes.SCHEDULER_COFING_QUERY_GROUPS_RECORDTYPE;
-
-public class SchedulerConfigMetadataEntityTupleTranslator extends AbstractTupleTranslator<SchedulerConfigMetadataEntity>{
+public class SchedulerConfigMetadataEntityTupleTranslator
+        extends AbstractTupleTranslator<SchedulerConfigMetadataEntity> {
 
     private final SchedulerConfigRecordEntity schedulerConfigRecordEntity;
     private final SchedulerConfigStateEntity schedulerConfigStateEntity;
@@ -37,7 +38,8 @@ public class SchedulerConfigMetadataEntityTupleTranslator extends AbstractTupleT
     protected AMutableInt64 aInt64;
     protected AMutableDouble aDouble;
 
-    protected SchedulerConfigMetadataEntityTupleTranslator(boolean getTuple, SchedulerConfigRecordEntity schedulerConfigRecordEntity) {
+    protected SchedulerConfigMetadataEntityTupleTranslator(boolean getTuple,
+            SchedulerConfigRecordEntity schedulerConfigRecordEntity) {
         super(getTuple, schedulerConfigRecordEntity.getIndex(), schedulerConfigRecordEntity.payloadPosition());
         this.schedulerConfigRecordEntity = schedulerConfigRecordEntity;
         this.schedulerConfigStateEntity = null;
@@ -50,7 +52,8 @@ public class SchedulerConfigMetadataEntityTupleTranslator extends AbstractTupleT
         }
     }
 
-    protected SchedulerConfigMetadataEntityTupleTranslator(boolean getTuple, SchedulerConfigStateEntity schedulerConfigStateEntity) {
+    protected SchedulerConfigMetadataEntityTupleTranslator(boolean getTuple,
+            SchedulerConfigStateEntity schedulerConfigStateEntity) {
         super(getTuple, schedulerConfigStateEntity.getIndex(), schedulerConfigStateEntity.payloadPosition());
         this.schedulerConfigRecordEntity = null;
         this.schedulerConfigStateEntity = schedulerConfigStateEntity;
@@ -66,7 +69,7 @@ public class SchedulerConfigMetadataEntityTupleTranslator extends AbstractTupleT
     @Override
     protected SchedulerConfigMetadataEntity createMetadataEntityFromARecord(ARecord aRecord)
             throws HyracksDataException, AlgebricksException {
-        if(schedulerConfigRecordEntity != null) {
+        if (schedulerConfigRecordEntity != null) {
             return createMetadataEntityRecordFromARecord(aRecord);
         }
         return createMetadatEntityStateFromARecord(aRecord);
@@ -87,16 +90,19 @@ public class SchedulerConfigMetadataEntityTupleTranslator extends AbstractTupleT
 
         String name = ((AString) aRecord.getValueByPos(schedulerConfigRecordEntity.configNameIndex())).getStringValue();
 
-        long defaultPriority = ((AInt64)aRecord.getValueByPos(schedulerConfigRecordEntity.defaultPriorityIndex())).getLongValue();
+        long defaultPriority =
+                ((AInt64) aRecord.getValueByPos(schedulerConfigRecordEntity.defaultPriorityIndex())).getLongValue();
 
-        double shortMemoryPercent = ((ADouble)aRecord.getValueByPos(schedulerConfigRecordEntity.shortMemoryPercentIndex())).getDoubleValue();
+        double shortMemoryPercent =
+                ((ADouble) aRecord.getValueByPos(schedulerConfigRecordEntity.shortMemoryPercentIndex()))
+                        .getDoubleValue();
 
-        long shortCPUQuota = ((AInt64)aRecord.getValueByPos(schedulerConfigRecordEntity.shortCPUQuotaIndex())).getLongValue();
-
+        long shortCPUQuota =
+                ((AInt64) aRecord.getValueByPos(schedulerConfigRecordEntity.shortCPUQuotaIndex())).getLongValue();
 
         IACursor cursor =
                 ((AOrderedList) aRecord.getValueByPos(schedulerConfigRecordEntity.queryGroupsIndex())).getCursor();
-        Map<String, Long> groupToPriority  = new HashMap<>();
+        Map<String, Long> groupToPriority = new HashMap<>();
 
         while (cursor.next()) {
             ARecord field = (ARecord) cursor.get();
@@ -105,9 +111,8 @@ public class SchedulerConfigMetadataEntityTupleTranslator extends AbstractTupleT
             groupToPriority.put(qgname, priority);
         }
 
-        ISchedulerConfigDescriptor
-                configDescriptor = new SchedulerConfigRecordDescriptor(databaseName, dataverseName, name,
-                defaultPriority, shortMemoryPercent, shortCPUQuota, groupToPriority, true);
+        ISchedulerConfigDescriptor configDescriptor = new SchedulerConfigRecordDescriptor(databaseName, dataverseName,
+                name, defaultPriority, shortMemoryPercent, shortCPUQuota, groupToPriority, true);
         return new SchedulerConfigMetadataEntity(configDescriptor);
     }
 
@@ -123,11 +128,13 @@ public class SchedulerConfigMetadataEntityTupleTranslator extends AbstractTupleT
             databaseName = MetadataUtil.databaseFor(dataverseName);
         }
 
-        String configName = ((AString) aRecord.getValueByPos(schedulerConfigStateEntity.configNameIndex())).getStringValue();
-        String enabledConfigName = ((AString) aRecord.getValueByPos(schedulerConfigStateEntity.enabledConfigNameIndex())).getStringValue();
+        String configName =
+                ((AString) aRecord.getValueByPos(schedulerConfigStateEntity.configNameIndex())).getStringValue();
+        String enabledConfigName =
+                ((AString) aRecord.getValueByPos(schedulerConfigStateEntity.enabledConfigNameIndex())).getStringValue();
 
-        ISchedulerConfigDescriptor
-                configDescriptor = new SchedulerConfigStateDescriptor(databaseName, dataverseName, configName, enabledConfigName);
+        ISchedulerConfigDescriptor configDescriptor =
+                new SchedulerConfigStateDescriptor(databaseName, dataverseName, configName, enabledConfigName);
         return new SchedulerConfigMetadataEntity(configDescriptor);
     }
 
@@ -138,7 +145,7 @@ public class SchedulerConfigMetadataEntityTupleTranslator extends AbstractTupleT
             stringSerde.serialize(aString, tupleBuilder.getDataOutput());
             tupleBuilder.addFieldEndOffset();
         }
-        if(schedulerConfigStateEntity != null && schedulerConfigStateEntity.databaseNameIndex() >= 0) {
+        if (schedulerConfigStateEntity != null && schedulerConfigStateEntity.databaseNameIndex() >= 0) {
             aString.setValue(databaseName);
             stringSerde.serialize(aString, tupleBuilder.getDataOutput());
             tupleBuilder.addFieldEndOffset();
@@ -157,7 +164,7 @@ public class SchedulerConfigMetadataEntityTupleTranslator extends AbstractTupleT
     public ITupleReference getTupleFromMetadataEntity(SchedulerConfigMetadataEntity configMetadataEntity)
             throws HyracksDataException {
         ISchedulerConfigDescriptor configDescriptor = configMetadataEntity.getSchedulerConfig();
-        if(configDescriptor instanceof SchedulerConfigRecordDescriptor) {
+        if (configDescriptor instanceof SchedulerConfigRecordDescriptor) {
             return getTupleFromMetadataEntityRecord(configMetadataEntity);
         }
         return getTupleFromMetadataEntityState(configMetadataEntity);
@@ -165,7 +172,8 @@ public class SchedulerConfigMetadataEntityTupleTranslator extends AbstractTupleT
 
     private ITupleReference getTupleFromMetadataEntityState(SchedulerConfigMetadataEntity configMetadataEntity)
             throws HyracksDataException {
-        SchedulerConfigStateDescriptor configDescriptor = (SchedulerConfigStateDescriptor) configMetadataEntity.getSchedulerConfig();
+        SchedulerConfigStateDescriptor configDescriptor =
+                (SchedulerConfigStateDescriptor) configMetadataEntity.getSchedulerConfig();
         tupleBuilder.reset();
         writeIndex(configDescriptor.getDatabaseName(), configDescriptor.getDataverseName().getCanonicalForm(),
                 configDescriptor.getName(), tupleBuilder);
@@ -205,7 +213,8 @@ public class SchedulerConfigMetadataEntityTupleTranslator extends AbstractTupleT
 
     private ITupleReference getTupleFromMetadataEntityRecord(SchedulerConfigMetadataEntity configMetadataEntity)
             throws HyracksDataException {
-        SchedulerConfigRecordDescriptor configDescriptor = (SchedulerConfigRecordDescriptor) configMetadataEntity.getSchedulerConfig();
+        SchedulerConfigRecordDescriptor configDescriptor =
+                (SchedulerConfigRecordDescriptor) configMetadataEntity.getSchedulerConfig();
         tupleBuilder.reset();
         writeIndex(configDescriptor.getDatabaseName(), configDescriptor.getDataverseName().getCanonicalForm(),
                 configDescriptor.getName(), tupleBuilder);
@@ -272,8 +281,7 @@ public class SchedulerConfigMetadataEntityTupleTranslator extends AbstractTupleT
         return tuple;
     }
 
-    private void writeQueryGroupTypeRecord(long priority, String qgName, DataOutput out)
-            throws HyracksDataException{
+    private void writeQueryGroupTypeRecord(long priority, String qgName, DataOutput out) throws HyracksDataException {
         IARecordBuilder qgRecordBuilder = new RecordBuilder();
         ArrayBackedValueStorage fieldValue = new ArrayBackedValueStorage();
         qgRecordBuilder.reset(MetadataRecordTypes.SCHEDULER_COFING_QUERY_GROUPS_RECORDTYPE);

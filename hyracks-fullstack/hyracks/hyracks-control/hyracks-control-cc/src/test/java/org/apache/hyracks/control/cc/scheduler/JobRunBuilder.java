@@ -1,14 +1,15 @@
 package org.apache.hyracks.control.cc.scheduler;
 
-import org.apache.hyracks.api.job.JobId;
-import org.apache.hyracks.api.job.JobSpecification;
-import org.apache.hyracks.control.cc.job.JobRun;
-import org.mockito.Mockito;
+import static org.mockito.Mockito.when;
+
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
 
-import static org.mockito.Mockito.when;
+import org.apache.hyracks.api.job.JobId;
+import org.apache.hyracks.api.job.JobSpecification;
+import org.apache.hyracks.control.cc.job.JobRun;
+import org.mockito.Mockito;
 
 public class JobRunBuilder {
     private final JobRun run;
@@ -52,4 +53,3 @@ public class JobRunBuilder {
     }
 
 }
-

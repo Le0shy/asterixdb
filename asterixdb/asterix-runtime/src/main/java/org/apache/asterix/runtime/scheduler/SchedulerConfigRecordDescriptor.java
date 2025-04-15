@@ -19,12 +19,12 @@
 
 package org.apache.asterix.runtime.scheduler;
 
-import org.apache.asterix.common.metadata.DataverseName;
-
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+
+import org.apache.asterix.common.metadata.DataverseName;
 
 public class SchedulerConfigRecordDescriptor implements ISchedulerConfigDescriptor {
     private static final long serialVersionUID = 3L;
@@ -37,8 +37,9 @@ public class SchedulerConfigRecordDescriptor implements ISchedulerConfigDescript
     private long shortCPUQuota;
     private final Map<Long, List<String>> priorityToGroups;
     private final Map<String, Long> groupToPriority;
+
     public SchedulerConfigRecordDescriptor(String databaseName, DataverseName dataverseName, String name,
-             long defaultPriority, double shortMemoryPercent, long shortCPUQuota,
+            long defaultPriority, double shortMemoryPercent, long shortCPUQuota,
             Map<Long, List<String>> priorityToGroups) {
         //TODO(DB): database name should not be null
         this.databaseName = databaseName;
@@ -52,8 +53,8 @@ public class SchedulerConfigRecordDescriptor implements ISchedulerConfigDescript
     }
 
     public SchedulerConfigRecordDescriptor(String databaseName, DataverseName dataverseName, String name,
-            long defaultPriority, double shortMemoryPercent, long shortCPUQuota,
-            Map<String, Long> groupToPriority, boolean bound) {
+            long defaultPriority, double shortMemoryPercent, long shortCPUQuota, Map<String, Long> groupToPriority,
+            boolean bound) {
         this.databaseName = databaseName;
         this.dataverseName = dataverseName;
         this.name = name;
@@ -65,13 +66,13 @@ public class SchedulerConfigRecordDescriptor implements ISchedulerConfigDescript
     }
 
     private Map<String, Long> createMapping(Map<Long, List<String>> priorityToGroup) {
-        if(priorityToGroup == null) {
+        if (priorityToGroup == null) {
             return null;
         }
         Map<String, Long> groupToPriority = new HashMap<>();
-        for(long priority: priorityToGroup.keySet()) {
+        for (long priority : priorityToGroup.keySet()) {
             List<String> groups = priorityToGroups.get(priority);
-            for (String group: groups) {
+            for (String group : groups) {
                 groupToPriority.put(group, priority);
             }
         }
@@ -84,17 +85,19 @@ public class SchedulerConfigRecordDescriptor implements ISchedulerConfigDescript
         if (groupToPriority == null) {
             return null;
         }
-        for(String group: groupToPriority.keySet()) {
+        for (String group : groupToPriority.keySet()) {
             long priority = groupToPriority.get(group);
             priorityToGroups.putIfAbsent(priority, new ArrayList<>());
             priorityToGroups.get(priority).add(group);
         }
         return priorityToGroups;
     }
+
     @Override
     public String getDatabaseName() {
         return databaseName;
     }
+
     @Override
     public DataverseName getDataverseName() {
         return dataverseName;
@@ -109,7 +112,7 @@ public class SchedulerConfigRecordDescriptor implements ISchedulerConfigDescript
         return defaultPriority;
     }
 
-    public double getShortMemoryPercent(){
+    public double getShortMemoryPercent() {
         return shortMemoryPercent;
     }
 
@@ -130,7 +133,7 @@ public class SchedulerConfigRecordDescriptor implements ISchedulerConfigDescript
     }
 
     public boolean deleteQueryGroup(List<String> deleteQueryGroups) {
-        for(String name: deleteQueryGroups) {
+        for (String name : deleteQueryGroups) {
             if (groupToPriority.containsKey(name)) {
                 groupToPriority.remove(name);
             } else {

@@ -868,7 +868,8 @@ public abstract class MetadataManager implements IMetadataManager {
         Objects.requireNonNull(database);
         // First look in the context to see if this transaction created the
         // requested scheduler config itself (but the scheduler config is still uncommitted).
-        SchedulerConfigMetadataEntity configMetadataEntity = ctx.getSchedulerConfig(database, dataverseName, configName);
+        SchedulerConfigMetadataEntity configMetadataEntity =
+                ctx.getSchedulerConfig(database, dataverseName, configName);
         if (configMetadataEntity != null) {
             // Don't add this config to the cache, since it is still
             // uncommitted.
@@ -906,9 +907,10 @@ public abstract class MetadataManager implements IMetadataManager {
         }
         return configMetadataEntity;
     }
+
     @Override
     public void dropSchedulerConfig(MetadataTransactionContext mdTxnCtx, String database, DataverseName dataverseName,
-            String configName) throws AlgebricksException,RemoteException {
+            String configName) throws AlgebricksException, RemoteException {
         try {
             Objects.requireNonNull(database);
             metadataNode.dropSchedulerConfig(mdTxnCtx.getTxnId(), database, dataverseName, configName);
@@ -917,6 +919,7 @@ public abstract class MetadataManager implements IMetadataManager {
         }
         mdTxnCtx.dropSchedulerConfig(database, dataverseName, configName);
     }
+
     @Override
     public void addFeedPolicy(MetadataTransactionContext mdTxnCtx, FeedPolicyEntity feedPolicy)
             throws AlgebricksException {

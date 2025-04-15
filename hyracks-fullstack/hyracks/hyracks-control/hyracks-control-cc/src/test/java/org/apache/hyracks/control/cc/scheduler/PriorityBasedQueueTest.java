@@ -1,5 +1,11 @@
 package org.apache.hyracks.control.cc.scheduler;
 
+import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.when;
+
+import java.io.IOException;
+import java.util.*;
+
 import org.apache.hyracks.api.job.JobId;
 import org.apache.hyracks.api.job.JobSpecification;
 import org.apache.hyracks.api.job.resource.IClusterCapacity;
@@ -20,12 +26,6 @@ import org.junit.Test;
 import org.kohsuke.args4j.CmdLineException;
 import org.mockito.Mockito;
 
-import java.io.IOException;
-import java.util.*;
-
-import static org.mockito.Mockito.*;
-import static org.mockito.Mockito.when;
-
 public class PriorityBasedQueueTest {
     private CCConfig ccConfig;
 
@@ -39,16 +39,16 @@ public class PriorityBasedQueueTest {
     public void test0() throws IOException, CmdLineException {
         IJobCapacityController jobCapacityController = mock(IJobCapacityController.class);
         when(jobCapacityController.getMaxAggregatedNumCores()).thenReturn(66);
-        when(jobCapacityController.getMaxAggregatedMemoryByteSize()).thenReturn((long)100);
+        when(jobCapacityController.getMaxAggregatedMemoryByteSize()).thenReturn((long) 100);
         CapacityControllerGuard capacityControllerGuard = spy(new CapacityControllerGuard(jobCapacityController));
         IJobManager jobManager = spy(new JobManager(ccConfig, mockClusterControllerService(), jobCapacityController));
         PriorityBasedQueue priorityBasedQueue = spy(new PriorityBasedQueue(jobManager, capacityControllerGuard));
 
         List<JobRun> queuedJobs = new ArrayList<>();
         for (int id = 2; id <= 10; id += 2) {
-            JobRun run = mockJobRunWithPriority(id/2, id);
+            JobRun run = mockJobRunWithPriority(id / 2, id);
             JobSpecification job = mock(JobSpecification.class);
-            IClusterCapacity requiredClusterCapacity = mockIClusterCapacity(4,  5);
+            IClusterCapacity requiredClusterCapacity = mockIClusterCapacity(4, 5);
             when(job.getRequiredClusterCapacity()).thenReturn(requiredClusterCapacity);
             when(run.getJobSpecification()).thenReturn(job);
             when(jobCapacityController.allocate(job)).thenReturn(IJobCapacityController.JobSubmissionStatus.QUEUE);
@@ -57,11 +57,12 @@ public class PriorityBasedQueueTest {
         }
         System.out.println(priorityBasedQueue.printQueueInfo());
     }
+
     @Test
     public void test1() throws IOException, CmdLineException {
         IJobCapacityController jobCapacityController = mock(IJobCapacityController.class);
         when(jobCapacityController.getMaxAggregatedNumCores()).thenReturn(66);
-        when(jobCapacityController.getMaxAggregatedMemoryByteSize()).thenReturn((long)100);
+        when(jobCapacityController.getMaxAggregatedMemoryByteSize()).thenReturn((long) 100);
         CapacityControllerGuard capacityControllerGuard = spy(new CapacityControllerGuard(jobCapacityController));
         IJobManager jobManager = spy(new JobManager(ccConfig, mockClusterControllerService(), jobCapacityController));
         PriorityBasedQueue priorityBasedQueue = spy(new PriorityBasedQueue(jobManager, capacityControllerGuard));
@@ -74,14 +75,15 @@ public class PriorityBasedQueueTest {
                 IClusterCapacity requiredClusterCapacity = mockIClusterCapacity(4, 5);
                 when(job.getRequiredClusterCapacity()).thenReturn(requiredClusterCapacity);
                 when(run.getJobSpecification()).thenReturn(job);
-                when(capacityControllerGuard.allocate(run)).thenReturn(IJobCapacityController.JobSubmissionStatus.EXECUTE);
+                when(capacityControllerGuard.allocate(run))
+                        .thenReturn(IJobCapacityController.JobSubmissionStatus.EXECUTE);
                 queuedJobs.add(run);
                 priorityBasedQueue.add(run);
             }
         }
         System.out.println(priorityBasedQueue.printQueueInfo());
         int counter = 0;
-        while(counter < 50) {
+        while (counter < 50) {
             List<JobRun> selected = priorityBasedQueue.pull();
             JobRun jobRun = selected.get(0);
             System.out.println("Selected Job #" + counter + ": " + jobRun.getJobId());

@@ -1,14 +1,13 @@
 package org.apache.asterix.metadata.entities;
 
-import com.amazonaws.services.dynamodbv2.xspec.S;
+import java.util.List;
+import java.util.Map;
+
 import org.apache.asterix.metadata.MetadataCache;
 import org.apache.asterix.metadata.api.IMetadataEntity;
 import org.apache.asterix.runtime.scheduler.ISchedulerConfigDescriptor;
 import org.apache.asterix.runtime.scheduler.SchedulerConfigRecordDescriptor;
 import org.apache.asterix.runtime.scheduler.SchedulerConfigStateDescriptor;
-
-import java.util.List;
-import java.util.Map;
 
 public class SchedulerConfigMetadataEntity implements IMetadataEntity<SchedulerConfigMetadataEntity> {
     public static final String SCHEDULER_STATE = "s";
@@ -35,28 +34,29 @@ public class SchedulerConfigMetadataEntity implements IMetadataEntity<SchedulerC
     }
 
     public void upsertQueryGroup(Map<String, Long> upsertQueryGroups) {
-        SchedulerConfigRecordDescriptor scrd = (SchedulerConfigRecordDescriptor)schedulerConfig;
+        SchedulerConfigRecordDescriptor scrd = (SchedulerConfigRecordDescriptor) schedulerConfig;
         scrd.upsertQueryGroup(upsertQueryGroups);
     }
 
     public boolean deleteQueryGroup(List<String> deleteQueryGroups) {
-        SchedulerConfigRecordDescriptor scrd = (SchedulerConfigRecordDescriptor)schedulerConfig;
+        SchedulerConfigRecordDescriptor scrd = (SchedulerConfigRecordDescriptor) schedulerConfig;
         return scrd.deleteQueryGroup(deleteQueryGroups);
     }
 
     public void setEnabled(String setEnabledConfigName) {
-        SchedulerConfigStateDescriptor scsd = (SchedulerConfigStateDescriptor)schedulerConfig;
+        SchedulerConfigStateDescriptor scsd = (SchedulerConfigStateDescriptor) schedulerConfig;
         scsd.setEnabledConfigName(setEnabledConfigName);
     }
+
     public void updateConfigParameters(long defaultPriority, double shortMemoryPercent, long shortCPUQuota) {
-        SchedulerConfigRecordDescriptor scrd = (SchedulerConfigRecordDescriptor)schedulerConfig;
+        SchedulerConfigRecordDescriptor scrd = (SchedulerConfigRecordDescriptor) schedulerConfig;
         scrd.setDefaultPriority(defaultPriority);
         scrd.setShortMemoryPercent(shortMemoryPercent);
         scrd.setShortCPUQuota(shortCPUQuota);
     }
 
     public String getEnabled() {
-        SchedulerConfigStateDescriptor scsd = (SchedulerConfigStateDescriptor)schedulerConfig;
+        SchedulerConfigStateDescriptor scsd = (SchedulerConfigStateDescriptor) schedulerConfig;
         return scsd.getEnabledConfigName();
     }
 }

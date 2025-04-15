@@ -59,7 +59,6 @@ import org.apache.hyracks.control.cc.cluster.INodeManager;
 import org.apache.hyracks.control.cc.cluster.NodeManager;
 import org.apache.hyracks.control.cc.job.IJobManager;
 import org.apache.hyracks.control.cc.job.JobManager;
-import org.apache.hyracks.control.cc.job.WorkloadManager;
 import org.apache.hyracks.control.cc.result.IResultDirectoryService;
 import org.apache.hyracks.control.cc.result.ResultDirectoryService;
 import org.apache.hyracks.control.cc.scheduler.IResourceManager;

@@ -1,5 +1,7 @@
 package org.apache.hyracks.control.cc.scheduler;
 
+import java.util.*;
+
 import org.apache.hyracks.api.exceptions.ErrorCode;
 import org.apache.hyracks.api.exceptions.HyracksException;
 import org.apache.hyracks.api.job.JobId;
@@ -12,8 +14,6 @@ import org.apache.hyracks.util.annotations.NotThreadSafe;
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
-import java.util.*;
 
 @NotThreadSafe
 @GuardedBy("JobManager")
@@ -210,8 +210,8 @@ public class DefaultJobQueue implements IJobQueue {
         /* same timestamp instead of using JobRun.getQueueWaitTimeInMillis() */
         long now = getCurrentTime();
         /* for every queue that has jobs, calculate the slowdowns and pick the one with max slowdown */
-        for (int i = queueHasAnyJob.nextSetBit(0); i >= 0 && i < queueHasAnyJob.size();
-             i = queueHasAnyJob.nextSetBit(i + 1)) {
+        for (int i = queueHasAnyJob.nextSetBit(0); i >= 0 && i < queueHasAnyJob.size(); i =
+                queueHasAnyJob.nextSetBit(i + 1)) {
             MPLQueue queue = queues.get(i);
             calculateSlowDown(queue, now);
             if (queue.topQuerySlowDown > maxSlowDown) {

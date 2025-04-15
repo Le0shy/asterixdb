@@ -18,6 +18,11 @@
  */
 package org.apache.asterix.lang.common.statement;
 
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
 import org.apache.asterix.common.exceptions.CompilationException;
 import org.apache.asterix.common.metadata.DataverseName;
 import org.apache.asterix.common.metadata.Namespace;
@@ -26,11 +31,6 @@ import org.apache.asterix.lang.common.expression.RecordConstructor;
 import org.apache.asterix.lang.common.util.SchedulerConfigUtil;
 import org.apache.asterix.lang.common.visitor.base.ILangVisitor;
 import org.apache.asterix.object.base.*;
-
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
 
 public class CreateSchedulerConfigStatement extends AbstractStatement {
 
@@ -106,13 +106,13 @@ public class CreateSchedulerConfigStatement extends AbstractStatement {
         Map<Long, List<String>> priorityToGroup = new HashMap<>();
 
         for (IAdmNode iAdmNode : arrayNode) {
-            AdmObjectNode abn = (AdmObjectNode)iAdmNode;
+            AdmObjectNode abn = (AdmObjectNode) iAdmNode;
             AdmBigIntNode abin = (AdmBigIntNode) abn.get(FIELD_NAME_QG_PRIORITY);
             long priority = abin.get();
 
             List<String> groupNames = new ArrayList<>();
             AdmArrayNode groupListNode = (AdmArrayNode) abn.get(FIELD_NAME_QG_GROUPLIST);
-            for(IAdmNode groupName: groupListNode) {
+            for (IAdmNode groupName : groupListNode) {
                 groupNames.add(((AdmStringNode) groupName).get());
             }
 

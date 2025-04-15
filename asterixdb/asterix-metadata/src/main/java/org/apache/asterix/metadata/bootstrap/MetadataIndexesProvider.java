@@ -103,6 +103,7 @@ public class MetadataIndexesProvider {
     public SchedulerConfigRecordEntity getSchedulerConfigRecordEntity() {
         return SchedulerConfigRecordEntity.of(usingDatabase);
     }
+
     public SchedulerConfigStateEntity getSchedulerConfigStateEntity() {
         return SchedulerConfigStateEntity.of(usingDatabase);
     }

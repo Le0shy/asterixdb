@@ -358,27 +358,27 @@ public class MetadataCache {
                                                             List<FunctionSignature> markedFunctionsForRemoval =
                                                                     new ArrayList<>();
                                                             for (FunctionSignature signature : functions.keySet()) {
-                                                                if (signature.getDatabaseName()
-                                                                        .equals(databaseName) && signature.getDataverseName()
-                                                                        .equals(dataverseName)) {
+                                                                if (signature.getDatabaseName().equals(databaseName)
+                                                                        && signature.getDataverseName()
+                                                                                .equals(dataverseName)) {
                                                                     markedFunctionsForRemoval.add(signature);
                                                                 }
                                                             }
                                                             for (FunctionSignature signature : markedFunctionsForRemoval) {
                                                                 functions.remove(signature);
                                                             }
-                                                            Map<DataverseName, Map<String, FullTextConfigMetadataEntity>>
-                                                                    ftc = fullTextConfigs.get(databaseName);
+                                                            Map<DataverseName, Map<String, FullTextConfigMetadataEntity>> ftc =
+                                                                    fullTextConfigs.get(databaseName);
                                                             if (ftc != null) {
                                                                 ftc.remove(dataverseName);
                                                             }
-                                                            Map<DataverseName, Map<String, SchedulerConfigMetadataEntity>>
-                                                                    sc = schedulerConfigs.get(databaseName);
+                                                            Map<DataverseName, Map<String, SchedulerConfigMetadataEntity>> sc =
+                                                                    schedulerConfigs.get(databaseName);
                                                             if (sc != null) {
                                                                 sc.remove(dataverseName);
                                                             }
-                                                            Map<DataverseName, Map<String, FullTextFilterMetadataEntity>>
-                                                                    ftf = fullTextFilters.get(databaseName);
+                                                            Map<DataverseName, Map<String, FullTextFilterMetadataEntity>> ftf =
+                                                                    fullTextFilters.get(databaseName);
                                                             if (ftf != null) {
                                                                 ftf.remove(dataverseName);
                                                             }
@@ -630,9 +630,8 @@ public class MetadataCache {
 
     public Function addFunctionIfNotExists(Function function) {
         synchronized (functions) {
-            FunctionSignature signature =
-                    new FunctionSignature(function.getDatabaseName(), function.getDataverseName(), function.getName(),
-                            function.getArity());
+            FunctionSignature signature = new FunctionSignature(function.getDatabaseName(), function.getDataverseName(),
+                    function.getName(), function.getArity());
             Function fun = functions.get(signature);
             if (fun == null) {
                 return functions.put(signature, function);
@@ -643,9 +642,8 @@ public class MetadataCache {
 
     public Function dropFunction(Function function) {
         synchronized (functions) {
-            FunctionSignature signature =
-                    new FunctionSignature(function.getDatabaseName(), function.getDataverseName(), function.getName(),
-                            function.getArity());
+            FunctionSignature signature = new FunctionSignature(function.getDatabaseName(), function.getDataverseName(),
+                    function.getName(), function.getArity());
             Function fun = functions.get(signature);
             if (fun == null) {
                 return null;

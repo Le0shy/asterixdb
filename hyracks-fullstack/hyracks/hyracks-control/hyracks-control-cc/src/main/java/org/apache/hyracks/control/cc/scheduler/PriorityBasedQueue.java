@@ -1,5 +1,7 @@
 package org.apache.hyracks.control.cc.scheduler;
 
+import java.util.*;
+
 import org.apache.hyracks.api.exceptions.HyracksException;
 import org.apache.hyracks.api.job.JobId;
 import org.apache.hyracks.api.job.JobStatus;
@@ -9,8 +11,6 @@ import org.apache.hyracks.control.cc.job.JobRun;
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
-import java.util.*;
 
 public class PriorityBasedQueue implements IJobQueue {
     private final Logger LOGGER = LogManager.getLogger();
@@ -37,8 +37,8 @@ public class PriorityBasedQueue implements IJobQueue {
     public void add(JobRun run) throws HyracksException {
         JobTypeManager.JobSchedulingType jobSchedulingType = run.getSchedulingType();
         /* if the job's scheduling type is DEFAULT OR LONG, add it to the default queue */
-        if (jobSchedulingType == JobTypeManager.JobSchedulingType.DEFAULT ||
-                jobSchedulingType == JobTypeManager.JobSchedulingType.LONG) {
+        if (jobSchedulingType == JobTypeManager.JobSchedulingType.DEFAULT
+                || jobSchedulingType == JobTypeManager.JobSchedulingType.LONG) {
             defaultJobQueue.add(run);
         } else {
             /* add it to its corresponding priority based queue */

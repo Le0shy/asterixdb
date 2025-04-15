@@ -226,7 +226,7 @@ public class OptimizationConfUtil {
         try {
             return jobPriority == null ? compilerProperties.getJobPriority()
                     : OptionTypes.NONNEGATIVE_INTEGER.parse(jobPriority);
-        }   catch (IllegalArgumentException e) {
+        } catch (IllegalArgumentException e) {
             throw AsterixException.create(ErrorCode.COMPILATION_BAD_QUERY_PARAMETER_VALUE, sourceLoc,
                     CompilerProperties.COMPILER_JOBPRIORITY_KEY, 1, "priority");
         }

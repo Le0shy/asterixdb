@@ -130,10 +130,7 @@ public class CompilerProperties extends AbstractProperties {
                 NONNEGATIVE_INTEGER,
                 5,
                 "A percentage of the job's required memory to be added to account for runtime memory overhead"),
-        COMPILER_JOBPRIORITY(
-                INTEGER,
-                0,
-                "Enable clients to manually assign priority to queries");
+        COMPILER_JOBPRIORITY(INTEGER, 0, "Enable clients to manually assign priority to queries");
 
         private final IOptionType type;
         private final Object defaultValue;

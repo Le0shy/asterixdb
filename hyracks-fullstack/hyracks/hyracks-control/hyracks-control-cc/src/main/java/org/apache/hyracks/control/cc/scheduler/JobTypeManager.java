@@ -5,6 +5,7 @@ import org.apache.hyracks.control.cc.job.JobRun;
 
 public class JobTypeManager implements IJobTypeManager {
     int defaultPriority = 1;
+
     public enum JobSchedulingType {
         SHORT,
         LONG,

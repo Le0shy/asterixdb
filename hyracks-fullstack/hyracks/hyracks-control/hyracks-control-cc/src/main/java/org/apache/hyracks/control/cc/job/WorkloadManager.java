@@ -1,5 +1,7 @@
 package org.apache.hyracks.control.cc.job;
 
+import java.util.List;
+
 import org.apache.hyracks.api.exceptions.ErrorCode;
 import org.apache.hyracks.api.exceptions.HyracksException;
 import org.apache.hyracks.api.job.JobId;
@@ -16,8 +18,6 @@ import org.apache.hyracks.control.cc.scheduler.JobTypeManager;
 import org.apache.hyracks.control.common.controllers.CCConfig;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
-import java.util.List;
 
 public class WorkloadManager extends JobManager {
 
@@ -48,6 +48,7 @@ public class WorkloadManager extends JobManager {
         // current resources
         pickJobsToRun();
     }
+
     @Override
     public void finalComplete(JobRun run) throws HyracksException {
         checkJob(run);
@@ -97,7 +98,6 @@ public class WorkloadManager extends JobManager {
             throw HyracksException.wrapOrThrowUnchecked(caughtException);
         }
     }
-
 
     private void releaseJobCapacity(JobRun jobRun) {
         workloadCapacityController.release(jobRun);

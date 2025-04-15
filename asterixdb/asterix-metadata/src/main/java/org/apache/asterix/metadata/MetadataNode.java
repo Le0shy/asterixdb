@@ -104,7 +104,6 @@ import org.apache.asterix.metadata.api.IMetadataNode;
 import org.apache.asterix.metadata.api.IValueExtractor;
 import org.apache.asterix.metadata.bootstrap.MetadataBuiltinEntities;
 import org.apache.asterix.metadata.bootstrap.MetadataIndexesProvider;
-import org.apache.asterix.metadata.bootstrap.SchedulerConfigRecordEntity;
 import org.apache.asterix.metadata.entities.*;
 import org.apache.asterix.metadata.entitytupletranslators.*;
 import org.apache.asterix.metadata.utils.DatasetUtil;
@@ -634,14 +633,12 @@ public class MetadataNode implements IMetadataNode {
             throws AlgebricksException {
         try {
             SchedulerConfigMetadataEntityTupleTranslator tupleReaderWriter;
-            if(config.getSchedulerConfig() instanceof SchedulerConfigRecordDescriptor) {
-                tupleReaderWriter = tupleTranslatorProvider.
-                        getSchedulerConfigTupleTranslator(true, true);
+            if (config.getSchedulerConfig() instanceof SchedulerConfigRecordDescriptor) {
+                tupleReaderWriter = tupleTranslatorProvider.getSchedulerConfigTupleTranslator(true, true);
                 ITupleReference configTuple = tupleReaderWriter.getTupleFromMetadataEntity(config);
                 insertTupleIntoIndex(txnId, mdIndexesProvider.getSchedulerConfigRecordEntity().getIndex(), configTuple);
             } else if (config.getSchedulerConfig() instanceof SchedulerConfigStateDescriptor) {
-                tupleReaderWriter = tupleTranslatorProvider.
-                        getSchedulerConfigTupleTranslator(true, false);
+                tupleReaderWriter = tupleTranslatorProvider.getSchedulerConfigTupleTranslator(true, false);
                 ITupleReference configTuple = tupleReaderWriter.getTupleFromMetadataEntity(config);
                 insertTupleIntoIndex(txnId, mdIndexesProvider.getSchedulerConfigStateEntity().getIndex(), configTuple);
             }
@@ -661,12 +658,10 @@ public class MetadataNode implements IMetadataNode {
             String configName) throws AlgebricksException {
         SchedulerConfigMetadataEntityTupleTranslator translator;
         /* initialize tuple translator */
-        if(configName.equals(SCHEDULER_STATE)) {
-            translator =
-                    tupleTranslatorProvider.getSchedulerConfigTupleTranslator(true, false);
-        } else{
-            translator =
-                    tupleTranslatorProvider.getSchedulerConfigTupleTranslator(true, true);
+        if (configName.equals(SCHEDULER_STATE)) {
+            translator = tupleTranslatorProvider.getSchedulerConfigTupleTranslator(true, false);
+        } else {
+            translator = tupleTranslatorProvider.getSchedulerConfigTupleTranslator(true, true);
         }
 
         ITupleReference searchKey;
@@ -675,12 +670,12 @@ public class MetadataNode implements IMetadataNode {
             searchKey = createTuple(database, dataverseName, configName);
             IValueExtractor<SchedulerConfigMetadataEntity> valueExtractor =
                     new MetadataEntityValueExtractor<>(translator);
-            if(configName.equals(SCHEDULER_STATE)) {
-                searchIndex(txnId, mdIndexesProvider.getSchedulerConfigStateEntity().getIndex(), searchKey, valueExtractor,
-                        results);
+            if (configName.equals(SCHEDULER_STATE)) {
+                searchIndex(txnId, mdIndexesProvider.getSchedulerConfigStateEntity().getIndex(), searchKey,
+                        valueExtractor, results);
             } else {
-                searchIndex(txnId, mdIndexesProvider.getSchedulerConfigRecordEntity().getIndex(), searchKey, valueExtractor,
-                        results);
+                searchIndex(txnId, mdIndexesProvider.getSchedulerConfigRecordEntity().getIndex(), searchKey,
+                        valueExtractor, results);
             }
         } catch (HyracksDataException e) {
             throw new AsterixException(METADATA_ERROR, e, e.getMessage());
@@ -702,7 +697,7 @@ public class MetadataNode implements IMetadataNode {
             String configName) throws AlgebricksException {
         try {
             ITupleReference key = createTuple(database, dataverseName, configName);
-            if(configName.equals(SCHEDULER_STATE)) {
+            if (configName.equals(SCHEDULER_STATE)) {
                 deleteTupleFromIndex(txnId, mdIndexesProvider.getSchedulerConfigStateEntity().getIndex(), key);
             } else {
                 deleteTupleFromIndex(txnId, mdIndexesProvider.getSchedulerConfigRecordEntity().getIndex(), key);
@@ -711,7 +706,6 @@ public class MetadataNode implements IMetadataNode {
             throw new AsterixException(METADATA_ERROR, e, e.getMessage());
         }
     }
-
 
     private void insertTupleIntoIndex(TxnId txnId, IMetadataIndex metadataIndex, ITupleReference tuple)
             throws HyracksDataException {

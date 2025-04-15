@@ -1,21 +1,20 @@
 package org.apache.hyracks.control.cc.scheduler;
 
-import org.apache.hyracks.api.exceptions.HyracksException;
-import org.apache.hyracks.api.job.JobId;
-import org.apache.hyracks.api.job.resource.IJobCapacityController;
-import org.apache.hyracks.control.cc.job.IJobManager;
-import org.apache.hyracks.control.cc.job.JobRun;
-import org.apache.hyracks.control.cc.job.WorkloadManager;
-import org.apache.hyracks.util.annotations.GuardedBy;
-import org.apache.hyracks.util.annotations.NotThreadSafe;
-
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+
+import org.apache.hyracks.api.exceptions.HyracksException;
+import org.apache.hyracks.api.job.JobId;
+import org.apache.hyracks.control.cc.job.IJobManager;
+import org.apache.hyracks.control.cc.job.JobRun;
+import org.apache.hyracks.util.annotations.GuardedBy;
+import org.apache.hyracks.util.annotations.NotThreadSafe;
+
 @NotThreadSafe
 @GuardedBy("JobManager")
-public class CompositeQueue implements IJobQueue{
+public class CompositeQueue implements IJobQueue {
     private final CapacityControllerGuard capacityControllerGuard;
     //private final IJobCapacityController jobCapacityController;
     private final IJobQueue SQAJobQueue;
@@ -26,6 +25,7 @@ public class CompositeQueue implements IJobQueue{
         priorityBasedQueue = new PriorityBasedQueue(jobManager, capacityControllerGuard);
         this.capacityControllerGuard = capacityControllerGuard;
     }
+
     @Override
     public void add(JobRun run) throws HyracksException {
         JobTypeManager.JobSchedulingType schedulingType = run.getSchedulingType();
@@ -59,7 +59,7 @@ public class CompositeQueue implements IJobQueue{
     @Override
     public List<JobRun> pull() {
         List<JobRun> jobRuns;
-        if (capacityControllerGuard.isSQAResourcesAvailable()){
+        if (capacityControllerGuard.isSQAResourcesAvailable()) {
             jobRuns = SQAJobQueue.pull();
         } else {
             jobRuns = new ArrayList<>();

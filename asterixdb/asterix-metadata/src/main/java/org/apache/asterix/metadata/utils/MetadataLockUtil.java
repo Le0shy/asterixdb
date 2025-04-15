@@ -389,10 +389,10 @@ public class MetadataLockUtil implements IMetadataLockUtil {
         lockMgr.acquireDataverseReadLock(locks, database, dataverseName);
         lockMgr.acquireDatasetExclusiveModificationLock(locks, database, dataverseName, datasetName);
     }
+
     @Override
     public void createSchedulerConfigBegin(IMetadataLockManager lockMgr, LockList locks, String database,
-            DataverseName dataverseName, String schedulerConfigName)
-            throws AlgebricksException {
+            DataverseName dataverseName, String schedulerConfigName) throws AlgebricksException {
         lockMgr.acquireDatabaseReadLock(locks, database);
         lockMgr.acquireDataverseReadLock(locks, database, dataverseName);
         lockMgr.acquireSchedulerConfigWriteLock(locks, database, dataverseName, schedulerConfigName);
@@ -400,8 +400,7 @@ public class MetadataLockUtil implements IMetadataLockUtil {
 
     @Override
     public void dropSchedulerConfigBegin(IMetadataLockManager lockMgr, LockList locks, String database,
-            DataverseName dataverseName, String schedulerConfigName)
-            throws AlgebricksException {
+            DataverseName dataverseName, String schedulerConfigName) throws AlgebricksException {
         lockMgr.acquireDatabaseReadLock(locks, database);
         lockMgr.acquireDataverseReadLock(locks, database, dataverseName);
         lockMgr.acquireSchedulerConfigWriteLock(locks, database, dataverseName, schedulerConfigName);

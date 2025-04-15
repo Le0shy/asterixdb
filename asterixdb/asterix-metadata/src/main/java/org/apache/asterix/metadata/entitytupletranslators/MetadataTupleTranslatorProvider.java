@@ -104,9 +104,12 @@ public class MetadataTupleTranslatorProvider {
         return new SynonymTupleTranslator(getTuple, mdIndexesProvider.getSynonymEntity());
     }
 
-    public SchedulerConfigMetadataEntityTupleTranslator getSchedulerConfigTupleTranslator(boolean getTuple, boolean getConfigRecord) {
-        return getConfigRecord ?
-                new SchedulerConfigMetadataEntityTupleTranslator(getTuple, mdIndexesProvider.getSchedulerConfigRecordEntity()) :
-                new SchedulerConfigMetadataEntityTupleTranslator(getTuple, mdIndexesProvider.getSchedulerConfigStateEntity());
+    public SchedulerConfigMetadataEntityTupleTranslator getSchedulerConfigTupleTranslator(boolean getTuple,
+            boolean getConfigRecord) {
+        return getConfigRecord
+                ? new SchedulerConfigMetadataEntityTupleTranslator(getTuple,
+                        mdIndexesProvider.getSchedulerConfigRecordEntity())
+                : new SchedulerConfigMetadataEntityTupleTranslator(getTuple,
+                        mdIndexesProvider.getSchedulerConfigStateEntity());
     }
 }

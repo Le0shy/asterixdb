@@ -19,11 +19,11 @@
 package org.apache.asterix.lang.common.util;
 
 import static org.apache.asterix.lang.common.statement.CreateSchedulerConfigStatement.*;
+
 import org.apache.asterix.common.exceptions.CompilationException;
 import org.apache.asterix.lang.common.expression.RecordConstructor;
 import org.apache.asterix.object.base.AdmObjectNode;
 import org.apache.asterix.om.types.*;
-
 
 public class SchedulerConfigUtil {
 
@@ -32,55 +32,54 @@ public class SchedulerConfigUtil {
 
     //--------------------------------------- Scheduler config --------------------------------------//
 
-        /*
-        Example of full-text config create statement
-        CREATE SCHEDULER CONFIG s_config_1 {
-            "defaultPriority": 1,
-            "shortMemoryPercent": 10.0,
-            "shortCPUQuota": 20,
-            "queryGroup":
-    	[
-            {
-                "priority": 4,
-                    "grouplist": [ "ui"]
-            },
-
-            {
-                "priority" : 6,
-                    "grouplist": ["analytics"]
-
-            },
-
-            {
-                "priority": 8,
-                    "grouplist": [ "management" ]
-            }
-    	]
-        };
-
-        UPSERT QGROUP INTO s_config_1 {[
-		{
-			"priority": 10,
-			"name": "ingest"
-		},
-
-		{
-			"priority": 6,
-			"name": "management"
-		}
-        ]};
-
-        DELETE GROUP FROM s_config_1 {[
-	        "analytics", "ingest"
-        ]};
-
-
-        */
-
+    /*
+    Example of full-text config create statement
+    CREATE SCHEDULER CONFIG s_config_1 {
+        "defaultPriority": 1,
+        "shortMemoryPercent": 10.0,
+        "shortCPUQuota": 20,
+        "queryGroup":
+    [
+        {
+            "priority": 4,
+                "grouplist": [ "ui"]
+        },
+    
+        {
+            "priority" : 6,
+                "grouplist": ["analytics"]
+    
+        },
+    
+        {
+            "priority": 8,
+                "grouplist": [ "management" ]
+        }
+    ]
+    };
+    
+    UPSERT QGROUP INTO s_config_1 {[
+    {
+    	"priority": 10,
+    	"name": "ingest"
+    },
+    
+    {
+    	"priority": 6,
+    	"name": "management"
+    }
+    ]};
+    
+    DELETE GROUP FROM s_config_1 {[
+        "analytics", "ingest"
+    ]};
+    
+    
+    */
 
     private static ARecordType getSchedulerConfigRecordType() {
         /* union type - query group */
-        final String[] qgFieldNames = {FIELD_NAME_QG_PRIORITY, FIELD_NAME_QG_GROUPLIST};
+        final String[] qgFieldNames = { FIELD_NAME_QG_PRIORITY, FIELD_NAME_QG_GROUPLIST };
         final IAType[] qgFieldTypes = { BuiltinType.AINT64, new AOrderedListType(BuiltinType.ASTRING, null) };
         IAType qgUnionType = new ARecordType("qgRecordType", qgFieldNames, qgFieldTypes, true);
 
@@ -93,27 +92,24 @@ public class SchedulerConfigUtil {
     }
 
     private static ARecordType getUpsertQGroupRecordType() {
-        final String[] qgFieldNames = {"priority", "name"};
+        final String[] qgFieldNames = { "priority", "name" };
         final IAType[] qgFieldTypes = { BuiltinType.AINT64, BuiltinType.ASTRING };
         IAType pairType = new ARecordType("qgPairType", qgFieldNames, qgFieldTypes, false);
 
-        return new ARecordType("UpsertQGroupRecordType", new String[]{"list"},
-                new IAType[]{new AOrderedListType(pairType, null)}, true);
+        return new ARecordType("UpsertQGroupRecordType", new String[] { "list" },
+                new IAType[] { new AOrderedListType(pairType, null) }, true);
     }
 
     private static ARecordType getDeleteQGroupRecordType() {
-        return new ARecordType("DeleteQGroupRecordType", new String[]{"list"},
-                new IAType[]{new AOrderedListType(BuiltinType.ASTRING, null)}, true);
+        return new ARecordType("DeleteQGroupRecordType", new String[] { "list" },
+                new IAType[] { new AOrderedListType(BuiltinType.ASTRING, null) }, true);
     }
 
     private static ARecordType getUpdateSchedulerRecordType() {
         return new ARecordType("UpdateSchedulerRecordType",
-                new String[]{"defaultPriority", "shortMemoryPercent", "shortCPUQuota"},
-                new IAType[]{BuiltinType.AINT64, BuiltinType.ADOUBLE, BuiltinType.AINT64},
-                true
-        );
+                new String[] { "defaultPriority", "shortMemoryPercent", "shortCPUQuota" },
+                new IAType[] { BuiltinType.AINT64, BuiltinType.ADOUBLE, BuiltinType.AINT64 }, true);
     }
-
 
     private static final ARecordType SCHEDULER_CONFIG_RECORD_TYPE = getSchedulerConfigRecordType();
     private static final ARecordType SCHEDULER_UPSERT_QGROUP_TYPE = getUpsertQGroupRecordType();
@@ -135,7 +131,6 @@ public class SchedulerConfigUtil {
         validator.validateType(SCHEDULER_UPSERT_QGROUP_TYPE, node);
         return node;
     }
-
 
     public static AdmObjectNode validateDeleteQgroupNode(RecordConstructor recordConstructor)
             throws CompilationException {

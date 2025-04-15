@@ -64,7 +64,8 @@ public class MetadataPrimaryIndexes {
             new MetadataIndexImmutableProperties(MetadataConstants.DATABASE_DATASET_NAME, 18, 18);
     public static final MetadataIndexImmutableProperties PROPERTIES_SCHEDULER_CONFIG =
             new MetadataIndexImmutableProperties(MetadataConstants.SCHEDULER_CONFIG_DATASET_NAME, 19, 19);
-
+    public static final MetadataIndexImmutableProperties PROPERTIES_SCHEDULER_STATE =
+            new MetadataIndexImmutableProperties(MetadataConstants.SCHEDULER_STATE_DATASET_NAME, 20, 20);
 
     private MetadataPrimaryIndexes() {
     }

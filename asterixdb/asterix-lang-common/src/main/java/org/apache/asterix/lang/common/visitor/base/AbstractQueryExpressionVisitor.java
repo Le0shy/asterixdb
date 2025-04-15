@@ -177,10 +177,12 @@ public abstract class AbstractQueryExpressionVisitor<R, T> implements ILangVisit
     public R visit(CreateFullTextConfigStatement del, T arg) throws CompilationException {
         return null;
     }
+
     @Override
     public R visit(CreateSchedulerConfigStatement cs, T arg) throws CompilationException {
         return null;
     }
+
     @Override
     public R visit(SchedulerConfigDropStatement scd, T arg) throws CompilationException {
         return null;
@@ -190,6 +192,7 @@ public abstract class AbstractQueryExpressionVisitor<R, T> implements ILangVisit
     public R visit(UpsertQGroupStatement uq, T arg) throws CompilationException {
         return null;
     }
+
     @Override
     public R visit(DeleteQGroupStatement dq, T arg) throws CompilationException {
         return null;

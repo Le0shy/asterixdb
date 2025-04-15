@@ -87,29 +87,29 @@ public class JobCapacityController implements IJobCapacityController {
         }
     }
 
-//    public void setJobSizeTag(JobSpecification job) {
-//        double memRatio = getMemoryRatio(job);
-//        LOGGER.warn(memRatio);
-//        if (memRatio <= 0.05) {
-//            String uid = job.getUserID();
-//            if (uid != null) {
-//                if (uid.contains("ZERO_Short")) {
-//                    job.setSizeTag(JobSpecification.JobSizeTag.ZERO_SHORT);
-//                } else if (uid.contains("ZERO_Long")) {
-//                    job.setSizeTag(JobSpecification.JobSizeTag.ZERO_LONG);
-//                }
-//            } else {
-//                job.setSizeTag(JobSpecification.JobSizeTag.ZERO);
-//            }
-//        } else if (memRatio <= 0.25) {
-//            job.setSizeTag(JobSpecification.JobSizeTag.SMALL);
-//        } else if (memRatio <= 0.75) {
-//            job.setSizeTag(JobSpecification.JobSizeTag.MEDIUM);
-//        } else {
-//            job.setSizeTag(JobSpecification.JobSizeTag.LARGE);
-//        }
-//
-//    }
+    //    public void setJobSizeTag(JobSpecification job) {
+    //        double memRatio = getMemoryRatio(job);
+    //        LOGGER.warn(memRatio);
+    //        if (memRatio <= 0.05) {
+    //            String uid = job.getUserID();
+    //            if (uid != null) {
+    //                if (uid.contains("ZERO_Short")) {
+    //                    job.setSizeTag(JobSpecification.JobSizeTag.ZERO_SHORT);
+    //                } else if (uid.contains("ZERO_Long")) {
+    //                    job.setSizeTag(JobSpecification.JobSizeTag.ZERO_LONG);
+    //                }
+    //            } else {
+    //                job.setSizeTag(JobSpecification.JobSizeTag.ZERO);
+    //            }
+    //        } else if (memRatio <= 0.25) {
+    //            job.setSizeTag(JobSpecification.JobSizeTag.SMALL);
+    //        } else if (memRatio <= 0.75) {
+    //            job.setSizeTag(JobSpecification.JobSizeTag.MEDIUM);
+    //        } else {
+    //            job.setSizeTag(JobSpecification.JobSizeTag.LARGE);
+    //        }
+    //
+    //    }
     @Override
     public int getMaxAggregatedNumCores() {
         return resourceManager.getMaximumCapacity().getAggregatedCores();
