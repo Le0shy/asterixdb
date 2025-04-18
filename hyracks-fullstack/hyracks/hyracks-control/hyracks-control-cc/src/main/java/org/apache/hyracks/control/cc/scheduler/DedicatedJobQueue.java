@@ -1,5 +1,7 @@
 package org.apache.hyracks.control.cc.scheduler;
 
+import java.util.*;
+
 import org.apache.hyracks.api.exceptions.ErrorCode;
 import org.apache.hyracks.api.exceptions.HyracksException;
 import org.apache.hyracks.api.job.JobId;
@@ -10,8 +12,6 @@ import org.apache.hyracks.control.cc.job.JobRun;
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
-import java.util.*;
 
 public class DedicatedJobQueue implements IJobQueue {
     private static final Logger LOGGER = LogManager.getLogger();

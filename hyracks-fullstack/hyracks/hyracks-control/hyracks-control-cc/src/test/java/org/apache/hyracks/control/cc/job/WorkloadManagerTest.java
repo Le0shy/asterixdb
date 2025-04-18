@@ -1,16 +1,16 @@
 package org.apache.hyracks.control.cc.job;
 
+import static org.apache.hyracks.control.cc.scheduler.TestUtils.*;
+
+import java.io.IOException;
+import java.util.List;
+
 import org.apache.hyracks.api.job.resource.IJobCapacityController;
 import org.apache.hyracks.control.cc.scheduler.JobRunBatchFactory;
 import org.apache.hyracks.control.common.controllers.CCConfig;
 import org.junit.Before;
 import org.junit.Test;
 import org.kohsuke.args4j.CmdLineException;
-
-import java.io.IOException;
-import java.util.List;
-
-import static org.apache.hyracks.control.cc.scheduler.TestUtils.*;
 
 public class WorkloadManagerTest {
     private CCConfig ccConfig;
@@ -27,7 +27,7 @@ public class WorkloadManagerTest {
         IJobManager jobManager = mockJobManager(jobCapacityController, ccConfig);
 
         List<JobRun> jobs = JobRunBatchFactory.createJobBatch(1000);
-        for(JobRun job: jobs) {
+        for (JobRun job : jobs) {
             jobManager.add(job);
         }
     }

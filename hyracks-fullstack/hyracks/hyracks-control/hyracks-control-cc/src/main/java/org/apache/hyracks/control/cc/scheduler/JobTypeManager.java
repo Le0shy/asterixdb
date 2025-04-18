@@ -16,8 +16,7 @@ public class JobTypeManager implements IJobTypeManager {
         SHORT,
         LONG,
         NORMAL,
-        DEFAULT,
-        METADATA
+        DEFAULT
     }
 
     /* TODO: get config while system bootstraps

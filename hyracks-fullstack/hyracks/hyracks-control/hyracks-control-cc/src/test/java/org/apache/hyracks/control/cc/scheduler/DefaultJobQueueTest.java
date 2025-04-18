@@ -1,5 +1,13 @@
 package org.apache.hyracks.control.cc.scheduler;
 
+import static org.mockito.Matchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.when;
+
+import java.io.IOException;
+import java.util.*;
+
 import org.apache.hyracks.api.job.JobId;
 import org.apache.hyracks.api.job.JobSpecification;
 import org.apache.hyracks.api.job.resource.IClusterCapacity;
@@ -15,18 +23,10 @@ import org.apache.hyracks.control.cc.job.JobRun;
 import org.apache.hyracks.control.common.controllers.CCConfig;
 import org.apache.hyracks.control.common.ipc.NodeControllerRemoteProxy;
 import org.apache.hyracks.control.common.logs.LogFile;
-import org.junit.Test;
 import org.junit.Before;
+import org.junit.Test;
 import org.kohsuke.args4j.CmdLineException;
 import org.mockito.Mockito;
-
-import java.io.IOException;
-import java.util.*;
-
-import static org.mockito.Matchers.any;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.spy;
-import static org.mockito.Mockito.when;
 
 public class DefaultJobQueueTest {
     private CCConfig ccConfig;
@@ -41,7 +41,7 @@ public class DefaultJobQueueTest {
     public void test0() throws IOException, CmdLineException {
         IJobCapacityController jobCapacityController = mock(IJobCapacityController.class);
         when(jobCapacityController.getMaxAggregatedNumCores()).thenReturn(66);
-        when(jobCapacityController.getMaxAggregatedMemoryByteSize()).thenReturn((long)100);
+        when(jobCapacityController.getMaxAggregatedMemoryByteSize()).thenReturn((long) 100);
 
         CapacityControllerGuard capacityControllerGuard = spy(new CapacityControllerGuard(jobCapacityController));
         IJobManager jobManager = spy(new JobManager(ccConfig, mockClusterControllerService(), jobCapacityController));
@@ -74,17 +74,18 @@ public class DefaultJobQueueTest {
         DefaultJobQueue defaultJobQueue = spy(new DefaultJobQueue(jobManager, capacityControllerGuard));
 
         long time = 0;
-        when(defaultJobQueue.getCurrentTime()).thenReturn((long)time);
+        when(defaultJobQueue.getCurrentTime()).thenReturn((long) time);
         List<JobRun> queuedJobs = new ArrayList<>();
 
         for (int i = 1; i <= 10; i += 1) {
             for (int j = 1; j <= 10; j += 1) {
-                JobRun run = mockJobRunWithExecutionTime((i - 1) * 10 + j,  1 + (i - 1) * 50);
+                JobRun run = mockJobRunWithExecutionTime((i - 1) * 10 + j, 1 + (i - 1) * 50);
                 JobSpecification job = mock(JobSpecification.class);
                 IClusterCapacity requiredClusterCapacity = mockIClusterCapacity(4, (i - 1) * 10);
                 when(job.getRequiredClusterCapacity()).thenReturn(requiredClusterCapacity);
                 when(run.getJobSpecification()).thenReturn(job);
-                when(jobCapacityController.allocate(job)).thenReturn(IJobCapacityController.JobSubmissionStatus.EXECUTE);
+                when(jobCapacityController.allocate(job))
+                        .thenReturn(IJobCapacityController.JobSubmissionStatus.EXECUTE);
                 when(run.getAddedToMemoryQueueTime()).thenReturn(time);
                 queuedJobs.add(run);
                 defaultJobQueue.add(run);
@@ -92,7 +93,7 @@ public class DefaultJobQueueTest {
         }
         System.out.println(defaultJobQueue.printQueueInfo());
         int counter = 0;
-        while(!defaultJobQueue.isEmpty()) {
+        while (!defaultJobQueue.isEmpty()) {
             List<JobRun> selected = defaultJobQueue.pull();
             JobRun jobRun = selected.get(0);
             System.out.println("Selected Job:" + jobRun.getJobId());
@@ -108,8 +109,7 @@ public class DefaultJobQueueTest {
         }
     }
 
-
-        private JobRun mockDefaultJobRun(long id) {
+    private JobRun mockDefaultJobRun(long id) {
         JobRun run = mock(JobRun.class, Mockito.RETURNS_DEEP_STUBS);
         when(run.getExceptions()).thenReturn(Collections.emptyList());
         when(run.getActivityClusterGraph().isReportTaskDetails()).thenReturn(true);

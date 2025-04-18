@@ -75,6 +75,7 @@ public class MetadataConstants {
     public static final String SAMPLE_INDEX_2_PREFIX = SAMPLE_INDEX_PREFIX + "2_";
 
     public static final String SCHEDULER_CONFIG_DATASET_NAME = "SchedulerConfig";
+    public static final String SCHEDULER_STATE_DATASET_NAME = "SchedulerState";
 
     private MetadataConstants() {
     }

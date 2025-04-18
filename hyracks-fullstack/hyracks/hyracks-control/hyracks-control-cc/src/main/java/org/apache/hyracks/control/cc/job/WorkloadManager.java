@@ -16,7 +16,6 @@ import org.apache.logging.log4j.Logger;
 
 import java.util.List;
 import java.util.Map;
-
 public class WorkloadManager extends JobManager {
 
     private static final Logger LOGGER = LogManager.getLogger();
@@ -42,10 +41,11 @@ public class WorkloadManager extends JobManager {
         CCServiceContext serviceCtx = ccs.getContext();
         serviceCtx.notifyJobCreation(jobRun.getJobId(), job, IJobCapacityController.JobSubmissionStatus.QUEUE);
         queueJob(jobRun);
-        //Whenever a new jobs added or a job finishes, check for jobs in the queue that can execute with the
-        // current resources
+        /* Whenever a new jobs added or a job finishes, check for jobs in the queue that can execute with the
+            current resources */
         pickJobsToRun();
     }
+
     @Override
     public void finalComplete(JobRun run) throws HyracksException {
         checkJob(run);

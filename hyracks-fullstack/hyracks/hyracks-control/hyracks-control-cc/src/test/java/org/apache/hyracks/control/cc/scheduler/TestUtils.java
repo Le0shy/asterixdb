@@ -1,5 +1,7 @@
 package org.apache.hyracks.control.cc.scheduler;
 
+import static org.mockito.Mockito.*;
+
 import org.apache.hyracks.api.job.JobSpecification;
 import org.apache.hyracks.api.job.resource.IClusterCapacity;
 import org.apache.hyracks.api.job.resource.IJobCapacityController;
@@ -13,8 +15,6 @@ import org.apache.hyracks.control.cc.job.WorkloadManager;
 import org.apache.hyracks.control.common.controllers.CCConfig;
 import org.apache.hyracks.control.common.ipc.NodeControllerRemoteProxy;
 import org.apache.hyracks.control.common.logs.LogFile;
-
-import static org.mockito.Mockito.*;
 
 public class TestUtils {
 

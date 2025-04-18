@@ -25,26 +25,27 @@ public class CapacityControllerGuard {
     private long maximumAggregatedMemoryByteSize;
 
     private boolean isUpdate;
+
     public CapacityControllerGuard(IJobCapacityController jobCapacityController) {
         this.jobCapacityController = jobCapacityController;
         /* available memory resources for short jobs and other jobs */
-//        maximumAggregatedMemoryByteSize = jobCapacityController.getMaxAggregatedMemoryByteSize();
-//        memoryAvailableShort = (long)(maximumAggregatedMemoryByteSize * memoryAllocatedToShort);
-//        memoryAvailableCommon = maximumAggregatedMemoryByteSize - memoryAvailableShort;
-//
-//        /* available cpu resources for short jobs and other jobs */
-//        maximumAggregatedCores = jobCapacityController.getMaxAggregatedNumCores();
-//        CPUQuotaCommon = maximumAggregatedCores - CPUQuotaShort;
+        //        maximumAggregatedMemoryByteSize = jobCapacityController.getMaxAggregatedMemoryByteSize();
+        //        memoryAvailableShort = (long)(maximumAggregatedMemoryByteSize * memoryAllocatedToShort);
+        //        memoryAvailableCommon = maximumAggregatedMemoryByteSize - memoryAvailableShort;
+        //
+        //        /* available cpu resources for short jobs and other jobs */
+        //        maximumAggregatedCores = jobCapacityController.getMaxAggregatedNumCores();
+        //        CPUQuotaCommon = maximumAggregatedCores - CPUQuotaShort;
     }
 
     public IJobCapacityController.JobSubmissionStatus allocate(JobRun jobRun) throws HyracksException {
-        if(!isUpdate) {
+        if (!isUpdate) {
             update();
         }
         JobSpecification job = jobRun.getJobSpecification();
 
         /* Short jobs */
-        if(jobRun.getSchedulingType() == JobTypeManager.JobSchedulingType.SHORT) {
+        if (jobRun.getSchedulingType() == JobTypeManager.JobSchedulingType.SHORT) {
             return allocateResourceForShortJob(job);
         }
 
@@ -67,8 +68,7 @@ public class CapacityControllerGuard {
         }
 
         /* call capacityController's allocate */
-        if (checkCapacityController(job)
-                == IJobCapacityController.JobSubmissionStatus.EXECUTE) {
+        if (checkCapacityController(job) == IJobCapacityController.JobSubmissionStatus.EXECUTE) {
             /* record resource usage for short jobs */
             memoryAvailableShort -= reqAggregatedMemoryByteSize;
             CPUQuotaAvailableShort -= reqAggregatedNumCores;
@@ -91,8 +91,7 @@ public class CapacityControllerGuard {
         }
 
         /* then check resource manager */
-        if (checkCapacityController(job)
-                == IJobCapacityController.JobSubmissionStatus.EXECUTE) {
+        if (checkCapacityController(job) == IJobCapacityController.JobSubmissionStatus.EXECUTE) {
             /* record resource usage for common jobs */
             memoryAvailableCommon -= reqAggregatedMemoryByteSize;
             CPUQuotaAvailableCommon -= reqAggregatedNumCores;

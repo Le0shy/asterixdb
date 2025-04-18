@@ -1009,5 +1009,5 @@ public interface IMetadataNode extends Remote, Serializable {
             String configName) throws AlgebricksException, RemoteException;
 
     public void dropSchedulerConfig(TxnId txnId, String database, DataverseName dataverseName, String configName)
-    throws AlgebricksException, RemoteException;
+            throws AlgebricksException, RemoteException;
 }

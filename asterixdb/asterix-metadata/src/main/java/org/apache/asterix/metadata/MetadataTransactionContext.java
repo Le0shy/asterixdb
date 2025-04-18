@@ -19,6 +19,8 @@
 
 package org.apache.asterix.metadata;
 
+import static org.apache.asterix.metadata.entities.SchedulerConfigMetadataEntity.SCHEDULER_STATE;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -35,8 +37,6 @@ import org.apache.asterix.runtime.scheduler.SchedulerConfigRecordDescriptor;
 import org.apache.asterix.runtime.scheduler.SchedulerConfigStateDescriptor;
 import org.apache.hyracks.storage.am.lsm.invertedindex.fulltext.FullTextFilterType;
 import org.apache.hyracks.storage.am.lsm.invertedindex.fulltext.IFullTextFilterEvaluatorFactory;
-
-import static org.apache.asterix.metadata.entities.SchedulerConfigMetadataEntity.SCHEDULER_STATE;
 
 /**
  * Used to implement serializable transactions against the MetadataCache.
@@ -258,14 +258,14 @@ public class MetadataTransactionContext extends MetadataCache {
 
     public void dropSchedulerConfig(String database, DataverseName dataverseName, String configName) {
         ISchedulerConfigDescriptor schedulerConfigDescriptor;
-        if(configName.equals(SCHEDULER_STATE)) {
-            schedulerConfigDescriptor =
-                    new SchedulerConfigStateDescriptor(database, dataverseName, configName, null);
+        if (configName.equals(SCHEDULER_STATE)) {
+            schedulerConfigDescriptor = new SchedulerConfigStateDescriptor(database, dataverseName, configName, null);
         } else {
             schedulerConfigDescriptor =
                     new SchedulerConfigRecordDescriptor(database, dataverseName, configName, 0, 0, 0, null);
         }
-        SchedulerConfigMetadataEntity configMetadataEntity = new SchedulerConfigMetadataEntity(schedulerConfigDescriptor);
+        SchedulerConfigMetadataEntity configMetadataEntity =
+                new SchedulerConfigMetadataEntity(schedulerConfigDescriptor);
 
         droppedCache.addSchedulerConfigIfNotExists(configMetadataEntity);
         logAndApply(new MetadataLogicalOperation(configMetadataEntity, false));
@@ -343,6 +343,7 @@ public class MetadataTransactionContext extends MetadataCache {
     public boolean schedulerConfigIsDropped(String databaseName, DataverseName dataverseName, String configName) {
         return droppedCache.getSchedulerConfig(databaseName, dataverseName, configName) != null;
     }
+
     public List<MetadataLogicalOperation> getOpLog() {
         return opLog;
     }
@@ -353,10 +354,5 @@ public class MetadataTransactionContext extends MetadataCache {
         droppedCache.clear();
         opLog.clear();
     }
-
-
-
-
-
 
 }

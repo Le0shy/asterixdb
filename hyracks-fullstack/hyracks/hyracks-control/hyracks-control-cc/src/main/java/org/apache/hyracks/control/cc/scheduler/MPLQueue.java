@@ -1,13 +1,13 @@
 package org.apache.hyracks.control.cc.scheduler;
 
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 import org.apache.hyracks.api.exceptions.ErrorCode;
 import org.apache.hyracks.api.exceptions.HyracksException;
 import org.apache.hyracks.api.job.JobId;
 import org.apache.hyracks.control.cc.job.JobRun;
-
-import java.util.Iterator;
-import java.util.LinkedHashMap;
-import java.util.Map;
 
 public class MPLQueue {
     private final Map<JobId, JobRun> jobs = new LinkedHashMap<>();

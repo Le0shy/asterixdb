@@ -11,8 +11,7 @@ public class EnableSchedulerStatement extends AbstractStatement {
     private final String configName;
     private final Namespace namespace;
 
-    public EnableSchedulerStatement(Namespace namespace, String configName)
-            throws CompilationException {
+    public EnableSchedulerStatement(Namespace namespace, String configName) throws CompilationException {
         this.namespace = namespace;
         this.configName = configName;
     }

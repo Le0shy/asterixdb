@@ -521,6 +521,7 @@ public interface IMetadataManager extends IMetadataBootstrap {
      */
     void addSchedulerConfig(MetadataTransactionContext mdTxnCtx, SchedulerConfigMetadataEntity configMetadataEntity)
             throws AlgebricksException;
+
     /**
      * @param mdTxnCtx
      *            MetadataTransactionContext of an active metadata transaction.

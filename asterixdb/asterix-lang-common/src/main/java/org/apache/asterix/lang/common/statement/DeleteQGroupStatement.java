@@ -1,4 +1,7 @@
 package org.apache.asterix.lang.common.statement;
+
+import java.util.*;
+
 import org.apache.asterix.common.exceptions.CompilationException;
 import org.apache.asterix.common.metadata.DataverseName;
 import org.apache.asterix.common.metadata.Namespace;
@@ -7,8 +10,6 @@ import org.apache.asterix.lang.common.expression.RecordConstructor;
 import org.apache.asterix.lang.common.util.SchedulerConfigUtil;
 import org.apache.asterix.lang.common.visitor.base.ILangVisitor;
 import org.apache.asterix.object.base.*;
-
-import java.util.*;
 
 public class DeleteQGroupStatement extends AbstractStatement {
     private final String configName;
@@ -29,6 +30,7 @@ public class DeleteQGroupStatement extends AbstractStatement {
     public DataverseName getDataverseName() {
         return namespace == null ? null : namespace.getDataverseName();
     }
+
     public String getConfigName() {
         return configName;
     };

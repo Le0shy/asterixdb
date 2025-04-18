@@ -2,7 +2,7 @@ package org.apache.asterix.runtime.scheduler;
 
 import org.apache.asterix.common.metadata.DataverseName;
 
-public class SchedulerConfigStateDescriptor implements ISchedulerConfigDescriptor{
+public class SchedulerConfigStateDescriptor implements ISchedulerConfigDescriptor {
     private final String databaseName;
     private final DataverseName dataverseName;
     private final String name;

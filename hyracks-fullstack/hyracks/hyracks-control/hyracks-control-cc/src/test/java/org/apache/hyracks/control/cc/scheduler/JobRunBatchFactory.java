@@ -1,18 +1,20 @@
 package org.apache.hyracks.control.cc.scheduler;
-import org.apache.hyracks.api.job.JobSpecification;
-import org.apache.hyracks.control.cc.job.JobRun;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 
+import org.apache.hyracks.api.job.JobSpecification;
+import org.apache.hyracks.control.cc.job.JobRun;
+
 public class JobRunBatchFactory {
     private static final Random random = new Random(0);
+
     public static List<JobRun> createJobBatch(int count) {
         List<JobRun> jobRuns = new ArrayList<>();
-        int n = random.nextInt(0,10);
+        int n = random.nextInt(0, 10);
         JobSpecification shortJS = TestUtils.mockJobSpecification(4, 0);
-        JobSpecification prioritizedJS = TestUtils.mockJobSpecification(4,5);
+        JobSpecification prioritizedJS = TestUtils.mockJobSpecification(4, 5);
 
         for (int i = 0; i < count; i++) {
             long id = i + 1;
@@ -31,7 +33,7 @@ public class JobRunBatchFactory {
     }
 
     private static JobRun generateShortJobWithExecutionTime(long id, JobSpecification js) {
-        long executionTime = random.nextInt( 0, 5);
+        long executionTime = random.nextInt(0, 5);
         return JobRunFactory.mockShortJobWithExecutionTime(id, executionTime, js);
     }
 
@@ -45,7 +47,7 @@ public class JobRunBatchFactory {
 
     private static JobRun generatePrioritizedJobWithExecutionTime(long id, JobSpecification js) {
         long executionTime = random.nextInt(50, 1000);
-        int priority = random.nextInt(1, 11);  // Priority between 1 and 10
+        int priority = random.nextInt(1, 11); // Priority between 1 and 10
         return JobRunFactory.mockPrioritizedJobWithExecutionTime(id, executionTime, priority, js);
     }
 

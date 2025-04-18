@@ -133,12 +133,8 @@ public final class MetadataRecordTypes {
     public static final String FIELD_NAME_SCHEDULER_CONFIG_SHORT_CPU_QUOTA = "ShortCPUQuota";
     public static final String FIELD_NAME_SCHEDULER_CONFIG_QUERY_GROUPS = "QueryGroups";
     public static final String FIELD_NAME_SCHEDULER_ENABLED_CONFIG_NAME = "EnabledConfigName";
-    public static final ARecordType SCHEDULER_COFING_QUERY_GROUPS_RECORDTYPE = createRecordType(
-           null,
-            new String[]{"name", "priority"},
-            new IAType[]{BuiltinType.ASTRING, BuiltinType.AINT64},
-            true
-    );
+    public static final ARecordType SCHEDULER_COFING_QUERY_GROUPS_RECORDTYPE = createRecordType(null,
+            new String[] { "name", "priority" }, new IAType[] { BuiltinType.ASTRING, BuiltinType.AINT64 }, true);
 
     //---------------------------------- Record Types Creation ----------------------------------//
     //--------------------------------------- Properties ----------------------------------------//
