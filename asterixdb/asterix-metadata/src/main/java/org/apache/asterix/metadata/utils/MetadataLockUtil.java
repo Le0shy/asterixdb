@@ -34,6 +34,8 @@ import org.apache.hyracks.algebricks.core.algebra.metadata.IMetadataProvider;
 import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
 
+import static org.apache.asterix.metadata.entities.SchedulerConfigMetadataEntity.SCHEDULER_STATE;
+
 public class MetadataLockUtil implements IMetadataLockUtil {
 
     @Override
@@ -404,6 +406,13 @@ public class MetadataLockUtil implements IMetadataLockUtil {
         lockMgr.acquireDatabaseReadLock(locks, database);
         lockMgr.acquireDataverseReadLock(locks, database, dataverseName);
         lockMgr.acquireSchedulerConfigWriteLock(locks, database, dataverseName, schedulerConfigName);
+    }
+
+    @Override
+    public void enableSchedulerConfigBegin(IMetadataLockManager lockMgr, LockList locks, String database,
+            DataverseName dataverseName, String enableConfigName) throws AlgebricksException {
+        lockMgr.acquireSchedulerConfigReadLock(locks, database, dataverseName, enableConfigName);
+        lockMgr.acquireSchedulerConfigWriteLock(locks, database, dataverseName, SCHEDULER_STATE);
     }
 
     private static void lockIfDifferentNamespace(IMetadataLockManager lockMgr, LockList locks, String lockedDatabase,

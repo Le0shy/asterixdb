@@ -174,4 +174,7 @@ public interface IMetadataLockUtil {
 
     void dropSchedulerConfigBegin(IMetadataLockManager lockManager, LockList locks, String database,
             DataverseName dataverseName, String schedulerConfigName) throws AlgebricksException;
+
+    void enableSchedulerConfigBegin(IMetadataLockManager lockManager, LockList locks, String database,
+            DataverseName dataverseName, String enableConfigName) throws AlgebricksException;
 }

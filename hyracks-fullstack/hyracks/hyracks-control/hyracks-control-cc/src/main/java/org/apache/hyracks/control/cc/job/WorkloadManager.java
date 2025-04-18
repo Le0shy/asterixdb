@@ -44,8 +44,8 @@ public class WorkloadManager extends JobManager {
         CCServiceContext serviceCtx = ccs.getContext();
         serviceCtx.notifyJobCreation(jobRun.getJobId(), job, IJobCapacityController.JobSubmissionStatus.QUEUE);
         queueJob(jobRun);
-        //Whenever a new jobs added or a job finishes, check for jobs in the queue that can execute with the
-        // current resources
+        /* Whenever a new jobs added or a job finishes, check for jobs in the queue that can execute with the
+            current resources */
         pickJobsToRun();
     }
 
