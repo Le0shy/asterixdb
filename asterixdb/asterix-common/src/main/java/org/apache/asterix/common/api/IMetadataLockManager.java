@@ -200,34 +200,24 @@ public interface IMetadataLockManager {
      *
      * @param locks
      *         the lock list to add the new lock to
-     * @param database
-     *         the database name
-     * @param dataverseName
-     *         the dataverse name
      * @param schedulerConfigName
      *         the name of the scheduler config in the given dataverse
      * @throws AlgebricksException
      *         if lock couldn't be acquired
      */
-    void acquireSchedulerConfigWriteLock(LockList locks, String database, DataverseName dataverseName,
-            String schedulerConfigName) throws AlgebricksException;
+    void acquireSchedulerConfigWriteLock(LockList locks, String schedulerConfigName) throws AlgebricksException;
 
     /**
      * Acquire read lock on the scheduler config
      *
      * @param locks
      *         the lock list to add the new lock to
-     * @param database
-     *         the database name
-     * @param dataverseName
-     *         the dataverse name
      * @param schedulerConfigName
      *         the name of the scheduler config in the given dataverse
      * @throws AlgebricksException
      *         if lock couldn't be acquired
      */
-    void acquireSchedulerConfigReadLock(LockList locks, String database, DataverseName dataverseName,
-            String schedulerConfigName) throws AlgebricksException;
+    void acquireSchedulerConfigReadLock(LockList locks, String schedulerConfigName) throws AlgebricksException;
 
     /**
      * Acquire write lock on the full-text config

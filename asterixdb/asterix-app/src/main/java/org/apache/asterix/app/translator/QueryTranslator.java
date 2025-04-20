@@ -1719,17 +1719,10 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
 
         /* validate length of config name */
         String configName = stmtCreateConfig.getConfigName();
-        if(configName.length() < SCHEDULER_CONFIG_MINIMUM_LENGTH) {
+        if (configName.length() < SCHEDULER_CONFIG_MINIMUM_LENGTH) {
             throw new CompilationException(ErrorCode.SCHEDULER_CONFIG_NAME_INVALID,
                     stmtCreateConfig.getSourceLocation(), configName);
         }
-        /* validate database object */
-        metadataProvider.validateDatabaseObjectName(stmtCreateConfig.getNamespace(), configName,
-                stmt.getSourceLocation());
-
-        Namespace stmtActiveNamespace = getActiveNamespace(stmtCreateConfig.getNamespace());
-        DataverseName dataverseName = stmtActiveNamespace.getDataverseName();
-        String databaseName = stmtActiveNamespace.getDatabaseName();
 
         long defaultPriority = stmtCreateConfig.getDefaultPriority();
         double shortMemoryPercent = stmtCreateConfig.getShortMemoryPercent();
@@ -1739,20 +1732,18 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
         if (isCompileOnly()) {
             return;
         }
-        lockUtil.createSchedulerConfigBegin(lockManager, metadataProvider.getLocks(), databaseName, dataverseName,
-                configName);
+        lockUtil.createSchedulerConfigBegin(lockManager, metadataProvider.getLocks(), configName);
         try {
-            doCreateSchedulerConfig(metadataProvider, stmtCreateConfig, databaseName, dataverseName, configName,
-                    defaultPriority, shortMemoryPercent, shortCPUQuota, queryGroups);
+            doCreateSchedulerConfig(metadataProvider, stmtCreateConfig, configName, defaultPriority, shortMemoryPercent,
+                    shortCPUQuota, queryGroups);
         } finally {
             metadataProvider.getLocks().unlock();
         }
     }
 
     protected void doCreateSchedulerConfig(MetadataProvider metadataProvider,
-            CreateSchedulerConfigStatement stmtCreateConfig, String databaseName, DataverseName dataverseName,
-            String configName, long defaultPriority, double shortMemoryPercent, long shortCPUQuota,
-            Map<Long, List<String>> queryGroups) throws Exception {
+            CreateSchedulerConfigStatement stmtCreateConfig, String configName, long defaultPriority,
+            double shortMemoryPercent, long shortCPUQuota, Map<Long, List<String>> queryGroups) throws Exception {
         /* Begins a metadata transaction to ensure atomic updates. */
         MetadataTransactionContext mdTxnCtx = MetadataManager.INSTANCE.beginTransaction();
         metadataProvider.setMetadataTxnContext(mdTxnCtx);
@@ -1765,7 +1756,7 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
 
         try {
             SchedulerConfigMetadataEntity existingConfig =
-                    MetadataManager.INSTANCE.getSchedulerConfig(mdTxnCtx, databaseName, dataverseName, configName);
+                    MetadataManager.INSTANCE.getSchedulerConfig(mdTxnCtx, configName);
             if (existingConfig != null) {
                 if (stmtCreateConfig.getIfNotExists()) {
                     MetadataManager.INSTANCE.commitTransaction(mdTxnCtx);
@@ -1781,8 +1772,8 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
                 Commits the transaction.
             */
 
-            SchedulerConfigRecordDescriptor configDescriptor = new SchedulerConfigRecordDescriptor(databaseName,
-                    dataverseName, configName, defaultPriority, shortMemoryPercent, shortCPUQuota, queryGroups);
+            SchedulerConfigRecordDescriptor configDescriptor = new SchedulerConfigRecordDescriptor(configName,
+                    defaultPriority, shortMemoryPercent, shortCPUQuota, queryGroups);
             SchedulerConfigMetadataEntity configMetadataEntity = new SchedulerConfigMetadataEntity(configDescriptor);
 
             MetadataManager.INSTANCE.addSchedulerConfig(mdTxnCtx, configMetadataEntity);
@@ -1796,39 +1787,35 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
     protected void handleSchedulerConfigDropStatement(MetadataProvider metadataProvider, Statement stmt)
             throws AlgebricksException, RemoteException {
         SchedulerConfigDropStatement stmtConfigDrop = (SchedulerConfigDropStatement) stmt;
-        Namespace stmtActiveNamespace = getActiveNamespace(stmtConfigDrop.getNamespace());
-        DataverseName dataverseName = stmtActiveNamespace.getDataverseName();
-        String databaseName = stmtActiveNamespace.getDatabaseName();
         String configName = stmtConfigDrop.getConfigName();
 
         if (isCompileOnly()) {
             return;
         }
-        lockUtil.dropSchedulerConfigBegin(lockManager, metadataProvider.getLocks(), databaseName, dataverseName,
-                configName);
+        lockUtil.dropSchedulerConfigBegin(lockManager, metadataProvider.getLocks(), configName);
         try {
-            doDropSchedulerConfig(metadataProvider, stmtConfigDrop, databaseName, dataverseName);
+            doDropSchedulerConfig(metadataProvider, stmtConfigDrop);
         } finally {
             metadataProvider.getLocks().unlock();
         }
     }
 
-    private void doDropSchedulerConfig(MetadataProvider metadataProvider, SchedulerConfigDropStatement stmtConfigDrop,
-            String databaseName, DataverseName dataverseName) throws RemoteException, AlgebricksException {
+    private void doDropSchedulerConfig(MetadataProvider metadataProvider, SchedulerConfigDropStatement stmtConfigDrop)
+            throws RemoteException, AlgebricksException {
 
         MetadataTransactionContext mdTxnCtx = MetadataManager.INSTANCE.beginTransaction();
         metadataProvider.setMetadataTxnContext(mdTxnCtx);
         String schedulerConfigName = stmtConfigDrop.getConfigName();
 
         try {
-            String currentlyEnabledConfig = getCurrentlyEnabledSchedulerConfig(mdTxnCtx, databaseName, dataverseName);
+            String currentlyEnabledConfig = getCurrentlyEnabledSchedulerConfig(mdTxnCtx);
             if (schedulerConfigName.equals(currentlyEnabledConfig)) {
                 throw new CompilationException(ErrorCode.SCHEDULER_CONFIG_IS_ENABLED,
                         stmtConfigDrop.getSourceLocation(), schedulerConfigName);
             }
 
-            SchedulerConfigMetadataEntity configMetadataEntity = MetadataManager.INSTANCE.getSchedulerConfig(mdTxnCtx,
-                    databaseName, dataverseName, schedulerConfigName);
+            SchedulerConfigMetadataEntity configMetadataEntity =
+                    MetadataManager.INSTANCE.getSchedulerConfig(mdTxnCtx, schedulerConfigName);
             if (configMetadataEntity == null) {
                 if (stmtConfigDrop.getIfExists()) {
                     MetadataManager.INSTANCE.commitTransaction(mdTxnCtx);
@@ -1839,7 +1826,7 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
                 }
             }
 
-            MetadataManager.INSTANCE.dropSchedulerConfig(mdTxnCtx, databaseName, dataverseName, schedulerConfigName);
+            MetadataManager.INSTANCE.dropSchedulerConfig(mdTxnCtx, schedulerConfigName);
             MetadataManager.INSTANCE.commitTransaction(mdTxnCtx);
         } catch (Exception e) {
             abort(e, e, mdTxnCtx);
@@ -1850,32 +1837,28 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
     protected void handleUpsertQGroup(MetadataProvider metadataProvider, Statement stmt)
             throws AlgebricksException, RemoteException {
         UpsertQGroupStatement stmtUpsert = (UpsertQGroupStatement) stmt;
-        Namespace stmtActiveNamespace = getActiveNamespace(stmtUpsert.getNamespace());
-        DataverseName dataverseName = stmtActiveNamespace.getDataverseName();
-        String databaseName = stmtActiveNamespace.getDatabaseName();
         String configName = stmtUpsert.getConfigName();
 
         if (isCompileOnly()) {
             return;
         }
-        lockUtil.createSchedulerConfigBegin(lockManager, metadataProvider.getLocks(), databaseName, dataverseName,
-                configName);
+        lockUtil.createSchedulerConfigBegin(lockManager, metadataProvider.getLocks(), configName);
         try {
-            doUpsertQGroup(metadataProvider, stmtUpsert, databaseName, dataverseName);
+            doUpsertQGroup(metadataProvider, stmtUpsert);
         } finally {
             metadataProvider.getLocks().unlock();
         }
     }
 
-    private void doUpsertQGroup(MetadataProvider metadataProvider, UpsertQGroupStatement stmtUpsert,
-            String databaseName, DataverseName dataverseName) throws RemoteException, AlgebricksException {
+    private void doUpsertQGroup(MetadataProvider metadataProvider, UpsertQGroupStatement stmtUpsert)
+            throws RemoteException, AlgebricksException {
         MetadataTransactionContext mdTxnCtx = MetadataManager.INSTANCE.beginTransaction();
         metadataProvider.setMetadataTxnContext(mdTxnCtx);
         String schedulerConfigName = stmtUpsert.getConfigName();
 
         try {
-            SchedulerConfigMetadataEntity configMetadataEntity = MetadataManager.INSTANCE.getSchedulerConfig(mdTxnCtx,
-                    databaseName, dataverseName, schedulerConfigName);
+            SchedulerConfigMetadataEntity configMetadataEntity =
+                    MetadataManager.INSTANCE.getSchedulerConfig(mdTxnCtx, schedulerConfigName);
 
             if (configMetadataEntity == null) {
                 throw new CompilationException(ErrorCode.SCHEDULER_CONFIG_NOT_FOUND, stmtUpsert.getSourceLocation(),
@@ -1883,7 +1866,7 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
             }
 
             configMetadataEntity.upsertQueryGroup(stmtUpsert.getUpsertQueryGroups());
-            MetadataManager.INSTANCE.dropSchedulerConfig(mdTxnCtx, databaseName, dataverseName, schedulerConfigName);
+            MetadataManager.INSTANCE.dropSchedulerConfig(mdTxnCtx, schedulerConfigName);
             MetadataManager.INSTANCE.addSchedulerConfig(mdTxnCtx, configMetadataEntity);
             MetadataManager.INSTANCE.commitTransaction(mdTxnCtx);
         } catch (Exception e) {
@@ -1895,32 +1878,28 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
     protected void handleDeleteQGroup(MetadataProvider metadataProvider, Statement stmt)
             throws AlgebricksException, RemoteException {
         DeleteQGroupStatement stmtDelete = (DeleteQGroupStatement) stmt;
-        Namespace stmtActiveNamespace = getActiveNamespace(stmtDelete.getNamespace());
-        DataverseName dataverseName = stmtActiveNamespace.getDataverseName();
-        String databaseName = stmtActiveNamespace.getDatabaseName();
         String configName = stmtDelete.getConfigName();
 
         if (isCompileOnly()) {
             return;
         }
-        lockUtil.createSchedulerConfigBegin(lockManager, metadataProvider.getLocks(), databaseName, dataverseName,
-                configName);
+        lockUtil.createSchedulerConfigBegin(lockManager, metadataProvider.getLocks(), configName);
         try {
-            doDeleteQGroup(metadataProvider, stmtDelete, databaseName, dataverseName);
+            doDeleteQGroup(metadataProvider, stmtDelete);
         } finally {
             metadataProvider.getLocks().unlock();
         }
     }
 
-    private void doDeleteQGroup(MetadataProvider metadataProvider, DeleteQGroupStatement stmtDelete,
-            String databaseName, DataverseName dataverseName) throws RemoteException, AlgebricksException {
+    private void doDeleteQGroup(MetadataProvider metadataProvider, DeleteQGroupStatement stmtDelete)
+            throws RemoteException, AlgebricksException {
         MetadataTransactionContext mdTxnCtx = MetadataManager.INSTANCE.beginTransaction();
         metadataProvider.setMetadataTxnContext(mdTxnCtx);
         String schedulerConfigName = stmtDelete.getConfigName();
 
         try {
-            SchedulerConfigMetadataEntity configMetadataEntity = MetadataManager.INSTANCE.getSchedulerConfig(mdTxnCtx,
-                    databaseName, dataverseName, schedulerConfigName);
+            SchedulerConfigMetadataEntity configMetadataEntity =
+                    MetadataManager.INSTANCE.getSchedulerConfig(mdTxnCtx, schedulerConfigName);
 
             if (configMetadataEntity == null) {
                 throw new CompilationException(ErrorCode.SCHEDULER_CONFIG_NOT_FOUND, stmtDelete.getSourceLocation(),
@@ -1932,7 +1911,7 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
                         schedulerConfigName);
             }
 
-            MetadataManager.INSTANCE.dropSchedulerConfig(mdTxnCtx, databaseName, dataverseName, schedulerConfigName);
+            MetadataManager.INSTANCE.dropSchedulerConfig(mdTxnCtx, schedulerConfigName);
             MetadataManager.INSTANCE.addSchedulerConfig(mdTxnCtx, configMetadataEntity);
             MetadataManager.INSTANCE.commitTransaction(mdTxnCtx);
         } catch (Exception e) {
@@ -1941,48 +1920,43 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
         }
     }
 
-    private String getCurrentlyEnabledSchedulerConfig(MetadataTransactionContext mdTxnCtx, String databaseName,
-            DataverseName dataverseName) throws AlgebricksException {
+    private String getCurrentlyEnabledSchedulerConfig(MetadataTransactionContext mdTxnCtx) throws AlgebricksException {
         SchedulerConfigMetadataEntity configStateEntity =
-                MetadataManager.INSTANCE.getSchedulerConfig(mdTxnCtx, databaseName, dataverseName, SCHEDULER_STATE);
+                MetadataManager.INSTANCE.getSchedulerConfig(mdTxnCtx, SCHEDULER_STATE);
         if (configStateEntity == null) {
             return null;
         }
         return configStateEntity.getEnabled();
     }
 
-    private SchedulerConfigMetadataEntity getSchedulerStateEntity (MetadataTransactionContext mdTxnCtx, String databaseName,
-            DataverseName dataverseName) throws AlgebricksException {
-        return MetadataManager.INSTANCE.getSchedulerConfig(mdTxnCtx, databaseName, dataverseName, SCHEDULER_STATE);
+    private SchedulerConfigMetadataEntity getSchedulerStateEntity(MetadataTransactionContext mdTxnCtx)
+            throws AlgebricksException {
+        return MetadataManager.INSTANCE.getSchedulerConfig(mdTxnCtx, SCHEDULER_STATE);
     }
 
-    private SchedulerConfigMetadataEntity createSchedulerStateEntity(MetadataTransactionContext mdTxnCtx, String databaseName,
-            DataverseName dataverseName, String enabledConfigName) {
-        return new SchedulerConfigMetadataEntity(new SchedulerConfigStateDescriptor(databaseName,
-                dataverseName, SCHEDULER_STATE, enabledConfigName));
+    private SchedulerConfigMetadataEntity createSchedulerStateEntity(String enabledConfigName) {
+        return new SchedulerConfigMetadataEntity(
+                new SchedulerConfigStateDescriptor(SCHEDULER_STATE, enabledConfigName));
     }
+
     protected void handleEnableSchedulerConfig(MetadataProvider metadataProvider, Statement stmt)
             throws AlgebricksException, RemoteException {
         EnableSchedulerStatement stmtEnable = (EnableSchedulerStatement) stmt;
-        Namespace stmtActiveNamespace = getActiveNamespace(stmtEnable.getNamespace());
-        DataverseName dataverseName = stmtActiveNamespace.getDataverseName();
-        String databaseName = stmtActiveNamespace.getDatabaseName();
         String configName = stmtEnable.getConfigName();
 
         if (isCompileOnly()) {
             return;
         }
-        lockUtil.enableSchedulerConfigBegin(lockManager, metadataProvider.getLocks(), databaseName, dataverseName,
-                configName);
+        lockUtil.enableSchedulerConfigBegin(lockManager, metadataProvider.getLocks(), configName);
         try {
-            doEnableSchedulerConfig(metadataProvider, stmtEnable, databaseName, dataverseName);
+            doEnableSchedulerConfig(metadataProvider, stmtEnable);
         } finally {
             metadataProvider.getLocks().unlock();
         }
     }
 
-    private void doEnableSchedulerConfig(MetadataProvider metadataProvider, EnableSchedulerStatement stmtEnable,
-            String databaseName, DataverseName dataverseName) throws RemoteException, AlgebricksException {
+    private void doEnableSchedulerConfig(MetadataProvider metadataProvider, EnableSchedulerStatement stmtEnable)
+            throws RemoteException, AlgebricksException {
         String schedulerConfigName = stmtEnable.getConfigName();
         MetadataTransactionContext mdTxnCtx = MetadataManager.INSTANCE.beginTransaction();
         metadataProvider.setMetadataTxnContext(mdTxnCtx);
@@ -1991,8 +1965,7 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
             /* skip validation for enabling default config */
             if (!schedulerConfigName.equals(SCHEDULER_DEFAULT_CONFIG_NAME)) {
                 SchedulerConfigMetadataEntity configMetadataEntity =
-                        MetadataManager.INSTANCE.getSchedulerConfig(mdTxnCtx, databaseName, dataverseName,
-                                schedulerConfigName);
+                        MetadataManager.INSTANCE.getSchedulerConfig(mdTxnCtx, schedulerConfigName);
 
                 if (configMetadataEntity == null) {
                     throw new CompilationException(ErrorCode.SCHEDULER_CONFIG_NOT_FOUND, stmtEnable.getSourceLocation(),
@@ -2000,16 +1973,16 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
                 }
             }
             /* set config enabled - config state record not existed */
-            SchedulerConfigMetadataEntity configStateEntity = getSchedulerStateEntity(mdTxnCtx, databaseName, dataverseName);
+            SchedulerConfigMetadataEntity configStateEntity = getSchedulerStateEntity(mdTxnCtx);
             if (configStateEntity == null) {
-                configStateEntity = createSchedulerStateEntity(mdTxnCtx, databaseName, dataverseName, schedulerConfigName);
+                configStateEntity = createSchedulerStateEntity(schedulerConfigName);
                 MetadataManager.INSTANCE.addSchedulerConfig(mdTxnCtx, configStateEntity);
                 MetadataManager.INSTANCE.commitTransaction(mdTxnCtx);
             }
             /* if the config has already been enabled */
             else if (!configStateEntity.getEnabled().equals(schedulerConfigName)) {
                 configStateEntity.setEnabled(schedulerConfigName);
-                MetadataManager.INSTANCE.dropSchedulerConfig(mdTxnCtx, databaseName, dataverseName, SCHEDULER_STATE);
+                MetadataManager.INSTANCE.dropSchedulerConfig(mdTxnCtx, SCHEDULER_STATE);
                 MetadataManager.INSTANCE.addSchedulerConfig(mdTxnCtx, configStateEntity);
             }
             /* commit transaction */
@@ -2023,31 +1996,27 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
     protected void handleUpdateSchedulerConfig(MetadataProvider metadataProvider, Statement stmt)
             throws AlgebricksException, RemoteException {
         UpdateSchedulerStatement stmtUpdate = (UpdateSchedulerStatement) stmt;
-        Namespace stmtActiveNamespace = getActiveNamespace(stmtUpdate.getNamespace());
-        DataverseName dataverseName = stmtActiveNamespace.getDataverseName();
-        String databaseName = stmtActiveNamespace.getDatabaseName();
         String configName = stmtUpdate.getConfigName();
 
         if (isCompileOnly()) {
             return;
         }
-        lockUtil.createSchedulerConfigBegin(lockManager, metadataProvider.getLocks(), databaseName, dataverseName,
-                configName);
+        lockUtil.createSchedulerConfigBegin(lockManager, metadataProvider.getLocks(), configName);
         try {
-            doUpdateSchedulerConfig(metadataProvider, stmtUpdate, databaseName, dataverseName);
+            doUpdateSchedulerConfig(metadataProvider, stmtUpdate);
         } finally {
             metadataProvider.getLocks().unlock();
         }
     }
 
-    private void doUpdateSchedulerConfig(MetadataProvider metadataProvider, UpdateSchedulerStatement stmtUpdate,
-            String databaseName, DataverseName dataverseName) throws RemoteException, AlgebricksException {
+    private void doUpdateSchedulerConfig(MetadataProvider metadataProvider, UpdateSchedulerStatement stmtUpdate)
+            throws RemoteException, AlgebricksException {
         MetadataTransactionContext mdTxnCtx = MetadataManager.INSTANCE.beginTransaction();
         metadataProvider.setMetadataTxnContext(mdTxnCtx);
         String schedulerConfigName = stmtUpdate.getConfigName();
         try {
-            SchedulerConfigMetadataEntity configMetadataEntity = MetadataManager.INSTANCE.getSchedulerConfig(mdTxnCtx,
-                    databaseName, dataverseName, schedulerConfigName);
+            SchedulerConfigMetadataEntity configMetadataEntity =
+                    MetadataManager.INSTANCE.getSchedulerConfig(mdTxnCtx, schedulerConfigName);
 
             if (configMetadataEntity == null) {
                 throw new CompilationException(ErrorCode.SCHEDULER_CONFIG_NOT_FOUND, stmtUpdate.getSourceLocation(),
@@ -2056,7 +2025,7 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
 
             configMetadataEntity.updateConfigParameters(stmtUpdate.getDefaultPriority(),
                     stmtUpdate.getShortMemoryPercent(), stmtUpdate.getShortCPUQuota());
-            MetadataManager.INSTANCE.dropSchedulerConfig(mdTxnCtx, databaseName, dataverseName, schedulerConfigName);
+            MetadataManager.INSTANCE.dropSchedulerConfig(mdTxnCtx, schedulerConfigName);
             MetadataManager.INSTANCE.addSchedulerConfig(mdTxnCtx, configMetadataEntity);
             MetadataManager.INSTANCE.commitTransaction(mdTxnCtx);
         } catch (Exception e) {

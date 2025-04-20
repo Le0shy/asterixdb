@@ -2229,7 +2229,7 @@ CreateSchedulerConfigStatement CreateSchedulerConfigSpec(Token startStmtToken) t
   )
   {
     try {
-      stmt = new CreateSchedulerConfigStatement(nameComponents.first, nameComponents.second.getValue(), ifNotExists, expr);
+      stmt = new CreateSchedulerConfigStatement(nameComponents.second.getValue(), ifNotExists, expr);
       return addSourceLocation(stmt, startStmtToken);
     } catch (CompilationException e) {
        throw new SqlppParseException(getSourceLocation(startStmtToken), e.getMessage());
@@ -2543,7 +2543,7 @@ SchedulerConfigDropStatement DropSchedulerConfigSpec(Token startStmtToken) throw
 {
   nameComponents = QualifiedName() ifExists = IfExists()
   {
-    stmt = new SchedulerConfigDropStatement(nameComponents.first, nameComponents.second.getValue(), ifExists);
+    stmt = new SchedulerConfigDropStatement(nameComponents.second.getValue(), ifExists);
     return addSourceLocation(stmt, startStmtToken);
   }
 }
@@ -2884,7 +2884,7 @@ UpsertQGroupStatement UpsertQGroupStatement() throws ParseException:
     expr = RecordConstructor()
     {
         try {
-            UpsertQGroupStatement stmt = new UpsertQGroupStatement(nameComponents.first, nameComponents.second.getValue(), expr);
+            UpsertQGroupStatement stmt = new UpsertQGroupStatement(nameComponents.second.getValue(), expr);
             return addSourceLocation(stmt, startToken);
         } catch (CompilationException e) {
             throw new SqlppParseException(getSourceLocation(startToken), e.getMessage());
@@ -2904,7 +2904,7 @@ DeleteQGroupStatement DeleteQGroupStatement() throws ParseException:
   expr = RecordConstructor()
   {
   try {
-      return addSourceLocation(new DeleteQGroupStatement(nameComponents.first, nameComponents.second.getValue(), expr
+      return addSourceLocation(new DeleteQGroupStatement(nameComponents.second.getValue(), expr
     ), startToken);
   } catch (CompilationException e) {
         throw new SqlppParseException(getSourceLocation(startToken), e.getMessage());
@@ -2924,7 +2924,7 @@ UpdateSchedulerStatement UpdateSchedulerStatement() throws ParseException:
   expr = RecordConstructor()
   {
   try {
-      return addSourceLocation(new UpdateSchedulerStatement(nameComponents.first, nameComponents.second.getValue(), expr
+      return addSourceLocation(new UpdateSchedulerStatement(nameComponents.second.getValue(), expr
     ), startToken);
   } catch (CompilationException e) {
         throw new SqlppParseException(getSourceLocation(startToken), e.getMessage());
@@ -4045,8 +4045,7 @@ EnableSchedulerStatement EnableSchedulerStatement() throws ParseException:
     nameComponents = QualifiedName()
     {
         try {
-            EnableSchedulerStatement stmt = new EnableSchedulerStatement(nameComponents.first,
-            nameComponents.second.getValue());
+            EnableSchedulerStatement stmt = new EnableSchedulerStatement(nameComponents.second.getValue());
             return addSourceLocation(stmt, startToken);
         } catch (CompilationException e) {
             throw new SqlppParseException(getSourceLocation(startToken), e.getMessage());

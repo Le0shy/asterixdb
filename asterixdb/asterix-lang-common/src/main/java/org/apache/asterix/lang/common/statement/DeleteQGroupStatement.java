@@ -3,8 +3,6 @@ package org.apache.asterix.lang.common.statement;
 import java.util.*;
 
 import org.apache.asterix.common.exceptions.CompilationException;
-import org.apache.asterix.common.metadata.DataverseName;
-import org.apache.asterix.common.metadata.Namespace;
 import org.apache.asterix.lang.common.base.AbstractStatement;
 import org.apache.asterix.lang.common.expression.RecordConstructor;
 import org.apache.asterix.lang.common.util.SchedulerConfigUtil;
@@ -14,21 +12,10 @@ import org.apache.asterix.object.base.*;
 public class DeleteQGroupStatement extends AbstractStatement {
     private final String configName;
     private final AdmObjectNode deleteNode;
-    private final Namespace namespace;
 
-    public DeleteQGroupStatement(Namespace namespace, String configName, RecordConstructor expr)
-            throws CompilationException {
-        this.namespace = namespace;
+    public DeleteQGroupStatement(String configName, RecordConstructor expr) throws CompilationException {
         this.configName = configName;
         this.deleteNode = SchedulerConfigUtil.validateDeleteQgroupNode(expr);
-    }
-
-    public Namespace getNamespace() {
-        return namespace;
-    }
-
-    public DataverseName getDataverseName() {
-        return namespace == null ? null : namespace.getDataverseName();
     }
 
     public String getConfigName() {

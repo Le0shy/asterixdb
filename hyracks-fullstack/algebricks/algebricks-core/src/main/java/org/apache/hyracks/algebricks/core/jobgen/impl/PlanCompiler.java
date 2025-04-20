@@ -67,7 +67,7 @@ public class PlanCompiler {
             IJobletEventListenerFactory jobEventListenerFactory) throws AlgebricksException {
         JobSpecification spec = new JobSpecification(context.getFrameSize());
         spec.setMaxWarnings(context.getMaxWarnings());
-        spec.setPriority(context.getPhysicalOptimizationConfig().getJobPriority());
+        spec.setGroupName(context.getPhysicalOptimizationConfig().getJobGroupName());
         if (jobEventListenerFactory != null) {
             spec.setJobletEventListenerFactory(jobEventListenerFactory);
         }

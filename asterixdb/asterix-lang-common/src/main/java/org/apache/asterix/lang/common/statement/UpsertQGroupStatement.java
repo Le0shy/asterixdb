@@ -4,8 +4,6 @@ import java.util.HashMap;
 import java.util.Map;
 
 import org.apache.asterix.common.exceptions.CompilationException;
-import org.apache.asterix.common.metadata.DataverseName;
-import org.apache.asterix.common.metadata.Namespace;
 import org.apache.asterix.lang.common.base.AbstractStatement;
 import org.apache.asterix.lang.common.expression.RecordConstructor;
 import org.apache.asterix.lang.common.util.SchedulerConfigUtil;
@@ -15,25 +13,14 @@ import org.apache.asterix.object.base.*;
 public class UpsertQGroupStatement extends AbstractStatement {
     private final String configName;
     private final AdmObjectNode upsertNode;
-    private final Namespace namespace;
 
-    public UpsertQGroupStatement(Namespace namespace, String configName, RecordConstructor expr)
-            throws CompilationException {
-        this.namespace = namespace;
+    public UpsertQGroupStatement(String configName, RecordConstructor expr) throws CompilationException {
         this.configName = configName;
         this.upsertNode = SchedulerConfigUtil.validateUpsertQgroupNode(expr);
     }
 
     public String getConfigName() {
         return configName;
-    }
-
-    public Namespace getNamespace() {
-        return namespace;
-    }
-
-    public DataverseName getDataverseName() {
-        return namespace == null ? null : namespace.getDataverseName();
     }
 
     public Map<String, Long> getUpsertQueryGroups() {

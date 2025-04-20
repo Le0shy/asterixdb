@@ -96,7 +96,7 @@ public class OptimizationConfUtil {
         boolean columnFilter = getBoolean(querySpecificConfig, CompilerProperties.COMPILER_COLUMN_FILTER_KEY,
                 compilerProperties.isColumnFilter());
 
-        int jobPriority = getJobPriority(compilerProperties, querySpecificConfig, sourceLoc);
+        String jobGroupName = getJobGroupName(compilerProperties, querySpecificConfig, sourceLoc);
 
         PhysicalOptimizationConfig physOptConf = new PhysicalOptimizationConfig();
         physOptConf.setFrameSize(frameSize);
@@ -122,7 +122,7 @@ public class OptimizationConfUtil {
         physOptConf.setQueryPlanShapeMode(queryPlanShape);
         physOptConf.setColumnFilter(columnFilter);
 
-        physOptConf.setJobPriority(jobPriority);
+        physOptConf.setJobGroupName(jobGroupName);
 
         // We should have already validated the parameter names at this point...
         Set<String> filteredParameterNames = new HashSet<>(parameterNames);
@@ -220,15 +220,14 @@ public class OptimizationConfUtil {
         return defaultValue;
     }
 
-    private static int getJobPriority(CompilerProperties compilerProperties, Map<String, Object> querySpecificConfig,
-            SourceLocation sourceLoc) throws AsterixException {
-        String jobPriority = (String) querySpecificConfig.get(CompilerProperties.COMPILER_JOBPRIORITY_KEY);
+    private static String getJobGroupName(CompilerProperties compilerProperties,
+            Map<String, Object> querySpecificConfig, SourceLocation sourceLoc) throws AsterixException {
+        String jobGroupName = (String) querySpecificConfig.get(CompilerProperties.COMPILER_QGROUP_KEY);
         try {
-            return jobPriority == null ? compilerProperties.getJobPriority()
-                    : OptionTypes.NONNEGATIVE_INTEGER.parse(jobPriority);
+            return jobGroupName == null ? compilerProperties.getJobGroupName() : jobGroupName;
         } catch (IllegalArgumentException e) {
             throw AsterixException.create(ErrorCode.COMPILATION_BAD_QUERY_PARAMETER_VALUE, sourceLoc,
-                    CompilerProperties.COMPILER_JOBPRIORITY_KEY, 1, "priority");
+                    CompilerProperties.COMPILER_QGROUP_KEY, 1, "qgroup");
         }
     }
 }
