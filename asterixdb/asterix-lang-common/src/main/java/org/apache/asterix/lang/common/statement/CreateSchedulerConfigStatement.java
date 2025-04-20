@@ -24,8 +24,6 @@ import java.util.List;
 import java.util.Map;
 
 import org.apache.asterix.common.exceptions.CompilationException;
-import org.apache.asterix.common.metadata.DataverseName;
-import org.apache.asterix.common.metadata.Namespace;
 import org.apache.asterix.lang.common.base.AbstractStatement;
 import org.apache.asterix.lang.common.expression.RecordConstructor;
 import org.apache.asterix.lang.common.util.SchedulerConfigUtil;
@@ -34,7 +32,6 @@ import org.apache.asterix.object.base.*;
 
 public class CreateSchedulerConfigStatement extends AbstractStatement {
 
-    private final Namespace namespace;
     private final String configName;
     private final boolean ifNotExists;
     private final AdmObjectNode configNode;
@@ -46,20 +43,11 @@ public class CreateSchedulerConfigStatement extends AbstractStatement {
     public static final String FIELD_NAME_QG_PRIORITY = "priority";
     public static final String FIELD_NAME_QG_GROUPLIST = "grouplist";
 
-    public CreateSchedulerConfigStatement(Namespace namespace, String configName, boolean ifNotExists,
-            RecordConstructor expr) throws CompilationException {
-        this.namespace = namespace;
+    public CreateSchedulerConfigStatement(String configName, boolean ifNotExists, RecordConstructor expr)
+            throws CompilationException {
         this.configName = configName;
         this.ifNotExists = ifNotExists;
         this.configNode = SchedulerConfigUtil.validateAndGetConfigNode(expr);
-    }
-
-    public Namespace getNamespace() {
-        return namespace;
-    }
-
-    public DataverseName getDataverseName() {
-        return namespace == null ? null : namespace.getDataverseName();
     }
 
     public String getConfigName() {

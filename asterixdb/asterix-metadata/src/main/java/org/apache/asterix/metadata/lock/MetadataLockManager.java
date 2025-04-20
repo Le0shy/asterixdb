@@ -142,19 +142,15 @@ public class MetadataLockManager implements IMetadataLockManager {
     }
 
     @Override
-    public void acquireSchedulerConfigWriteLock(LockList locks, String database, DataverseName dataverseName,
-            String schedulerConfigName) throws AlgebricksException {
-        MetadataLockKey key =
-                MetadataLockKey.createSchedulerConfigLockKey(database, dataverseName, schedulerConfigName);
+    public void acquireSchedulerConfigWriteLock(LockList locks, String schedulerConfigName) throws AlgebricksException {
+        MetadataLockKey key = MetadataLockKey.createSchedulerConfigLockKey(schedulerConfigName);
         IMetadataLock lock = mdlocks.computeIfAbsent(key, LOCK_FUNCTION);
         locks.add(IMetadataLock.Mode.WRITE, lock);
     }
 
     @Override
-    public void acquireSchedulerConfigReadLock(LockList locks, String database, DataverseName dataverseName,
-            String schedulerConfigName) throws AlgebricksException {
-        MetadataLockKey key =
-                MetadataLockKey.createSchedulerConfigLockKey(database, dataverseName, schedulerConfigName);
+    public void acquireSchedulerConfigReadLock(LockList locks, String schedulerConfigName) throws AlgebricksException {
+        MetadataLockKey key = MetadataLockKey.createSchedulerConfigLockKey(schedulerConfigName);
         IMetadataLock lock = mdlocks.computeIfAbsent(key, LOCK_FUNCTION);
         locks.add(IMetadataLock.Mode.READ, lock);
     }

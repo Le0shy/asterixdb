@@ -863,39 +863,31 @@ public abstract class MetadataManager implements IMetadataManager {
     }
 
     @Override
-    public SchedulerConfigMetadataEntity getSchedulerConfig(MetadataTransactionContext ctx, String database,
-            DataverseName dataverseName, String configName) throws AlgebricksException {
-        Objects.requireNonNull(database);
+    public SchedulerConfigMetadataEntity getSchedulerConfig(MetadataTransactionContext ctx, String configName)
+            throws AlgebricksException {
         // First look in the context to see if this transaction created the
         // requested scheduler config itself (but the scheduler config is still uncommitted).
-        SchedulerConfigMetadataEntity configMetadataEntity =
-                ctx.getSchedulerConfig(database, dataverseName, configName);
+        SchedulerConfigMetadataEntity configMetadataEntity = ctx.getSchedulerConfig(configName);
         if (configMetadataEntity != null) {
             // Don't add this config to the cache, since it is still
             // uncommitted.
             return configMetadataEntity;
         }
 
-        if (ctx.schedulerConfigIsDropped(database, dataverseName, configName)) {
+        if (ctx.schedulerConfigIsDropped(configName)) {
             // config has been dropped by this transaction but could still be
             // in the cache.
             return null;
         }
 
-        if (ctx.getDataverse(database, dataverseName) != null) {
-            // This transaction has dropped and subsequently created the same
-            // dataverse.
-            return null;
-        }
-
-        configMetadataEntity = cache.getSchedulerConfig(database, dataverseName, configName);
+        configMetadataEntity = cache.getSchedulerConfig(configName);
         if (configMetadataEntity != null) {
             // config is already in the cache, don't add it again.
             return configMetadataEntity;
         }
 
         try {
-            configMetadataEntity = metadataNode.getSchedulerConfig(ctx.getTxnId(), database, dataverseName, configName);
+            configMetadataEntity = metadataNode.getSchedulerConfig(ctx.getTxnId(), configName);
         } catch (RemoteException e) {
             throw new MetadataException(ErrorCode.REMOTE_EXCEPTION_WHEN_CALLING_METADATA_NODE, e);
         }
@@ -909,15 +901,13 @@ public abstract class MetadataManager implements IMetadataManager {
     }
 
     @Override
-    public void dropSchedulerConfig(MetadataTransactionContext mdTxnCtx, String database, DataverseName dataverseName,
-            String configName) throws AlgebricksException, RemoteException {
+    public void dropSchedulerConfig(MetadataTransactionContext mdTxnCtx, String configName) throws AlgebricksException {
         try {
-            Objects.requireNonNull(database);
-            metadataNode.dropSchedulerConfig(mdTxnCtx.getTxnId(), database, dataverseName, configName);
+            metadataNode.dropSchedulerConfig(mdTxnCtx.getTxnId(), configName);
         } catch (RemoteException e) {
             throw new MetadataException(ErrorCode.REMOTE_EXCEPTION_WHEN_CALLING_METADATA_NODE, e);
         }
-        mdTxnCtx.dropSchedulerConfig(database, dataverseName, configName);
+        mdTxnCtx.dropSchedulerConfig(configName);
     }
 
     @Override

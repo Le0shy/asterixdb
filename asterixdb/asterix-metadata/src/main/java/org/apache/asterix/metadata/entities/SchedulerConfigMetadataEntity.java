@@ -3,8 +3,6 @@ package org.apache.asterix.metadata.entities;
 import java.util.List;
 import java.util.Map;
 
-import org.apache.asterix.common.exceptions.CompilationException;
-import org.apache.asterix.common.exceptions.ErrorCode;
 import org.apache.asterix.metadata.MetadataCache;
 import org.apache.asterix.metadata.api.IMetadataEntity;
 import org.apache.asterix.runtime.scheduler.ISchedulerConfigDescriptor;
@@ -15,7 +13,6 @@ public class SchedulerConfigMetadataEntity implements IMetadataEntity<SchedulerC
     public static final String SCHEDULER_DEFAULT_CONFIG_NAME = "d";
     public static final String SCHEDULER_STATE = "s";
     public static final int SCHEDULER_CONFIG_MINIMUM_LENGTH = 2;
-    public static final int SCHEDULER_GROUP_MINIMUM_LENGTH = 2;
     private static final long serialVersionUID = -8257829613982301855L;
 
     private final ISchedulerConfigDescriptor schedulerConfig;
@@ -35,7 +32,7 @@ public class SchedulerConfigMetadataEntity implements IMetadataEntity<SchedulerC
 
     @Override
     public SchedulerConfigMetadataEntity dropFromCache(MetadataCache cache) {
-        return cache.dropSchedulerConfig(this);
+        return cache.dropSchedulerConfig(schedulerConfig.getName());
     }
 
     public void upsertQueryGroup(Map<String, Long> upsertQueryGroups) {

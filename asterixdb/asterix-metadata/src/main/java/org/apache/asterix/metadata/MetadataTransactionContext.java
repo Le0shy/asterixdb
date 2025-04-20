@@ -259,10 +259,9 @@ public class MetadataTransactionContext extends MetadataCache {
     public void dropSchedulerConfig(String database, DataverseName dataverseName, String configName) {
         ISchedulerConfigDescriptor schedulerConfigDescriptor;
         if (configName.equals(SCHEDULER_STATE)) {
-            schedulerConfigDescriptor = new SchedulerConfigStateDescriptor(database, dataverseName, configName, null);
+            schedulerConfigDescriptor = new SchedulerConfigStateDescriptor(configName, null);
         } else {
-            schedulerConfigDescriptor =
-                    new SchedulerConfigRecordDescriptor(database, dataverseName, configName, 0, 0, 0, null);
+            schedulerConfigDescriptor = new SchedulerConfigRecordDescriptor(configName, 0, 0, 0, null);
         }
         SchedulerConfigMetadataEntity configMetadataEntity =
                 new SchedulerConfigMetadataEntity(schedulerConfigDescriptor);
@@ -340,8 +339,8 @@ public class MetadataTransactionContext extends MetadataCache {
         return droppedCache.getFullTextFilter(databaseName, dataverseName, filterName) != null;
     }
 
-    public boolean schedulerConfigIsDropped(String databaseName, DataverseName dataverseName, String configName) {
-        return droppedCache.getSchedulerConfig(databaseName, dataverseName, configName) != null;
+    public boolean schedulerConfigIsDropped(String configName) {
+        return droppedCache.getSchedulerConfig(configName) != null;
     }
 
     public List<MetadataLogicalOperation> getOpLog() {

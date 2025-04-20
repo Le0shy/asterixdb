@@ -1,8 +1,6 @@
 package org.apache.asterix.lang.common.statement;
 
 import org.apache.asterix.common.exceptions.CompilationException;
-import org.apache.asterix.common.metadata.DataverseName;
-import org.apache.asterix.common.metadata.Namespace;
 import org.apache.asterix.lang.common.base.AbstractStatement;
 import org.apache.asterix.lang.common.expression.RecordConstructor;
 import org.apache.asterix.lang.common.util.SchedulerConfigUtil;
@@ -11,29 +9,18 @@ import org.apache.asterix.object.base.*;
 
 public class UpdateSchedulerStatement extends AbstractStatement {
     private final String configName;
-    private final Namespace namespace;
     private final AdmObjectNode updateSchedulerNode;
     public static final String FIELD_NAME_DEFAULT_PRIORITY = "defaultPriority";
     public static final String FIELD_NAME_SHORT_MEMORY_QUOTA = "shortMemoryPercent";
     public static final String FIELD_NAME_SHORT_CPU_QUOTA = "shortCPUQuota";
 
-    public UpdateSchedulerStatement(Namespace namespace, String configName, RecordConstructor expr)
-            throws CompilationException {
-        this.namespace = namespace;
+    public UpdateSchedulerStatement(String configName, RecordConstructor expr) throws CompilationException {
         this.configName = configName;
         this.updateSchedulerNode = SchedulerConfigUtil.validateUpdateSchedulerNode(expr);
     }
 
     public String getConfigName() {
         return configName;
-    }
-
-    public Namespace getNamespace() {
-        return namespace;
-    }
-
-    public DataverseName getDataverseName() {
-        return namespace == null ? null : namespace.getDataverseName();
     }
 
     public long getDefaultPriority() {

@@ -1005,9 +1005,8 @@ public interface IMetadataNode extends Remote, Serializable {
     void addSchedulerConfig(TxnId txnId, SchedulerConfigMetadataEntity configMetadataEntity)
             throws AlgebricksException, RemoteException;
 
-    SchedulerConfigMetadataEntity getSchedulerConfig(TxnId txnId, String database, DataverseName dataverseName,
-            String configName) throws AlgebricksException, RemoteException;
-
-    public void dropSchedulerConfig(TxnId txnId, String database, DataverseName dataverseName, String configName)
+    SchedulerConfigMetadataEntity getSchedulerConfig(TxnId txnId, String configName)
             throws AlgebricksException, RemoteException;
+
+    public void dropSchedulerConfig(TxnId txnId, String configName) throws AlgebricksException, RemoteException;
 }

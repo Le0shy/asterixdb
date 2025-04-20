@@ -75,8 +75,9 @@ public class MetadataCache {
     // Key is DataverseName. Key of value map is the full-text config name
     protected final Map<String, Map<DataverseName, Map<String, FullTextConfigMetadataEntity>>> fullTextConfigs =
             new HashMap<>();
-    protected final Map<String, Map<DataverseName, Map<String, SchedulerConfigMetadataEntity>>> schedulerConfigs =
-            new HashMap<>();
+
+    // Key is scheduler config name.
+    protected final Map<String, SchedulerConfigMetadataEntity> schedulerConfigs = new HashMap<>();
 
     // Atomically executes all metadata operations in ctx's log.
     public void commit(MetadataTransactionContext ctx) {
@@ -371,11 +372,6 @@ public class MetadataCache {
                                                                     fullTextConfigs.get(databaseName);
                                                             if (ftc != null) {
                                                                 ftc.remove(dataverseName);
-                                                            }
-                                                            Map<DataverseName, Map<String, SchedulerConfigMetadataEntity>> sc =
-                                                                    schedulerConfigs.get(databaseName);
-                                                            if (sc != null) {
-                                                                sc.remove(dataverseName);
                                                             }
                                                             Map<DataverseName, Map<String, FullTextFilterMetadataEntity>> ftf =
                                                                     fullTextFilters.get(databaseName);
@@ -946,60 +942,25 @@ public class MetadataCache {
         }
     }
 
-    public SchedulerConfigMetadataEntity getSchedulerConfig(String databaseName, DataverseName dataverseName,
-            String configName) {
+    public SchedulerConfigMetadataEntity getSchedulerConfig(String configName) {
         synchronized (schedulerConfigs) {
-            Map<DataverseName, Map<String, SchedulerConfigMetadataEntity>> db = schedulerConfigs.get(databaseName);
-            if (db == null) {
-                return null;
-            }
-            Map<String, SchedulerConfigMetadataEntity> m = db.get(dataverseName);
-            if (m == null) {
-                return null;
-            }
-            return m.get(configName);
+            return schedulerConfigs.get(configName);
         }
     }
 
     public SchedulerConfigMetadataEntity addSchedulerConfigIfNotExists(
             SchedulerConfigMetadataEntity configMetadataEntity) {
         ISchedulerConfigDescriptor config = configMetadataEntity.getSchedulerConfig();
-        String databaseName = config.getDatabaseName();
-        DataverseName dataverseName = config.getDataverseName();
         String configName = config.getName();
         synchronized (schedulerConfigs) {
-            Map<DataverseName, Map<String, SchedulerConfigMetadataEntity>> databaseDataverses =
-                    schedulerConfigs.computeIfAbsent(databaseName, k -> new HashMap<>());
-            Map<String, SchedulerConfigMetadataEntity> m = databaseDataverses.get(dataverseName);
-            if (m == null) {
-                m = new HashMap<>();
-                databaseDataverses.put(dataverseName, m);
-            }
-            if (!m.containsKey(configName)) {
-                return m.put(configName, configMetadataEntity);
-            }
-            return null;
+            return schedulerConfigs.put(configName, configMetadataEntity);
         }
     }
 
-    public SchedulerConfigMetadataEntity dropSchedulerConfig(SchedulerConfigMetadataEntity configMetadataEntity) {
-        ISchedulerConfigDescriptor config = configMetadataEntity.getSchedulerConfig();
-        DataverseName dataverseName = config.getDataverseName();
-        String configName = config.getName();
+    public SchedulerConfigMetadataEntity dropSchedulerConfig(String configName) {
         synchronized (schedulerConfigs) {
-            Map<DataverseName, Map<String, SchedulerConfigMetadataEntity>> databaseDataverses =
-                    schedulerConfigs.get(config.getDatabaseName());
-            if (databaseDataverses == null) {
-                return null;
-            }
-
-            Map<String, SchedulerConfigMetadataEntity> m = databaseDataverses.get(dataverseName);
-            if (m == null) {
-                return null;
-            }
-            return m.remove(configName);
+            return schedulerConfigs.remove(configName);
         }
-
     }
 
     /**

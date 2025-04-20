@@ -53,7 +53,7 @@ public class PhysicalOptimizationConfig {
     private static final String FORCE_JOIN_ORDER = "FORCE_JOIN_ORDER";
     private static final String QUERY_PLAN_SHAPE = "QUERY_PLAN_SHAPE";
     private static final String COLUMN_FILTER = "COLUMN_FILTER";
-    private static final String JOB_PRIORITY = "JOB_PRIORITY";
+    private static final String JOB_GROUP_NAME = "JOB_GROUP_NAME";
 
     private final Properties properties = new Properties();
 
@@ -304,12 +304,12 @@ public class PhysicalOptimizationConfig {
         return getBoolean(COLUMN_FILTER, AlgebricksConfig.COLUMN_FILTER_DEFAULT);
     }
 
-    public int getJobPriority() {
-        return getInt(JOB_PRIORITY, AlgebricksConfig.JOB_PRIORITY_DEFAULT);
+    public String getJobGroupName() {
+        return getString(JOB_GROUP_NAME, AlgebricksConfig.JOB_GROUP_DEFAULT);
     }
 
-    public void setJobPriority(int jobPriority) {
-        setInt(JOB_PRIORITY, jobPriority);
+    public void setJobGroupName(String jobGroupName) {
+        setString(JOB_GROUP_NAME, jobGroupName);
     }
 
     public void setExtensionProperty(String property, Object value) {

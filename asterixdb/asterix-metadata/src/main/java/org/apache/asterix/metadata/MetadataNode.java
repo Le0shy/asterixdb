@@ -654,8 +654,7 @@ public class MetadataNode implements IMetadataNode {
     }
 
     @Override
-    public SchedulerConfigMetadataEntity getSchedulerConfig(TxnId txnId, String database, DataverseName dataverseName,
-            String configName) throws AlgebricksException {
+    public SchedulerConfigMetadataEntity getSchedulerConfig(TxnId txnId, String configName) throws AlgebricksException {
         SchedulerConfigMetadataEntityTupleTranslator translator;
         /* initialize tuple translator */
         if (configName.equals(SCHEDULER_STATE)) {
@@ -667,7 +666,7 @@ public class MetadataNode implements IMetadataNode {
         ITupleReference searchKey;
         List<SchedulerConfigMetadataEntity> results = new ArrayList<>();
         try {
-            searchKey = createTuple(database, dataverseName, configName);
+            searchKey = createTuple(configName);
             IValueExtractor<SchedulerConfigMetadataEntity> valueExtractor =
                     new MetadataEntityValueExtractor<>(translator);
             if (configName.equals(SCHEDULER_STATE)) {
@@ -688,15 +687,13 @@ public class MetadataNode implements IMetadataNode {
         return results.get(0);
     }
 
-    public void dropSchedulerConfig(TxnId txnId, String database, DataverseName dataverseName, String configName)
-            throws AlgebricksException {
-        dropSchedulerConfigDescriptor(txnId, database, dataverseName, configName);
+    public void dropSchedulerConfig(TxnId txnId, String configName) throws AlgebricksException {
+        dropSchedulerConfigDescriptor(txnId, configName);
     }
 
-    private void dropSchedulerConfigDescriptor(TxnId txnId, String database, DataverseName dataverseName,
-            String configName) throws AlgebricksException {
+    private void dropSchedulerConfigDescriptor(TxnId txnId, String configName) throws AlgebricksException {
         try {
-            ITupleReference key = createTuple(database, dataverseName, configName);
+            ITupleReference key = createTuple(configName);
             if (configName.equals(SCHEDULER_STATE)) {
                 deleteTupleFromIndex(txnId, mdIndexesProvider.getSchedulerConfigStateEntity().getIndex(), key);
             } else {

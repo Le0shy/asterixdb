@@ -24,13 +24,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import org.apache.asterix.common.metadata.DataverseName;
-
 public class SchedulerConfigRecordDescriptor implements ISchedulerConfigDescriptor {
     private static final long serialVersionUID = 3L;
 
-    private final String databaseName;
-    private final DataverseName dataverseName;
     private final String name;
     private long defaultPriority;
     private double shortMemoryPercent;
@@ -38,12 +34,9 @@ public class SchedulerConfigRecordDescriptor implements ISchedulerConfigDescript
     private final Map<Long, List<String>> priorityToGroups;
     private final Map<String, Long> groupToPriority;
 
-    public SchedulerConfigRecordDescriptor(String databaseName, DataverseName dataverseName, String name,
-            long defaultPriority, double shortMemoryPercent, long shortCPUQuota,
-            Map<Long, List<String>> priorityToGroups) {
+    public SchedulerConfigRecordDescriptor(String name, long defaultPriority, double shortMemoryPercent,
+            long shortCPUQuota, Map<Long, List<String>> priorityToGroups) {
         //TODO(DB): database name should not be null
-        this.databaseName = databaseName;
-        this.dataverseName = dataverseName;
         this.name = name;
         this.defaultPriority = defaultPriority;
         this.shortMemoryPercent = shortMemoryPercent;
@@ -52,11 +45,8 @@ public class SchedulerConfigRecordDescriptor implements ISchedulerConfigDescript
         this.groupToPriority = createMapping(this.priorityToGroups);
     }
 
-    public SchedulerConfigRecordDescriptor(String databaseName, DataverseName dataverseName, String name,
-            long defaultPriority, double shortMemoryPercent, long shortCPUQuota, Map<String, Long> groupToPriority,
-            boolean bound) {
-        this.databaseName = databaseName;
-        this.dataverseName = dataverseName;
+    public SchedulerConfigRecordDescriptor(String name, long defaultPriority, double shortMemoryPercent,
+            long shortCPUQuota, Map<String, Long> groupToPriority, boolean bound) {
         this.name = name;
         this.defaultPriority = defaultPriority;
         this.shortMemoryPercent = shortMemoryPercent;
@@ -91,16 +81,6 @@ public class SchedulerConfigRecordDescriptor implements ISchedulerConfigDescript
             priorityToGroups.get(priority).add(group);
         }
         return priorityToGroups;
-    }
-
-    @Override
-    public String getDatabaseName() {
-        return databaseName;
-    }
-
-    @Override
-    public DataverseName getDataverseName() {
-        return dataverseName;
     }
 
     @Override

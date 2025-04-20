@@ -164,8 +164,7 @@ final class MetadataLockKey implements IMetadataLock.LockKey {
         return new MetadataLockKey(EntityKind.MERGE_POLICY, null, null, null, mergePolicyName);
     }
 
-    static MetadataLockKey createSchedulerConfigLockKey(String database, DataverseName dataverseName,
-            String fullTextConfigName) {
-        return new MetadataLockKey(EntityKind.SCHEDULER_CONFIG, null, database, dataverseName, fullTextConfigName);
+    static MetadataLockKey createSchedulerConfigLockKey(String fullTextConfigName) {
+        return new MetadataLockKey(EntityKind.SCHEDULER_CONFIG, null, null, null, fullTextConfigName);
     }
 }

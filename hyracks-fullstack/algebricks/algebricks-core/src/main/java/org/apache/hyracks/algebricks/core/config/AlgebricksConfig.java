@@ -46,6 +46,5 @@ public class AlgebricksConfig {
             StorageUtil.getIntSizeInBytes(8, StorageUtil.StorageUnit.KILOBYTE);
     public static final boolean BATCH_LOOKUP_DEFAULT = true;
     public static final boolean COLUMN_FILTER_DEFAULT = true;
-
-    public static final int JOB_PRIORITY_DEFAULT = 0;
+    public static final String JOB_GROUP_DEFAULT = "d";
 }

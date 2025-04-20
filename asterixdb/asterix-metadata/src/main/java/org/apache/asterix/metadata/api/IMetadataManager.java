@@ -498,17 +498,14 @@ public interface IMetadataManager extends IMetadataBootstrap {
 
     /**
      * @param mdTxnCtx
-     *            MetadataTransactionContext of an active metadata transaction.
-     * @param dataverseName
-     *            the name of the dataverse where the scheduler config belongs
+     *         MetadataTransactionContext of an active metadata transaction.
      * @param configName
-     *            the name of the scheduler config to be fetched
-     * @throws AlgebricksException
-     *
+     *         the name of the scheduler config to be fetched
      * @return
+     * @throws AlgebricksException
      */
-    SchedulerConfigMetadataEntity getSchedulerConfig(MetadataTransactionContext mdTxnCtx, String database,
-            DataverseName dataverseName, String configName) throws AlgebricksException;
+    SchedulerConfigMetadataEntity getSchedulerConfig(MetadataTransactionContext mdTxnCtx, String configName)
+            throws AlgebricksException;
 
     /**
      * @param mdTxnCtx
@@ -521,6 +518,17 @@ public interface IMetadataManager extends IMetadataBootstrap {
      */
     void addSchedulerConfig(MetadataTransactionContext mdTxnCtx, SchedulerConfigMetadataEntity configMetadataEntity)
             throws AlgebricksException;
+
+    /**
+     * @param mdTxnCtx
+     *            MetadataTransactionContext of an active metadata transaction.
+     * @param configName
+     *            name of the scheduler config to be dropped
+     * @throws AlgebricksException
+     *
+     * @return
+     */
+    void dropSchedulerConfig(MetadataTransactionContext mdTxnCtx, String configName) throws AlgebricksException;
 
     /**
      * @param mdTxnCtx
@@ -611,9 +619,6 @@ public interface IMetadataManager extends IMetadataBootstrap {
      */
     void dropFeed(MetadataTransactionContext ctx, String database, DataverseName dataverse, String feedName)
             throws AlgebricksException;
-
-    void dropSchedulerConfig(MetadataTransactionContext mdTxnCtx, String database, DataverseName dataverseName,
-            String configName) throws AlgebricksException, RemoteException;
 
     /**
      * @param ctx

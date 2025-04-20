@@ -9,16 +9,14 @@ import java.util.List;
 import org.apache.asterix.om.types.*;
 
 public class SchedulerConfigRecordEntity {
-    private static final SchedulerConfigRecordEntity SCHEDULER_CONFIG = new SchedulerConfigRecordEntity(
-            new MetadataIndex(PROPERTIES_SCHEDULER_CONFIG, 3, new IAType[] { BuiltinType.ASTRING, BuiltinType.ASTRING },
-                    Arrays.asList(List.of(FIELD_NAME_DATAVERSE_NAME), List.of(FIELD_NAME_SCHEDULER_CONFIG_NAME)), 0,
-                    schedulerConfigRecordType(), true, new int[] { 0, 1 }),
-            2, -1);
+    private static final SchedulerConfigRecordEntity SCHEDULER_CONFIG =
+            new SchedulerConfigRecordEntity(new MetadataIndex(PROPERTIES_SCHEDULER_CONFIG, 2,
+                    new IAType[] { BuiltinType.ASTRING }, Arrays.asList(List.of(FIELD_NAME_SCHEDULER_CONFIG_NAME)), 0,
+                    schedulerConfigRecordType(), true, new int[] { 0 }), 1, -1);
 
     private final int payloadPosition;
     private final MetadataIndex index;
     private final int databaseNameIndex;
-    private final int dataverseNameIndex;
     private final int configNameIndex;
     private final int defaultPriorityIndex;
     private final int shortMemoryPercentIndex;
@@ -29,7 +27,6 @@ public class SchedulerConfigRecordEntity {
         this.index = index;
         this.payloadPosition = payloadPosition;
         this.databaseNameIndex = startIndex++;
-        this.dataverseNameIndex = startIndex++;
         this.configNameIndex = startIndex++;
         this.defaultPriorityIndex = startIndex++;
         this.shortMemoryPercentIndex = startIndex++;
@@ -57,10 +54,6 @@ public class SchedulerConfigRecordEntity {
         return databaseNameIndex;
     }
 
-    public int dataverseNameIndex() {
-        return dataverseNameIndex;
-    }
-
     public int configNameIndex() {
         return configNameIndex;
     }
@@ -84,12 +77,12 @@ public class SchedulerConfigRecordEntity {
     private static ARecordType schedulerConfigRecordType() {
         return MetadataRecordTypes
                 .createRecordType(RECORD_NAME_SCHEDULER_CONFIG,
-                        new String[] { FIELD_NAME_DATAVERSE_NAME, FIELD_NAME_SCHEDULER_CONFIG_NAME,
+                        new String[] { FIELD_NAME_SCHEDULER_CONFIG_NAME,
                                 FIELD_NAME_SCHEDULER_CONFIG_DEFAULT_PRIORITY,
                                 FIELD_NAME_SCHEDULER_CONFIG_SHORT_MEMORY_PERCENT,
                                 FIELD_NAME_SCHEDULER_CONFIG_SHORT_CPU_QUOTA,
                                 FIELD_NAME_SCHEDULER_CONFIG_QUERY_GROUPS },
-                        new IAType[] { BuiltinType.ASTRING, BuiltinType.ASTRING,
+                        new IAType[] { BuiltinType.ASTRING,
                                 AUnionType.createMissableType(BuiltinType.AINT64),
                                 AUnionType.createMissableType(BuiltinType.ADOUBLE),
                                 AUnionType.createMissableType(BuiltinType.AINT64), AUnionType.createMissableType(

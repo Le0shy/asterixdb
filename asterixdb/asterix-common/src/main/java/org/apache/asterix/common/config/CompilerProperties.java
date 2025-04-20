@@ -130,7 +130,7 @@ public class CompilerProperties extends AbstractProperties {
                 NONNEGATIVE_INTEGER,
                 5,
                 "A percentage of the job's required memory to be added to account for runtime memory overhead"),
-        COMPILER_JOBPRIORITY(INTEGER, 0, "Enable clients to manually assign priority to queries");
+        COMPILER_QGROUP(STRING, "d", "Enable clients to manually assign group to query");
 
         private final IOptionType type;
         private final Object defaultValue;
@@ -215,7 +215,7 @@ public class CompilerProperties extends AbstractProperties {
 
     public static final int COMPILER_PARALLELISM_AS_STORAGE = 0;
 
-    public static final String COMPILER_JOBPRIORITY_KEY = Option.COMPILER_JOBPRIORITY.ini();
+    public static final String COMPILER_QGROUP_KEY = Option.COMPILER_QGROUP.ini();
 
     public CompilerProperties(PropertiesAccessor accessor) {
         super(accessor);
@@ -327,7 +327,7 @@ public class CompilerProperties extends AbstractProperties {
         return accessor.getInt(Option.COMPILER_RUNTIME_MEMORY_OVERHEAD);
     }
 
-    public int getJobPriority() {
-        return accessor.getInt(Option.COMPILER_JOBPRIORITY);
+    public String getJobGroupName() {
+        return accessor.getString(Option.COMPILER_QGROUP);
     }
 }
