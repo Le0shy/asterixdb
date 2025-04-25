@@ -19,7 +19,7 @@ public class CapacityControllerGuard {
     private int maximumAggregatedCores;
 
     /* Memory Resources */
-    private double memoryPercentAllocatedToShort = 0.1;
+    private double memoryPercentAllocatedToShort = 10.0;
     private long memoryAvailableShort;
     private long memoryAvailableCommon;
     private long maximumAggregatedMemoryByteSize;
@@ -28,14 +28,6 @@ public class CapacityControllerGuard {
 
     public CapacityControllerGuard(IJobCapacityController jobCapacityController) {
         this.jobCapacityController = jobCapacityController;
-        /* available memory resources for short jobs and other jobs */
-        //        maximumAggregatedMemoryByteSize = jobCapacityController.getMaxAggregatedMemoryByteSize();
-        //        memoryAvailableShort = (long)(maximumAggregatedMemoryByteSize * memoryAllocatedToShort);
-        //        memoryAvailableCommon = maximumAggregatedMemoryByteSize - memoryAvailableShort;
-        //
-        //        /* available cpu resources for short jobs and other jobs */
-        //        maximumAggregatedCores = jobCapacityController.getMaxAggregatedNumCores();
-        //        CPUQuotaCommon = maximumAggregatedCores - CPUQuotaShort;
     }
 
     public IJobCapacityController.JobSubmissionStatus allocate(JobRun jobRun) throws HyracksException {
@@ -133,7 +125,7 @@ public class CapacityControllerGuard {
             isUpdate = true;
             /* available memory resources for short jobs and other jobs */
             maximumAggregatedMemoryByteSize = jobCapacityController.getMaxAggregatedMemoryByteSize();
-            memoryAvailableShort = (long)(maximumAggregatedMemoryByteSize * memoryPercentAllocatedToShort);
+            memoryAvailableShort = (long)(maximumAggregatedMemoryByteSize * (memoryPercentAllocatedToShort / 100.0));
             memoryAvailableCommon = maximumAggregatedMemoryByteSize - memoryAvailableShort;
 
             /* available cpu resources for short jobs and other jobs */
@@ -153,15 +145,16 @@ public class CapacityControllerGuard {
     }
 
     public boolean isSQAResourcesAvailable() {
-        return CPUQuotaShort >= 4;
+        /* TODO not necessary ? */
+        return CPUQuotaShort >= 3;
     }
 
     public long getMaximumMemoryByteSizeShort() {
-        return (long) (maximumAggregatedMemoryByteSize * memoryPercentAllocatedToShort);
+        return (long) (maximumAggregatedMemoryByteSize * (memoryPercentAllocatedToShort / 100.0));
     }
 
     public long getMaximumMemoryByteSizeCommon() {
-        return (long) (maximumAggregatedMemoryByteSize * (1 - memoryPercentAllocatedToShort));
+        return (long) (maximumAggregatedMemoryByteSize * (1 - memoryPercentAllocatedToShort / 100.0));
     }
 
 
@@ -200,7 +193,7 @@ public class CapacityControllerGuard {
     }
 
     public void setMemoryPercentAllocatedToShort(double newShortMemoryPercent) {
-        long diffMemoryBytesLimit = (long) ((newShortMemoryPercent- memoryPercentAllocatedToShort)
+        long diffMemoryBytesLimit = (long) ((newShortMemoryPercent - memoryPercentAllocatedToShort / 100.0)
                 * maximumAggregatedMemoryByteSize);
 
         if (diffMemoryBytesLimit < 0) {

@@ -1,18 +1,28 @@
 package org.apache.asterix.metadata.utils;
 
-import org.apache.asterix.common.metadata.DataverseName;
 import org.apache.asterix.metadata.declared.MetadataProvider;
-import org.apache.asterix.runtime.scheduler.SchedulerConfigDescriptor;
+import org.apache.asterix.metadata.entities.SchedulerConfigMetadataEntity;
+import org.apache.asterix.runtime.scheduler.SchedulerConfigRecordDescriptor;
 import org.apache.hyracks.algebricks.common.exceptions.AlgebricksException;
+import org.apache.hyracks.control.cc.scheduler.EnableConfigInfo;
+import org.apache.hyracks.control.cc.scheduler.IWorkloadConfigInfo;
+import static org.apache.asterix.metadata.entities.SchedulerConfigMetadataEntity.SCHEDULER_DEFAULT_CONFIG_NAME;
 
 public class SchedulerUtil {
-
-    public static SchedulerConfigDescriptor fetchSchedulerConfigDescriptor(
-            MetadataProvider metadataProvider,
-            String database, DataverseName dataverseName, String configName) throws AlgebricksException {
-        SchedulerConfigDescriptor configDescriptor =
-                metadataProvider.findSchedulerConfig(database, dataverseName, configName).getSchedulerConfig();
-
-        return configDescriptor;
+    public static IWorkloadConfigInfo fetchSchedulerConfigDescriptor(MetadataProvider metadataProvider)
+            throws AlgebricksException {
+        SchedulerConfigMetadataEntity scme = metadataProvider.findEnabledSchedulerConfig();
+        if(scme == null) {
+            return null;
+        }
+        SchedulerConfigRecordDescriptor scrd = (SchedulerConfigRecordDescriptor) scme.getSchedulerConfig();
+        if(scrd.getName().equals(SCHEDULER_DEFAULT_CONFIG_NAME)) {
+            return null;
+        }
+        return new EnableConfigInfo(
+                scrd.getDefaultPriority(),
+                scrd.getShortMemoryPercent(),
+                (int) scrd.getShortCPUQuota(),
+                scrd.getGroupToPriority());
     }
 }

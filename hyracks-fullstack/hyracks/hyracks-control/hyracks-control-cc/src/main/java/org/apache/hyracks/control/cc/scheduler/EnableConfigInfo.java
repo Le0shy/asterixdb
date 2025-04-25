@@ -1,21 +1,22 @@
 package org.apache.hyracks.control.cc.scheduler;
 
 import java.util.HashMap;
+import java.util.Map;
 
 public class EnableConfigInfo implements IWorkloadConfigInfo {
     private long defaultPriority;
     private double shortMemoryPercent;
     private int shortCPUQuota;
-    private HashMap<String, Long> groupsToPriorities;
+    private Map<String, Long> groupsToPriorities;
     private IWorkloadConfigInfo.Type type;
 
     public EnableConfigInfo(long defaultPriority, double shortMemoryPercent, int shortCPUQuota,
-            HashMap<String, Long> groupToPriorities, IWorkloadConfigInfo.Type type) {
+            Map<String, Long> groupToPriorities) {
         this.defaultPriority = defaultPriority;
         this.shortMemoryPercent = shortMemoryPercent;
         this.shortCPUQuota = shortCPUQuota;
         this.groupsToPriorities = groupToPriorities;
-        this.type = type;
+        this.type = IWorkloadConfigInfo.Type.ENABLE_CONFIG;
     }
 
     public long getDefaultPriority() {
@@ -42,7 +43,7 @@ public class EnableConfigInfo implements IWorkloadConfigInfo {
         this.shortCPUQuota = shortCPUQuota;
     }
 
-    public HashMap<String, Long> getGroupsToPriorities() {
+    public Map<String, Long> getGroupsToPriorities() {
         return groupsToPriorities;
     }
 

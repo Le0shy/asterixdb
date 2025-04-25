@@ -40,6 +40,9 @@ import org.apache.asterix.common.api.INcApplicationContext;
 import org.apache.asterix.common.config.PropertiesAccessor;
 import org.apache.asterix.common.dataflow.ICcApplicationContext;
 import org.apache.asterix.common.exceptions.AsterixException;
+import org.apache.asterix.metadata.bootstrap.MetadataBuiltinEntities;
+import org.apache.asterix.metadata.declared.MetadataProvider;
+import org.apache.asterix.metadata.utils.SchedulerUtil;
 import org.apache.asterix.common.library.ILibraryManager;
 import org.apache.asterix.hyracks.bootstrap.CCApplication;
 import org.apache.asterix.hyracks.bootstrap.NCApplication;
@@ -53,6 +56,9 @@ import org.apache.hyracks.api.application.INCApplication;
 import org.apache.hyracks.api.client.IHyracksClientConnection;
 import org.apache.hyracks.api.config.IOption;
 import org.apache.hyracks.control.cc.ClusterControllerService;
+import org.apache.hyracks.control.cc.job.WorkloadManager;
+import org.apache.hyracks.control.cc.scheduler.IWorkloadConfigInfo;
+import org.apache.hyracks.control.cc.work.NotifyWorkloadConfigWork;
 import org.apache.hyracks.control.common.config.ConfigManager;
 import org.apache.hyracks.control.common.controllers.CCConfig;
 import org.apache.hyracks.control.common.controllers.ControllerConfig;
@@ -73,7 +79,7 @@ public class AsterixHyracksIntegrationUtil {
     public static final int DEFAULT_HYRACKS_CC_CLIENT_PORT = 1098;
     public static final int DEFAULT_HYRACKS_CC_CLUSTER_PORT = 1099;
     public static final String RESOURCES_PATH = joinPath(getProjectPath().toString(), "src", "test", "resources");
-    public static final String DEFAULT_CONF_FILE = joinPath(RESOURCES_PATH, "cc.conf");
+    public static final String DEFAULT_CONF_FILE = joinPath(RESOURCES_PATH, "cc-scheduler.conf");
     private static final String DEFAULT_STORAGE_PATH = joinPath("target", "io", "dir");
     private static String storagePath = DEFAULT_STORAGE_PATH;
     private static final long RESULT_TTL = TimeUnit.MINUTES.toMillis(30);
@@ -118,7 +124,6 @@ public class AsterixHyracksIntegrationUtil {
 
     public void init(boolean deleteOldInstanceData, String confFile) throws Exception { //NOSONAR
         configureExternalLibDir();
-
         final ICCApplication ccApplication = createCCApplication();
         if (confFile == null) {
             configManager = new ConfigManager();
@@ -156,7 +161,6 @@ public class AsterixHyracksIntegrationUtil {
 
         opts.forEach(opt -> configManager.set(opt.getLeft(), opt.getRight()));
         cc.start();
-
         // Starts ncs.
         nodeNames = ccConfig.getConfigManager().getNodeNames();
         List<Thread> startupThreads = new ArrayList<>();
@@ -179,10 +183,12 @@ public class AsterixHyracksIntegrationUtil {
             thread.join();
         }
         // Wait until cluster becomes active
+
         ((ICcApplicationContext) cc.getApplicationContext()).getClusterStateManager().waitForState(ClusterState.ACTIVE);
         hcc = new HyracksConnection(cc.getConfig().getClientListenAddress(), cc.getConfig().getClientListenPort(),
                 cc.getNetworkSecurityManager().getSocketChannelFactory());
         this.ncs = nodeControllers.toArray(new NodeControllerService[nodeControllers.size()]);
+        initializeJobManager();
     }
 
     @NotNull
@@ -461,5 +467,17 @@ public class AsterixHyracksIntegrationUtil {
             return DEFAULT_CONF_FILE;
         }
         return joinPath(RESOURCES_PATH, providedPath);
+    }
+
+    private void initializeJobManager() throws Exception {
+        if (cc.getJobManager() instanceof WorkloadManager) {
+            ICcApplicationContext appCtx = (ICcApplicationContext) cc.getApplicationContext();
+            IWorkloadConfigInfo workloadConfigInfo = SchedulerUtil.
+                    fetchSchedulerConfigDescriptor(MetadataProvider.create(appCtx, MetadataBuiltinEntities.DEFAULT_NAMESPACE));
+            if (workloadConfigInfo == null) {
+                return;
+            }
+            cc.getWorkQueue().scheduleAndSync(new NotifyWorkloadConfigWork(cc, workloadConfigInfo));
+        }
     }
 }

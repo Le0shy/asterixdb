@@ -9,7 +9,8 @@ import java.util.List;
 import java.util.Map;
 
 public class JobTypeManager implements IJobTypeManager {
-
+    private static final String GROUP_LONG_JOB = "l";
+    private static final String GROUP_SHORT_JOB = "s";
     private Map<String, Long> queryGroupToPriority;
     private long defaultPriority = 1;
     public enum JobSchedulingType {
@@ -28,19 +29,19 @@ public class JobTypeManager implements IJobTypeManager {
     @Override
     public void setJobType(JobRun jobRun) {
         JobSpecification job = jobRun.getJobSpecification();
-        int jobPriority = job.getPriority();
-        if (jobPriority == 0) {
-            jobRun.setSchedulingType(JobSchedulingType.SHORT);
-        }
-        /* else if (jobPriority == 0) {
-            jobRun.setSchedulingType(JobSchedulingType.LONG);
-        } */
-        else if (jobPriority == defaultPriority) {
-            jobRun.setSchedulingType(JobSchedulingType.DEFAULT);
-        } else {
+        String groupName = job.getGroupName();
+
+        if(queryGroupToPriority.containsKey(groupName)){
             jobRun.setSchedulingType(JobSchedulingType.NORMAL);
+            long priority = queryGroupToPriority.get(groupName);
+            jobRun.setPriority((int)priority);
+        } else if (groupName.equals(GROUP_LONG_JOB)) {
+            jobRun.setSchedulingType(JobSchedulingType.LONG);
+        } else if (groupName.equals(GROUP_SHORT_JOB)) {
+            jobRun.setSchedulingType(JobSchedulingType.SHORT);
+        } else{
+            jobRun.setSchedulingType(JobSchedulingType.DEFAULT);
         }
-        jobRun.setPriority(jobPriority);
     }
 
     @Override
@@ -49,7 +50,7 @@ public class JobTypeManager implements IJobTypeManager {
     }
 
     @Override
-    public void setWorkloadConfig(HashMap<String, Long> groupsToPriorities) {
+    public void setWorkloadConfig(Map<String, Long> groupsToPriorities) {
         queryGroupToPriority = groupsToPriorities;
     }
 
@@ -71,6 +72,4 @@ public class JobTypeManager implements IJobTypeManager {
     public long getDefaultPriority() {
         return defaultPriority;
     }
-
-
 }

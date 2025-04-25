@@ -205,6 +205,12 @@ import org.apache.hyracks.api.job.profiling.IOperatorStats;
 import org.apache.hyracks.api.result.IResultSet;
 import org.apache.hyracks.api.result.ResultSetId;
 import org.apache.hyracks.control.cc.ClusterControllerService;
+import org.apache.hyracks.control.cc.job.WorkloadManager;
+import org.apache.hyracks.control.cc.scheduler.DeleteGroupInfo;
+import org.apache.hyracks.control.cc.scheduler.EnableConfigInfo;
+import org.apache.hyracks.control.cc.scheduler.IWorkloadConfigInfo;
+import org.apache.hyracks.control.cc.scheduler.UpsertGroupInfo;
+import org.apache.hyracks.control.cc.work.NotifyWorkloadConfigWork;
 import org.apache.hyracks.control.common.controllers.CCConfig;
 import org.apache.hyracks.storage.am.common.dataflow.IndexDropOperatorDescriptor.DropOption;
 import org.apache.hyracks.storage.am.lsm.common.api.ILSMMergePolicyFactory;
@@ -1714,6 +1720,7 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
 
     public void handleCreateSchedulerConfigStatement(MetadataProvider metadataProvider, Statement stmt)
             throws Exception {
+        validateWorkloadManagerEnabled(stmt);
         /* create config statement */
         CreateSchedulerConfigStatement stmtCreateConfig = (CreateSchedulerConfigStatement) stmt;
 
@@ -1786,6 +1793,7 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
 
     protected void handleSchedulerConfigDropStatement(MetadataProvider metadataProvider, Statement stmt)
             throws AlgebricksException, RemoteException {
+        validateWorkloadManagerEnabled(stmt);
         SchedulerConfigDropStatement stmtConfigDrop = (SchedulerConfigDropStatement) stmt;
         String configName = stmtConfigDrop.getConfigName();
 
@@ -1836,13 +1844,14 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
 
     protected void handleUpsertQGroup(MetadataProvider metadataProvider, Statement stmt)
             throws AlgebricksException, RemoteException {
+        validateWorkloadManagerEnabled(stmt);
         UpsertQGroupStatement stmtUpsert = (UpsertQGroupStatement) stmt;
         String configName = stmtUpsert.getConfigName();
 
         if (isCompileOnly()) {
             return;
         }
-        lockUtil.createSchedulerConfigBegin(lockManager, metadataProvider.getLocks(), configName);
+        lockUtil.updateSchedulerConfigBegin(lockManager, metadataProvider.getLocks(), configName);
         try {
             doUpsertQGroup(metadataProvider, stmtUpsert);
         } finally {
@@ -1860,15 +1869,19 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
             SchedulerConfigMetadataEntity configMetadataEntity =
                     MetadataManager.INSTANCE.getSchedulerConfig(mdTxnCtx, schedulerConfigName);
 
+            String currentEnabledConfig = getCurrentlyEnabledSchedulerConfig(mdTxnCtx);
             if (configMetadataEntity == null) {
                 throw new CompilationException(ErrorCode.SCHEDULER_CONFIG_NOT_FOUND, stmtUpsert.getSourceLocation(),
                         schedulerConfigName);
             }
-
             configMetadataEntity.upsertQueryGroup(stmtUpsert.getUpsertQueryGroups());
             MetadataManager.INSTANCE.dropSchedulerConfig(mdTxnCtx, schedulerConfigName);
             MetadataManager.INSTANCE.addSchedulerConfig(mdTxnCtx, configMetadataEntity);
             MetadataManager.INSTANCE.commitTransaction(mdTxnCtx);
+
+            if(stmtUpsert.getConfigName().equals(currentEnabledConfig)) {
+                deliverInfoToWorkloadManger(new UpsertGroupInfo(stmtUpsert.getUpsertQueryGroups()));
+            }
         } catch (Exception e) {
             abort(e, e, mdTxnCtx);
             throw e;
@@ -1877,6 +1890,7 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
 
     protected void handleDeleteQGroup(MetadataProvider metadataProvider, Statement stmt)
             throws AlgebricksException, RemoteException {
+        validateWorkloadManagerEnabled(stmt);
         DeleteQGroupStatement stmtDelete = (DeleteQGroupStatement) stmt;
         String configName = stmtDelete.getConfigName();
 
@@ -1900,6 +1914,7 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
         try {
             SchedulerConfigMetadataEntity configMetadataEntity =
                     MetadataManager.INSTANCE.getSchedulerConfig(mdTxnCtx, schedulerConfigName);
+            String currentEnabledConfig = getCurrentlyEnabledSchedulerConfig(mdTxnCtx);
 
             if (configMetadataEntity == null) {
                 throw new CompilationException(ErrorCode.SCHEDULER_CONFIG_NOT_FOUND, stmtDelete.getSourceLocation(),
@@ -1914,6 +1929,9 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
             MetadataManager.INSTANCE.dropSchedulerConfig(mdTxnCtx, schedulerConfigName);
             MetadataManager.INSTANCE.addSchedulerConfig(mdTxnCtx, configMetadataEntity);
             MetadataManager.INSTANCE.commitTransaction(mdTxnCtx);
+            if(stmtDelete.getConfigName().equals(currentEnabledConfig)) {
+                deliverInfoToWorkloadManger(new DeleteGroupInfo(stmtDelete.getDeleteQueryGroups()));
+            }
         } catch (Exception e) {
             abort(e, e, mdTxnCtx);
             throw e;
@@ -1921,8 +1939,7 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
     }
 
     private String getCurrentlyEnabledSchedulerConfig(MetadataTransactionContext mdTxnCtx) throws AlgebricksException {
-        SchedulerConfigMetadataEntity configStateEntity =
-                MetadataManager.INSTANCE.getSchedulerConfig(mdTxnCtx, SCHEDULER_STATE);
+        SchedulerConfigMetadataEntity configStateEntity = getSchedulerStateEntity(mdTxnCtx);
         if (configStateEntity == null) {
             return null;
         }
@@ -1941,6 +1958,7 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
 
     protected void handleEnableSchedulerConfig(MetadataProvider metadataProvider, Statement stmt)
             throws AlgebricksException, RemoteException {
+        validateWorkloadManagerEnabled(stmt);
         EnableSchedulerStatement stmtEnable = (EnableSchedulerStatement) stmt;
         String configName = stmtEnable.getConfigName();
 
@@ -1960,11 +1978,11 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
         String schedulerConfigName = stmtEnable.getConfigName();
         MetadataTransactionContext mdTxnCtx = MetadataManager.INSTANCE.beginTransaction();
         metadataProvider.setMetadataTxnContext(mdTxnCtx);
-
+        SchedulerConfigMetadataEntity configMetadataEntity = null;
         try {
             /* skip validation for enabling default config */
             if (!schedulerConfigName.equals(SCHEDULER_DEFAULT_CONFIG_NAME)) {
-                SchedulerConfigMetadataEntity configMetadataEntity =
+                configMetadataEntity =
                         MetadataManager.INSTANCE.getSchedulerConfig(mdTxnCtx, schedulerConfigName);
 
                 if (configMetadataEntity == null) {
@@ -1979,7 +1997,7 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
                 MetadataManager.INSTANCE.addSchedulerConfig(mdTxnCtx, configStateEntity);
                 MetadataManager.INSTANCE.commitTransaction(mdTxnCtx);
             }
-            /* if the config has already been enabled */
+            /* if the config has not already been enabled */
             else if (!configStateEntity.getEnabled().equals(schedulerConfigName)) {
                 configStateEntity.setEnabled(schedulerConfigName);
                 MetadataManager.INSTANCE.dropSchedulerConfig(mdTxnCtx, SCHEDULER_STATE);
@@ -1987,6 +2005,13 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
             }
             /* commit transaction */
             MetadataManager.INSTANCE.commitTransaction(mdTxnCtx);
+            assert configMetadataEntity != null;
+            SchedulerConfigRecordDescriptor scrd = (SchedulerConfigRecordDescriptor)configMetadataEntity.getSchedulerConfig();
+            deliverInfoToWorkloadManger(new EnableConfigInfo(
+                    scrd.getDefaultPriority(),
+                    scrd.getShortMemoryPercent(),
+                    (int) scrd.getShortCPUQuota(),
+                    scrd.getGroupToPriority()));
         } catch (Exception e) {
             abort(e, e, mdTxnCtx);
             throw e;
@@ -1995,6 +2020,7 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
 
     protected void handleUpdateSchedulerConfig(MetadataProvider metadataProvider, Statement stmt)
             throws AlgebricksException, RemoteException {
+        validateWorkloadManagerEnabled(stmt);
         UpdateSchedulerStatement stmtUpdate = (UpdateSchedulerStatement) stmt;
         String configName = stmtUpdate.getConfigName();
 
@@ -6055,6 +6081,23 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
         for (JobSpecification jobSpec : jobsToExecute) {
             runJob(hcc, jobSpec);
         }
+    }
+
+    private boolean isWorkloadMangerEnabled() {
+        ClusterControllerService ccs = (ClusterControllerService) (appCtx.getServiceContext()).getControllerService();
+        return ccs.getJobManager() instanceof WorkloadManager;
+    }
+
+    private void validateWorkloadManagerEnabled(Statement stmt) throws AsterixException {
+        if(!isWorkloadMangerEnabled()) {
+            throw new AsterixException(ErrorCode.COMPILATION_ERROR, stmt.getSourceLocation(),
+                    "Workload Manager is not enabled!");
+        }
+    }
+
+    private void deliverInfoToWorkloadManger(IWorkloadConfigInfo workloadConfigInfo) {
+        ClusterControllerService ccs = (ClusterControllerService) (appCtx.getServiceContext()).getControllerService();
+        ccs.getWorkQueue().schedule(new NotifyWorkloadConfigWork(ccs, workloadConfigInfo));
     }
 
     protected enum CreateResult {

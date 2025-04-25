@@ -14,7 +14,7 @@ public interface IJobTypeManager {
 
     void setDefaultPriority(long defaultPriority);
 
-    void setWorkloadConfig(HashMap<String, Long> groupToPriorities);
+    void setWorkloadConfig(Map<String, Long> groupToPriorities);
 
     void addGroups(Map<String, Long> groupsToAdd);
 

@@ -399,8 +399,16 @@ public class MetadataLockUtil implements IMetadataLockUtil {
     }
 
     @Override
+    public void updateSchedulerConfigBegin(IMetadataLockManager lockMgr, LockList locks, String schedulerConfigName)
+            throws AlgebricksException {
+        lockMgr.acquireSchedulerConfigReadLock(locks, SCHEDULER_STATE);
+        lockMgr.acquireSchedulerConfigWriteLock(locks, schedulerConfigName);
+    }
+
+    @Override
     public void dropSchedulerConfigBegin(IMetadataLockManager lockMgr, LockList locks, String schedulerConfigName)
             throws AlgebricksException {
+        lockMgr.acquireSchedulerConfigReadLock(locks, SCHEDULER_STATE);
         lockMgr.acquireSchedulerConfigWriteLock(locks, schedulerConfigName);
     }
 

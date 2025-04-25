@@ -172,6 +172,9 @@ public interface IMetadataLockUtil {
     void createSchedulerConfigBegin(IMetadataLockManager lockManager, LockList locks, String schedulerConfigName)
             throws AlgebricksException;
 
+    void updateSchedulerConfigBegin(IMetadataLockManager lockMgr, LockList locks, String schedulerConfigName)
+            throws AlgebricksException;
+
     void dropSchedulerConfigBegin(IMetadataLockManager lockManager, LockList locks, String schedulerConfigName)
             throws AlgebricksException;
 

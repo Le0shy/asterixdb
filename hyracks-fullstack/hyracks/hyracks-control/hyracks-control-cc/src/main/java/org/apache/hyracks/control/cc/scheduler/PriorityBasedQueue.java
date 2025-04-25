@@ -181,7 +181,8 @@ public class PriorityBasedQueue implements IJobQueue {
             return defaultJobQueue.pull();
         } else {
             /* other queue gets selected */
-            MPLQueue selectedQueue = queues.get(distribution[selectedIdx] - distribution[selectedIdx - 1]);
+            int targetedPriority = (int) (distribution[selectedIdx] - distribution[selectedIdx - 1]);
+            MPLQueue selectedQueue = queues.get(targetedPriority);
             JobRun nextToRun = selectedQueue.getFirst();
             checkAndAdd(nextToRun, jobRuns);
             return jobRuns;
