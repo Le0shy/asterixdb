@@ -20,7 +20,6 @@ package org.apache.asterix.metadata.declared;
 
 import static org.apache.asterix.common.utils.IdentifierUtil.dataverse;
 
-import java.rmi.RemoteException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -217,7 +216,7 @@ public class MetadataManagerUtil {
     }
 
     public static SchedulerConfigMetadataEntity findSchedulerConfigDescriptor(MetadataTransactionContext mdTxnCtx,
-            String schedulerConfigName) throws AlgebricksException{
+            String schedulerConfigName) throws AlgebricksException {
         return MetadataManager.INSTANCE.getSchedulerConfig(mdTxnCtx, schedulerConfigName);
     }
 

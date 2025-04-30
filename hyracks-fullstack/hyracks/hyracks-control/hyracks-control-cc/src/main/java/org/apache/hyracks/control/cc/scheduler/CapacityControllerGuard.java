@@ -34,33 +34,33 @@ public class CapacityControllerGuard {
         if (!isUpdate) {
             update();
         }
-        JobSpecification job = jobRun.getJobSpecification();
 
         /* Short jobs */
         if (jobRun.getSchedulingType() == JobTypeManager.JobSchedulingType.SHORT) {
-            return allocateResourceForShortJob(job);
+            return allocateResourceForShortJob(jobRun);
         }
 
         /* Other jobs */
         else {
-            return allocateResourceForCommonJob(job);
+            return allocateResourceForCommonJob(jobRun);
         }
     }
 
-    private IJobCapacityController.JobSubmissionStatus allocateResourceForShortJob(JobSpecification job)
+    private IJobCapacityController.JobSubmissionStatus allocateResourceForShortJob(JobRun jobRun)
             throws HyracksException {
+        JobSpecification job = jobRun.getJobSpecification();
         IClusterCapacity requiredCapacity = job.getRequiredClusterCapacity();
         long reqAggregatedMemoryByteSize = requiredCapacity.getAggregatedMemoryByteSize();
         int reqAggregatedNumCores = requiredCapacity.getAggregatedCores();
 
         /* check cpu quota and memory available */
-        if (CPUQuotaAvailableShort < requiredCapacity.getAggregatedCores() ||
-                memoryAvailableShort < requiredCapacity.getAggregatedMemoryByteSize()) {
+        if (CPUQuotaAvailableShort < requiredCapacity.getAggregatedCores()
+                || memoryAvailableShort < requiredCapacity.getAggregatedMemoryByteSize()) {
             return IJobCapacityController.JobSubmissionStatus.QUEUE;
         }
 
         /* call capacityController's allocate */
-        if (checkCapacityController(job) == IJobCapacityController.JobSubmissionStatus.EXECUTE) {
+        if (checkCapacityController(jobRun) == IJobCapacityController.JobSubmissionStatus.EXECUTE) {
             /* record resource usage for short jobs */
             memoryAvailableShort -= reqAggregatedMemoryByteSize;
             CPUQuotaAvailableShort -= reqAggregatedNumCores;
@@ -70,20 +70,21 @@ public class CapacityControllerGuard {
         }
     }
 
-    private IJobCapacityController.JobSubmissionStatus allocateResourceForCommonJob(JobSpecification job)
+    private IJobCapacityController.JobSubmissionStatus allocateResourceForCommonJob(JobRun jobRun)
             throws HyracksException {
+        JobSpecification job = jobRun.getJobSpecification();
         IClusterCapacity requiredCapacity = job.getRequiredClusterCapacity();
         long reqAggregatedMemoryByteSize = requiredCapacity.getAggregatedMemoryByteSize();
         int reqAggregatedNumCores = requiredCapacity.getAggregatedCores();
 
         /* check cpu quota and memory available */
-        if (CPUQuotaAvailableCommon < requiredCapacity.getAggregatedCores() ||
-                memoryAvailableCommon < requiredCapacity.getAggregatedMemoryByteSize()) {
+        if (CPUQuotaAvailableCommon < requiredCapacity.getAggregatedCores()
+                || memoryAvailableCommon < requiredCapacity.getAggregatedMemoryByteSize()) {
             return IJobCapacityController.JobSubmissionStatus.QUEUE;
         }
 
         /* then check resource manager */
-        if (checkCapacityController(job) == IJobCapacityController.JobSubmissionStatus.EXECUTE) {
+        if (checkCapacityController(jobRun) == IJobCapacityController.JobSubmissionStatus.EXECUTE) {
             /* record resource usage for common jobs */
             memoryAvailableCommon -= reqAggregatedMemoryByteSize;
             CPUQuotaAvailableCommon -= reqAggregatedNumCores;
@@ -93,9 +94,8 @@ public class CapacityControllerGuard {
         }
     }
 
-    private IJobCapacityController.JobSubmissionStatus checkCapacityController(JobSpecification job)
-            throws HyracksException {
-        return jobCapacityController.allocate(job);
+    private IJobCapacityController.JobSubmissionStatus checkCapacityController(JobRun jobRun) throws HyracksException {
+        return jobCapacityController.allocate(jobRun.getJobSpecification(), jobRun.getJobId(), jobRun.getFlags());
     }
 
     public void release(JobRun jobRun) {
@@ -122,17 +122,17 @@ public class CapacityControllerGuard {
     }
 
     public void update() {
-            isUpdate = true;
-            /* available memory resources for short jobs and other jobs */
-            maximumAggregatedMemoryByteSize = jobCapacityController.getMaxAggregatedMemoryByteSize();
-            memoryAvailableShort = (long)(maximumAggregatedMemoryByteSize * (memoryPercentAllocatedToShort / 100.0));
-            memoryAvailableCommon = maximumAggregatedMemoryByteSize - memoryAvailableShort;
+        isUpdate = true;
+        /* available memory resources for short jobs and other jobs */
+        maximumAggregatedMemoryByteSize = jobCapacityController.getMaxAggregatedMemoryByteSize();
+        memoryAvailableShort = (long) (maximumAggregatedMemoryByteSize * (memoryPercentAllocatedToShort / 100.0));
+        memoryAvailableCommon = maximumAggregatedMemoryByteSize - memoryAvailableShort;
 
-            /* available cpu resources for short jobs and other jobs */
-            maximumAggregatedCores = jobCapacityController.getMaxAggregatedNumCores();
-            CPUQuotaAvailableShort = CPUQuotaShort;
-            CPUQuotaCommon = maximumAggregatedCores - CPUQuotaShort;
-            CPUQuotaAvailableCommon = maximumAggregatedCores - CPUQuotaAvailableShort;
+        /* available cpu resources for short jobs and other jobs */
+        maximumAggregatedCores = jobCapacityController.getMaxAggregatedNumCores();
+        CPUQuotaAvailableShort = CPUQuotaShort;
+        CPUQuotaCommon = maximumAggregatedCores - CPUQuotaShort;
+        CPUQuotaAvailableCommon = maximumAggregatedCores - CPUQuotaAvailableShort;
     }
 
     public boolean isUpdate() {
@@ -157,7 +157,6 @@ public class CapacityControllerGuard {
         return (long) (maximumAggregatedMemoryByteSize * (1 - memoryPercentAllocatedToShort / 100.0));
     }
 
-
     /*  TODO: dynamically adjust resources limits from different categories   */
     /*  CPU Quota
                      short       common
@@ -179,13 +178,13 @@ public class CapacityControllerGuard {
         /* Reducing short quota: move unused short quota to common
         Or:Increasing short quota: move from common to short */
         if (diffQuotaLimit < 0) {
-                int reclaim = Math.min(CPUQuotaAvailableShort, -diffQuotaLimit);
-                CPUQuotaAvailableShort -= reclaim;
-                CPUQuotaAvailableCommon += reclaim;
+            int reclaim = Math.min(CPUQuotaAvailableShort, -diffQuotaLimit);
+            CPUQuotaAvailableShort -= reclaim;
+            CPUQuotaAvailableCommon += reclaim;
         } else {
-                int transfer = Math.min(CPUQuotaAvailableCommon, diffQuotaLimit);
-                CPUQuotaAvailableShort += transfer;
-                CPUQuotaAvailableCommon -= transfer;
+            int transfer = Math.min(CPUQuotaAvailableCommon, diffQuotaLimit);
+            CPUQuotaAvailableShort += transfer;
+            CPUQuotaAvailableCommon -= transfer;
         }
 
         CPUQuotaShort = newShortCPUQuota;

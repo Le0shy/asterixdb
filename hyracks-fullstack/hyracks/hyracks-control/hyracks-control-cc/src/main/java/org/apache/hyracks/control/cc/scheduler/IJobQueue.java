@@ -74,6 +74,13 @@ public interface IJobQueue {
      */
     void clear();
 
+    /**
+     * Returns the number of queued jobs.
+     *
+     * @return the number of queued jobs.
+     */
+    int size();
+
     void notifyJobFinished(JobRun run);
 
     boolean isEmpty();

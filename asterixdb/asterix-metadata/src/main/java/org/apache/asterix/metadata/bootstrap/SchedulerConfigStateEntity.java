@@ -16,8 +16,7 @@ public class SchedulerConfigStateEntity {
 
     private static ARecordType schedulerConfigStateType() {
         return MetadataRecordTypes.createRecordType(RECORD_NAME_SCHEDULER_CONFIG_STATE,
-                new String[] { FIELD_NAME_SCHEDULER_CONFIG_NAME,
-                        FIELD_NAME_SCHEDULER_ENABLED_CONFIG_NAME },
+                new String[] { FIELD_NAME_SCHEDULER_CONFIG_NAME, FIELD_NAME_SCHEDULER_ENABLED_CONFIG_NAME },
                 new IAType[] { BuiltinType.ASTRING, BuiltinType.ASTRING }, true);
     }
 

@@ -22,19 +22,14 @@ package org.apache.asterix.hyracks.bootstrap;
 import static org.apache.asterix.algebra.base.ILangExtension.Language.SQLPP;
 import static org.apache.asterix.api.http.server.ServletConstants.ASTERIX_APP_CONTEXT_INFO_ATTR;
 import static org.apache.asterix.api.http.server.ServletConstants.HYRACKS_CONNECTION_ATTR;
-import static org.apache.asterix.common.api.IClusterManagementWork.ClusterState.SHUTTING_DOWN;
+import static org.apache.asterix.common.api.IClusterManagementWork.ClusterState.*;
 import static org.apache.hyracks.control.common.controllers.ControllerConfig.Option.CLOUD_DEPLOYMENT;
 
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.Charset;
 import java.rmi.RemoteException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.ServiceLoader;
+import java.util.*;
 import java.util.concurrent.ConcurrentMap;
 
 import org.apache.asterix.api.http.IQueryWebServerRegistrant;
@@ -69,6 +64,7 @@ import org.apache.asterix.common.api.INamespacePathResolver;
 import org.apache.asterix.common.api.INamespaceResolver;
 import org.apache.asterix.common.api.INodeJobTracker;
 import org.apache.asterix.common.api.IReceptionistFactory;
+import org.apache.asterix.common.cluster.IClusterStateManager;
 import org.apache.asterix.common.cluster.IGlobalRecoveryManager;
 import org.apache.asterix.common.cluster.IGlobalTxManager;
 import org.apache.asterix.common.config.AsterixExtension;
@@ -112,6 +108,7 @@ import org.apache.hyracks.api.config.IConfigManager;
 import org.apache.hyracks.api.control.IGatekeeper;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
 import org.apache.hyracks.api.io.IODeviceHandle;
+import org.apache.hyracks.api.job.JobFlag;
 import org.apache.hyracks.api.job.resource.IJobCapacityController;
 import org.apache.hyracks.api.lifecycle.LifeCycleComponentManager;
 import org.apache.hyracks.api.result.IJobResultCallback;
@@ -215,7 +212,7 @@ public class CCApplication extends BaseCCApplication {
         ccServiceCtx.addClusterLifecycleListener(nodeJobTracker);
         ccServiceCtx.addJobLifecycleListener(globalTxManager);
 
-        jobCapacityController = new JobCapacityController(controllerService.getResourceManager());
+        jobCapacityController = new JobCapacityController(controllerService.getResourceManager(), this);
     }
 
     protected ICloudGuardian getCloudGuardian(CloudProperties cloudProperties) {
@@ -438,5 +435,15 @@ public class CCApplication extends BaseCCApplication {
     @Override
     public IJobResultCallback getJobResultCallback() {
         return new JobResultCallback(appCtx);
+    }
+
+    @Override
+    public boolean acceptingJobs(Set<JobFlag> flags) {
+        // flags == null should not be needed since currently it's not null (but not enforced)
+        if (flags == null || !flags.contains(JobFlag.ENSURE_RUNNABLE)) {
+            return true;
+        }
+        IClusterStateManager csm = appCtx.getClusterStateManager();
+        return csm.getState() == ACTIVE || csm.getState() == REBALANCE_REQUIRED;
     }
 }

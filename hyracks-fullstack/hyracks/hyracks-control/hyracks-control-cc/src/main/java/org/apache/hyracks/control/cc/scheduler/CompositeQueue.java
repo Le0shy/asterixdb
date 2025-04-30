@@ -82,6 +82,11 @@ public class CompositeQueue implements IJobQueue {
     }
 
     @Override
+    public int size() {
+        return SQAJobQueue.size() + priorityBasedQueue.size();
+    }
+
+    @Override
     public void notifyJobFinished(JobRun run) {
         if (run.getSchedulingType() == JobTypeManager.JobSchedulingType.DEFAULT) {
             priorityBasedQueue.notifyJobFinished(run);

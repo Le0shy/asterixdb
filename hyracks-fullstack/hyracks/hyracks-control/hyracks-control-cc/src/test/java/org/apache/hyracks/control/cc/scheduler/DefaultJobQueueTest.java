@@ -1,5 +1,6 @@
 package org.apache.hyracks.control.cc.scheduler;
 
+import static org.mockito.ArgumentMatchers.anySet;
 import static org.mockito.Matchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
@@ -50,13 +51,14 @@ public class DefaultJobQueueTest {
         // Submits runnable jobs.
         // add ten jobs based on memory ratio
         List<JobRun> queuedJobs = new ArrayList<>();
-        for (int id = 1; id <= 10; id += 1) {
+        for (long id = 1; id <= 10; id += 1) {
             JobRun run = mockDefaultJobRun(id);
             JobSpecification job = mock(JobSpecification.class);
             IClusterCapacity requiredClusterCapacity = mockIClusterCapacity(4, id * 5);
             when(job.getRequiredClusterCapacity()).thenReturn(requiredClusterCapacity);
             when(run.getJobSpecification()).thenReturn(job);
-            when(jobCapacityController.allocate(job)).thenReturn(IJobCapacityController.JobSubmissionStatus.QUEUE);
+            when(jobCapacityController.allocate(job, any(), anySet()))
+                    .thenReturn(IJobCapacityController.JobSubmissionStatus.QUEUE);
             queuedJobs.add(run);
             defaultJobQueue.add(run);
         }
@@ -84,7 +86,7 @@ public class DefaultJobQueueTest {
                 IClusterCapacity requiredClusterCapacity = mockIClusterCapacity(4, (i - 1) * 10);
                 when(job.getRequiredClusterCapacity()).thenReturn(requiredClusterCapacity);
                 when(run.getJobSpecification()).thenReturn(job);
-                when(jobCapacityController.allocate(job))
+                when(jobCapacityController.allocate(job, any(), anySet()))
                         .thenReturn(IJobCapacityController.JobSubmissionStatus.EXECUTE);
                 when(run.getAddedToMemoryQueueTime()).thenReturn(time);
                 queuedJobs.add(run);

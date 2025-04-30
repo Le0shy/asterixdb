@@ -1,10 +1,9 @@
 package org.apache.hyracks.control.cc.scheduler;
 
-import org.apache.hyracks.control.cc.job.JobRun;
-
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+
+import org.apache.hyracks.control.cc.job.JobRun;
 
 public interface IJobTypeManager {
 

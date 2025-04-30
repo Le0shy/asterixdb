@@ -36,11 +36,14 @@ import org.apache.hyracks.api.exceptions.ErrorCode;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
 import org.apache.hyracks.api.exceptions.HyracksException;
 import org.apache.hyracks.api.exceptions.IError;
+import org.apache.hyracks.api.exceptions.IFormattedException;
 import org.apache.hyracks.api.job.ActivityClusterGraph;
 import org.apache.hyracks.api.job.JobId;
 import org.apache.hyracks.api.job.JobSpecification;
 import org.apache.hyracks.api.job.JobStatus;
+import org.apache.hyracks.api.job.resource.IClusterCapacity;
 import org.apache.hyracks.api.job.resource.IJobCapacityController;
+import org.apache.hyracks.api.job.resource.IReadOnlyClusterCapacity;
 import org.apache.hyracks.api.util.ExceptionUtils;
 import org.apache.hyracks.control.cc.ClusterControllerService;
 import org.apache.hyracks.control.cc.NodeControllerState;
@@ -117,11 +120,10 @@ public class JobManager implements IJobManager {
     @Override
     public void add(JobRun jobRun) throws HyracksException {
         checkJob(jobRun);
-
         JobSpecification job = jobRun.getJobSpecification();
         IJobCapacityController.JobSubmissionStatus status;
         try {
-            status = jobCapacityController.allocate(job);
+            status = jobCapacityController.allocate(job, jobRun.getJobId(), jobRun.getFlags());
             CCServiceContext serviceCtx = ccs.getContext();
             serviceCtx.notifyJobCreation(jobRun.getJobId(), job, status);
             switch (status) {
@@ -149,7 +151,6 @@ public class JobManager implements IJobManager {
             // trigger JobCleanupWork and JobCleanupNotificationWork which will update the lifecycle of the job.
             // Therefore, we do not remove the job out of activeRunMap here.
             jobRun.getExecutor().cancelJob(callback);
-            incrementCancelledJobs();
             return;
         }
         // Removes a pending job.
@@ -238,11 +239,7 @@ public class JobManager implements IJobManager {
     @Override
     public void finalComplete(JobRun run) throws HyracksException {
         checkJob(run);
-        if (run.getPendingStatus() == JobStatus.FAILURE) {
-            incrementFailedJobs();
-        } else if (run.getPendingStatus() == JobStatus.TERMINATED) {
-            incrementSuccessfulJobs();
-        }
+        boolean successful = run.getPendingStatus() == JobStatus.TERMINATED;
 
         JobId jobId = run.getJobId();
         Throwable caughtException = null;
@@ -256,8 +253,9 @@ public class JobManager implements IJobManager {
         }
         run.setStatus(run.getPendingStatus(), run.getPendingExceptions());
         run.setEndTime(System.currentTimeMillis());
-        run.setExecutionEndTime(System.nanoTime());
         if (activeRunMap.remove(jobId) != null) {
+            incrementJobCounters(run, successful);
+
             // non-active jobs have zero capacity
             releaseJobCapacity(run);
         }
@@ -275,7 +273,7 @@ public class JobManager implements IJobManager {
                 caughtException = ExceptionUtils.suppress(caughtException, e);
             }
         }
-        jobQueue.notifyJobFinished(run);
+
         // Picks the next job to execute.
         pickJobsToRun();
 
@@ -283,6 +281,41 @@ public class JobManager implements IJobManager {
         if (caughtException != null) {
             throw HyracksException.wrapOrThrowUnchecked(caughtException);
         }
+    }
+
+    /**
+     * Increments the job counters depending on the status
+     *
+     * @param run job run
+     * @param successful if job is successful
+     */
+    protected void incrementJobCounters(JobRun run, boolean successful) {
+        if (successful) {
+            incrementSuccessfulJobs();
+            return;
+        }
+
+        if (run.getExceptions() != null && !run.getExceptions().isEmpty() && isCancelledJob(run)) {
+            incrementCancelledJobs();
+        } else {
+            incrementFailedJobs();
+        }
+    }
+
+    /**
+     * Checks the exceptions for a job run to see if the job is cancelled
+     *
+     * @param run job run
+     * @return true if cancelled job, false otherwise
+     */
+    protected boolean isCancelledJob(JobRun run) {
+        List<Exception> exceptions = run.getExceptions();
+        for (Exception e : exceptions) {
+            if (e instanceof IFormattedException f && f.getErrorCode() == ErrorCode.JOB_CANCELED.intValue()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @Override
@@ -356,10 +389,11 @@ public class JobManager implements IJobManager {
     }
 
     // Executes a job when the required capacity for the job is met.
-    protected void executeJob(JobRun run) throws HyracksException {
+    private void executeJob(JobRun run) throws HyracksException {
         run.setStartTime(System.currentTimeMillis());
         run.setStartTimeZoneId(ZoneId.systemDefault().getId());
         JobId jobId = run.getJobId();
+        logJobCapacity(run, "running", Level.DEBUG);
         activeRunMap.put(jobId, run);
         run.setStatus(JobStatus.RUNNING, null);
         executeJobInternal(run);
@@ -402,6 +436,24 @@ public class JobManager implements IJobManager {
     private void releaseJobCapacity(JobRun jobRun) {
         final JobSpecification job = jobRun.getJobSpecification();
         jobCapacityController.release(job);
+        logJobCapacity(jobRun, "released", Level.DEBUG);
+    }
+
+    private void logJobCapacity(JobRun jobRun, String jobStateDesc, Level lvl) {
+        IClusterCapacity requiredResources = jobRun.getJobSpecification().getRequiredClusterCapacity();
+        if (requiredResources == null) {
+            return;
+        }
+        long requiredMemory = requiredResources.getAggregatedMemoryByteSize();
+        int requiredCPUs = requiredResources.getAggregatedCores();
+        if (requiredMemory == 0 && requiredCPUs == 0) {
+            return;
+        }
+        IReadOnlyClusterCapacity clusterCapacity = jobCapacityController.getClusterCapacity();
+        LOGGER.log(lvl, "{} {}, memory={}, cpu={}, (new) cluster memory={}, cpu={}, currently running={}, queued={}",
+                jobStateDesc, jobRun.getJobId(), requiredMemory, requiredCPUs,
+                clusterCapacity.getAggregatedMemoryByteSize(), clusterCapacity.getAggregatedCores(),
+                getRunningJobsCount(), jobQueue.size());
     }
 
     private void handleException(HyracksException ex) {
@@ -415,19 +467,19 @@ public class JobManager implements IJobManager {
         }
     }
 
-    void incrementSuccessfulJobs() {
+    protected void incrementSuccessfulJobs() {
         successfulJobs.incrementAndGet();
     }
 
-    void incrementFailedJobs() {
+    protected void incrementFailedJobs() {
         totalFailedJobs.incrementAndGet();
     }
 
-    void incrementCancelledJobs() {
+    protected void incrementCancelledJobs() {
         totalCancelledJobs.incrementAndGet();
     }
 
-    void incrementRejectedJobs() {
+    protected void incrementRejectedJobs() {
         totalRejectedJobs.incrementAndGet();
     }
 }

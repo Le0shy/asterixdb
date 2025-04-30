@@ -1879,7 +1879,7 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
             MetadataManager.INSTANCE.addSchedulerConfig(mdTxnCtx, configMetadataEntity);
             MetadataManager.INSTANCE.commitTransaction(mdTxnCtx);
 
-            if(stmtUpsert.getConfigName().equals(currentEnabledConfig)) {
+            if (stmtUpsert.getConfigName().equals(currentEnabledConfig)) {
                 deliverInfoToWorkloadManger(new UpsertGroupInfo(stmtUpsert.getUpsertQueryGroups()));
             }
         } catch (Exception e) {
@@ -1929,7 +1929,7 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
             MetadataManager.INSTANCE.dropSchedulerConfig(mdTxnCtx, schedulerConfigName);
             MetadataManager.INSTANCE.addSchedulerConfig(mdTxnCtx, configMetadataEntity);
             MetadataManager.INSTANCE.commitTransaction(mdTxnCtx);
-            if(stmtDelete.getConfigName().equals(currentEnabledConfig)) {
+            if (stmtDelete.getConfigName().equals(currentEnabledConfig)) {
                 deliverInfoToWorkloadManger(new DeleteGroupInfo(stmtDelete.getDeleteQueryGroups()));
             }
         } catch (Exception e) {
@@ -1982,8 +1982,7 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
         try {
             /* skip validation for enabling default config */
             if (!schedulerConfigName.equals(SCHEDULER_DEFAULT_CONFIG_NAME)) {
-                configMetadataEntity =
-                        MetadataManager.INSTANCE.getSchedulerConfig(mdTxnCtx, schedulerConfigName);
+                configMetadataEntity = MetadataManager.INSTANCE.getSchedulerConfig(mdTxnCtx, schedulerConfigName);
 
                 if (configMetadataEntity == null) {
                     throw new CompilationException(ErrorCode.SCHEDULER_CONFIG_NOT_FOUND, stmtEnable.getSourceLocation(),
@@ -2006,12 +2005,10 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
             /* commit transaction */
             MetadataManager.INSTANCE.commitTransaction(mdTxnCtx);
             assert configMetadataEntity != null;
-            SchedulerConfigRecordDescriptor scrd = (SchedulerConfigRecordDescriptor)configMetadataEntity.getSchedulerConfig();
-            deliverInfoToWorkloadManger(new EnableConfigInfo(
-                    scrd.getDefaultPriority(),
-                    scrd.getShortMemoryPercent(),
-                    (int) scrd.getShortCPUQuota(),
-                    scrd.getGroupToPriority()));
+            SchedulerConfigRecordDescriptor scrd =
+                    (SchedulerConfigRecordDescriptor) configMetadataEntity.getSchedulerConfig();
+            deliverInfoToWorkloadManger(new EnableConfigInfo(scrd.getDefaultPriority(), scrd.getShortMemoryPercent(),
+                    (int) scrd.getShortCPUQuota(), scrd.getGroupToPriority()));
         } catch (Exception e) {
             abort(e, e, mdTxnCtx);
             throw e;
@@ -6089,7 +6086,7 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
     }
 
     private void validateWorkloadManagerEnabled(Statement stmt) throws AsterixException {
-        if(!isWorkloadMangerEnabled()) {
+        if (!isWorkloadMangerEnabled()) {
             throw new AsterixException(ErrorCode.COMPILATION_ERROR, stmt.getSourceLocation(),
                     "Workload Manager is not enabled!");
         }

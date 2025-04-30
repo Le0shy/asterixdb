@@ -19,8 +19,14 @@
 
 package org.apache.asterix.runtime.job.resource;
 
+import java.util.Set;
+
+import org.apache.hyracks.api.application.ICCApplication;
 import org.apache.hyracks.api.exceptions.ErrorCode;
+import org.apache.hyracks.api.exceptions.HyracksDataException;
 import org.apache.hyracks.api.exceptions.HyracksException;
+import org.apache.hyracks.api.job.JobFlag;
+import org.apache.hyracks.api.job.JobId;
 import org.apache.hyracks.api.job.JobSpecification;
 import org.apache.hyracks.api.job.resource.IClusterCapacity;
 import org.apache.hyracks.api.job.resource.IJobCapacityController;
@@ -36,13 +42,19 @@ public class JobCapacityController implements IJobCapacityController {
 
     private static final Logger LOGGER = LogManager.getLogger();
     private final IResourceManager resourceManager;
+    private final ICCApplication ccApp;
 
-    public JobCapacityController(IResourceManager resourceManager) {
+    public JobCapacityController(IResourceManager resourceManager, ICCApplication ccApp) {
         this.resourceManager = resourceManager;
+        this.ccApp = ccApp;
     }
 
     @Override
-    public JobSubmissionStatus allocate(JobSpecification job) throws HyracksException {
+    public JobSubmissionStatus allocate(JobSpecification job, JobId jobId, Set<JobFlag> jobFlags)
+            throws HyracksException {
+        if (!ccApp.acceptingJobs(jobFlags)) {
+            throw HyracksDataException.create(ErrorCode.JOB_REJECTED, jobId);
+        }
         IClusterCapacity requiredCapacity = job.getRequiredClusterCapacity();
         long reqAggregatedMemoryByteSize = requiredCapacity.getAggregatedMemoryByteSize();
         int reqAggregatedNumCores = requiredCapacity.getAggregatedCores();
@@ -77,6 +89,21 @@ public class JobCapacityController implements IJobCapacityController {
         ensureMaxCapacity();
     }
 
+    @Override
+    public IReadOnlyClusterCapacity getClusterCapacity() {
+        return resourceManager.getCurrentCapacity();
+    }
+
+    @Override
+    public int getMaxAggregatedNumCores() {
+        return resourceManager.getCurrentCapacity().getAggregatedCores();
+    }
+
+    @Override
+    public long getMaxAggregatedMemoryByteSize() {
+        return resourceManager.getCurrentCapacity().getAggregatedMemoryByteSize();
+    }
+
     private void ensureMaxCapacity() {
         final IClusterCapacity currentCapacity = resourceManager.getCurrentCapacity();
         final IReadOnlyClusterCapacity maximumCapacity = resourceManager.getMaximumCapacity();
@@ -85,38 +112,5 @@ public class JobCapacityController implements IJobCapacityController {
             LOGGER.warn("Current cluster available capacity {} is more than its maximum capacity {}", currentCapacity,
                     maximumCapacity);
         }
-    }
-
-    //    public void setJobSizeTag(JobSpecification job) {
-    //        double memRatio = getMemoryRatio(job);
-    //        LOGGER.warn(memRatio);
-    //        if (memRatio <= 0.05) {
-    //            String uid = job.getUserID();
-    //            if (uid != null) {
-    //                if (uid.contains("ZERO_Short")) {
-    //                    job.setSizeTag(JobSpecification.JobSizeTag.ZERO_SHORT);
-    //                } else if (uid.contains("ZERO_Long")) {
-    //                    job.setSizeTag(JobSpecification.JobSizeTag.ZERO_LONG);
-    //                }
-    //            } else {
-    //                job.setSizeTag(JobSpecification.JobSizeTag.ZERO);
-    //            }
-    //        } else if (memRatio <= 0.25) {
-    //            job.setSizeTag(JobSpecification.JobSizeTag.SMALL);
-    //        } else if (memRatio <= 0.75) {
-    //            job.setSizeTag(JobSpecification.JobSizeTag.MEDIUM);
-    //        } else {
-    //            job.setSizeTag(JobSpecification.JobSizeTag.LARGE);
-    //        }
-    //
-    //    }
-    @Override
-    public int getMaxAggregatedNumCores() {
-        return resourceManager.getMaximumCapacity().getAggregatedCores();
-    }
-
-    @Override
-    public long getMaxAggregatedMemoryByteSize() {
-        return resourceManager.getMaximumCapacity().getAggregatedMemoryByteSize();
     }
 }

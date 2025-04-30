@@ -51,7 +51,8 @@ public class PriorityBasedQueueTest {
             IClusterCapacity requiredClusterCapacity = mockIClusterCapacity(4, 5);
             when(job.getRequiredClusterCapacity()).thenReturn(requiredClusterCapacity);
             when(run.getJobSpecification()).thenReturn(job);
-            when(jobCapacityController.allocate(job)).thenReturn(IJobCapacityController.JobSubmissionStatus.QUEUE);
+            when(jobCapacityController.allocate(job, any(), anySet()))
+                    .thenReturn(IJobCapacityController.JobSubmissionStatus.QUEUE);
             queuedJobs.add(run);
             priorityBasedQueue.add(run);
         }

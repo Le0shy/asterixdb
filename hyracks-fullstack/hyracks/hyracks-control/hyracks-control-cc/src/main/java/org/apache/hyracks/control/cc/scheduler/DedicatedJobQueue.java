@@ -87,12 +87,17 @@ public class DedicatedJobQueue implements IJobQueue {
     }
 
     @Override
+    public int size() {
+        return jobListMap.size();
+    }
+
+    @Override
     public void notifyJobFinished(JobRun run) {
 
     }
 
     @Override
     public boolean isEmpty() {
-        return false;
+        return jobListMap.isEmpty();
     }
 }

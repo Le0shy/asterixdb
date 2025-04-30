@@ -243,6 +243,11 @@ public class DefaultJobQueue implements IJobQueue {
         }
     }
 
+    @Override
+    public int size() {
+        return jobIdToQueueMap.size();
+    }
+
     /* update exponentially weighted moving average */
     private void updateMovingAverage(MPLQueue queue, long executionTime) {
         queue.EWMA = queue.EWMA * queue.betaWeight + (double) executionTime * (1 - queue.betaWeight);

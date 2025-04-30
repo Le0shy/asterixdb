@@ -77,13 +77,11 @@ public class SchedulerConfigRecordEntity {
     private static ARecordType schedulerConfigRecordType() {
         return MetadataRecordTypes
                 .createRecordType(RECORD_NAME_SCHEDULER_CONFIG,
-                        new String[] { FIELD_NAME_SCHEDULER_CONFIG_NAME,
-                                FIELD_NAME_SCHEDULER_CONFIG_DEFAULT_PRIORITY,
+                        new String[] { FIELD_NAME_SCHEDULER_CONFIG_NAME, FIELD_NAME_SCHEDULER_CONFIG_DEFAULT_PRIORITY,
                                 FIELD_NAME_SCHEDULER_CONFIG_SHORT_MEMORY_PERCENT,
                                 FIELD_NAME_SCHEDULER_CONFIG_SHORT_CPU_QUOTA,
                                 FIELD_NAME_SCHEDULER_CONFIG_QUERY_GROUPS },
-                        new IAType[] { BuiltinType.ASTRING,
-                                AUnionType.createMissableType(BuiltinType.AINT64),
+                        new IAType[] { BuiltinType.ASTRING, AUnionType.createMissableType(BuiltinType.AINT64),
                                 AUnionType.createMissableType(BuiltinType.ADOUBLE),
                                 AUnionType.createMissableType(BuiltinType.AINT64), AUnionType.createMissableType(
                                         new AOrderedListType(SCHEDULER_COFING_QUERY_GROUPS_RECORDTYPE, null)) },

@@ -21,12 +21,10 @@ package org.apache.asterix.metadata.declared;
 import static org.apache.asterix.common.api.IIdentifierMapper.Modifier.PLURAL;
 import static org.apache.asterix.common.metadata.MetadataConstants.METADATA_OBJECT_NAME_INVALID_CHARS;
 import static org.apache.asterix.common.utils.IdentifierUtil.dataset;
-import static org.apache.asterix.metadata.entities.SchedulerConfigMetadataEntity.SCHEDULER_DEFAULT_CONFIG_NAME;
 import static org.apache.asterix.metadata.entities.SchedulerConfigMetadataEntity.SCHEDULER_STATE;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.rmi.RemoteException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -520,12 +518,11 @@ public class MetadataProvider implements IMetadataProvider<DataSourceId, String>
         return MetadataManagerUtil.findFullTextFilterDescriptor(mdTxnCtx, database, dataverseName, ftFilterName);
     }
 
-
     public SchedulerConfigMetadataEntity findEnabledSchedulerConfig() throws AlgebricksException {
         TxnId txnId = new TxnId(0);
         mdTxnCtx = new MetadataTransactionContext(txnId);
-        SchedulerConfigMetadataEntity scme = MetadataManagerUtil.findSchedulerConfigDescriptor(
-                 mdTxnCtx, SCHEDULER_STATE);
+        SchedulerConfigMetadataEntity scme =
+                MetadataManagerUtil.findSchedulerConfigDescriptor(mdTxnCtx, SCHEDULER_STATE);
         return MetadataManagerUtil.findSchedulerConfigDescriptor(mdTxnCtx, scme.getEnabled());
     }
 

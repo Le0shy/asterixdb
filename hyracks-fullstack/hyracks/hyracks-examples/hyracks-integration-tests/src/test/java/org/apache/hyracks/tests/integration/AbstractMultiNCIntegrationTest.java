@@ -23,6 +23,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Set;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.hyracks.api.client.IHyracksClientConnection;
@@ -34,7 +35,9 @@ import org.apache.hyracks.api.job.JobFlag;
 import org.apache.hyracks.api.job.JobId;
 import org.apache.hyracks.api.job.JobSpecification;
 import org.apache.hyracks.api.job.JobStatus;
+import org.apache.hyracks.api.job.resource.ClusterCapacity;
 import org.apache.hyracks.api.job.resource.IJobCapacityController;
+import org.apache.hyracks.api.job.resource.IReadOnlyClusterCapacity;
 import org.apache.hyracks.api.result.IResultSet;
 import org.apache.hyracks.api.result.IResultSetReader;
 import org.apache.hyracks.client.result.ResultSet;
@@ -245,7 +248,8 @@ public abstract class AbstractMultiNCIntegrationTest {
                 private long maxRAM = Runtime.getRuntime().maxMemory();
 
                 @Override
-                public JobSubmissionStatus allocate(JobSpecification job) throws HyracksException {
+                public JobSubmissionStatus allocate(JobSpecification job, JobId jobId, Set<JobFlag> jobFlags)
+                        throws HyracksException {
                     return maxRAM > job.getRequiredClusterCapacity().getAggregatedMemoryByteSize()
                             ? JobSubmissionStatus.EXECUTE : JobSubmissionStatus.QUEUE;
                 }
@@ -253,6 +257,24 @@ public abstract class AbstractMultiNCIntegrationTest {
                 @Override
                 public void release(JobSpecification job) {
 
+                }
+
+                @Override
+                public IReadOnlyClusterCapacity getClusterCapacity() {
+                    ClusterCapacity clusterCapacity = new ClusterCapacity();
+                    clusterCapacity.setAggregatedMemoryByteSize(maxRAM);
+                    clusterCapacity.setAggregatedCores(Integer.MAX_VALUE);
+                    return clusterCapacity;
+                }
+
+                @Override
+                public int getMaxAggregatedNumCores() {
+                    return 0;
+                }
+
+                @Override
+                public long getMaxAggregatedMemoryByteSize() {
+                    return 0;
                 }
             };
         }

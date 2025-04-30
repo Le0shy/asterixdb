@@ -1,4 +1,5 @@
 package org.apache.hyracks.control.cc.work;
+
 import org.apache.hyracks.control.cc.ClusterControllerService;
 import org.apache.hyracks.control.cc.job.WorkloadManager;
 import org.apache.hyracks.control.cc.scheduler.DeleteGroupInfo;
@@ -22,17 +23,17 @@ public class NotifyWorkloadConfigWork extends SynchronizableWork {
     @Override
     protected void doRun() throws Exception {
         WorkloadManager wlm = (WorkloadManager) ccs.getJobManager();
-        switch(workloadConfigInfo.getType()){
+        switch (workloadConfigInfo.getType()) {
             case UPSERT_GROUP:
-                UpsertGroupInfo upsertGroupInfo = (UpsertGroupInfo)workloadConfigInfo;
+                UpsertGroupInfo upsertGroupInfo = (UpsertGroupInfo) workloadConfigInfo;
                 wlm.addQueryGroups(upsertGroupInfo.getGroupToUpsert());
                 break;
             case DELETE_GROUP:
-                DeleteGroupInfo deleteGroupInfo = (DeleteGroupInfo)workloadConfigInfo;
+                DeleteGroupInfo deleteGroupInfo = (DeleteGroupInfo) workloadConfigInfo;
                 wlm.removeQueryGroups(deleteGroupInfo.getGroupToDelete());
                 break;
             case ENABLE_CONFIG:
-                wlm.enableSchedulerConfig((EnableConfigInfo)workloadConfigInfo);
+                wlm.enableSchedulerConfig((EnableConfigInfo) workloadConfigInfo);
                 break;
             case SET_WORKLOAD_PARAMETERS:
                 wlm.setWorkloadParameters((EnableConfigInfo) (workloadConfigInfo));

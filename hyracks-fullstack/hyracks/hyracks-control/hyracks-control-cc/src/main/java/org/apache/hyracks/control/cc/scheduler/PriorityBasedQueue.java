@@ -29,7 +29,7 @@ public class PriorityBasedQueue implements IJobQueue {
         defaultJobQueue = new DefaultJobQueue(jobManager, capacityControllerGuard);
         queues = new HashMap<>();
         activeQueues = new HashSet<>();
-        defaultQueuePriority = ((WorkloadManager)jobManager).getDefaultQueuePriority();
+        defaultQueuePriority = ((WorkloadManager) jobManager).getDefaultQueuePriority();
         this.jobManager = jobManager;
         this.capacityControllerGuard = capacityControllerGuard;
     }
@@ -197,6 +197,11 @@ public class PriorityBasedQueue implements IJobQueue {
     @Override
     public void clear() {
 
+    }
+
+    @Override
+    public int size() {
+        return jobIdToQueueMap.size();
     }
 
     @Override

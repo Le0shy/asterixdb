@@ -1,7 +1,8 @@
 package org.apache.hyracks.control.cc.scheduler;
+
 import java.util.Map;
 
-public class UpsertGroupInfo implements IWorkloadConfigInfo{
+public class UpsertGroupInfo implements IWorkloadConfigInfo {
     private final Map<String, Long> groupToUpsert;
     private final Type type = Type.UPSERT_GROUP;
 

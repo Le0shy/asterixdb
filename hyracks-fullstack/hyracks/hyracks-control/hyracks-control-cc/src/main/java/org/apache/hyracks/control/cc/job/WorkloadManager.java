@@ -1,21 +1,28 @@
 package org.apache.hyracks.control.cc.job;
 
+import java.time.ZoneId;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+
 import org.apache.hyracks.api.exceptions.ErrorCode;
 import org.apache.hyracks.api.exceptions.HyracksException;
 import org.apache.hyracks.api.job.JobId;
 import org.apache.hyracks.api.job.JobSpecification;
 import org.apache.hyracks.api.job.JobStatus;
+import org.apache.hyracks.api.job.resource.IClusterCapacity;
 import org.apache.hyracks.api.job.resource.IJobCapacityController;
+import org.apache.hyracks.api.job.resource.IReadOnlyClusterCapacity;
 import org.apache.hyracks.api.util.ExceptionUtils;
 import org.apache.hyracks.control.cc.ClusterControllerService;
 import org.apache.hyracks.control.cc.application.CCServiceContext;
 import org.apache.hyracks.control.cc.scheduler.*;
 import org.apache.hyracks.control.common.controllers.CCConfig;
+import org.apache.hyracks.control.common.work.NoOpCallback;
+import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import java.util.List;
-import java.util.Map;
 public class WorkloadManager extends JobManager {
 
     private static final Logger LOGGER = LogManager.getLogger();
@@ -49,11 +56,7 @@ public class WorkloadManager extends JobManager {
     @Override
     public void finalComplete(JobRun run) throws HyracksException {
         checkJob(run);
-        if (run.getPendingStatus() == JobStatus.FAILURE) {
-            incrementFailedJobs();
-        } else if (run.getPendingStatus() == JobStatus.TERMINATED) {
-            incrementSuccessfulJobs();
-        }
+        boolean successful = run.getPendingStatus() == JobStatus.TERMINATED;
 
         JobId jobId = run.getJobId();
         Throwable caughtException = null;
@@ -69,6 +72,8 @@ public class WorkloadManager extends JobManager {
         run.setEndTime(System.currentTimeMillis());
         run.setExecutionEndTime(System.nanoTime());
         if (activeRunMap.remove(jobId) != null) {
+            incrementJobCounters(run, successful);
+
             // non-active jobs have zero capacity
             releaseJobCapacity(run);
         }
@@ -96,8 +101,49 @@ public class WorkloadManager extends JobManager {
         }
     }
 
+    private void executeJob(JobRun run) throws HyracksException {
+        run.setStartTime(System.currentTimeMillis());
+        run.setStartTimeZoneId(ZoneId.systemDefault().getId());
+        JobId jobId = run.getJobId();
+        logJobCapacity(run, "running", Level.DEBUG);
+        activeRunMap.put(jobId, run);
+        run.setStatus(JobStatus.RUNNING, null);
+        executeJobInternal(run);
+    }
+
+    private void executeJobInternal(JobRun run) {
+        try {
+            run.getExecutor().startJob();
+        } catch (Exception e) {
+            LOGGER.log(Level.ERROR, "Aborting " + run.getJobId() + " due to failure during job start", e);
+            final List<Exception> exceptions = Collections.singletonList(e);
+            // fail the job then abort it
+            run.setStatus(JobStatus.FAILURE, exceptions);
+            // abort job will trigger JobCleanupWork
+            run.getExecutor().abortJob(exceptions, NoOpCallback.INSTANCE);
+        }
+    }
+
+    private void logJobCapacity(JobRun jobRun, String jobStateDesc, Level lvl) {
+        IClusterCapacity requiredResources = jobRun.getJobSpecification().getRequiredClusterCapacity();
+        if (requiredResources == null) {
+            return;
+        }
+        long requiredMemory = requiredResources.getAggregatedMemoryByteSize();
+        int requiredCPUs = requiredResources.getAggregatedCores();
+        if (requiredMemory == 0 && requiredCPUs == 0) {
+            return;
+        }
+        IReadOnlyClusterCapacity clusterCapacity = jobCapacityController.getClusterCapacity();
+        LOGGER.log(lvl, "{} {}, memory={}, cpu={}, (new) cluster memory={}, cpu={}, currently running={}, queued={}",
+                jobStateDesc, jobRun.getJobId(), requiredMemory, requiredCPUs,
+                clusterCapacity.getAggregatedMemoryByteSize(), clusterCapacity.getAggregatedCores(),
+                getRunningJobsCount(), jobQueue.size());
+    }
+
     private void releaseJobCapacity(JobRun jobRun) {
         workloadCapacityController.release(jobRun);
+        logJobCapacity(jobRun, "released", Level.DEBUG);
     }
 
     private void pickJobsToRun() throws HyracksException {
@@ -116,7 +162,7 @@ public class WorkloadManager extends JobManager {
         setWorkloadParameters(enableConfig);
     }
 
-    public void addQueryGroups(Map<String, Long> groupsToAdd){
+    public void addQueryGroups(Map<String, Long> groupsToAdd) {
         jobTypeManager.addGroups(groupsToAdd);
     }
 

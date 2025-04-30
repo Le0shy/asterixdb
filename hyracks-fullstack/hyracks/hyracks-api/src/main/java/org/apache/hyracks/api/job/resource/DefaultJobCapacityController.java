@@ -19,22 +19,36 @@
 
 package org.apache.hyracks.api.job.resource;
 
+import java.util.Set;
+
+import org.apache.hyracks.api.job.JobFlag;
+import org.apache.hyracks.api.job.JobId;
 import org.apache.hyracks.api.job.JobSpecification;
 
 public class DefaultJobCapacityController implements IJobCapacityController {
 
     public static final DefaultJobCapacityController INSTANCE = new DefaultJobCapacityController();
+    private static final IClusterCapacity CAPACITY = new ClusterCapacity();
+    static {
+        CAPACITY.setAggregatedCores(Integer.MAX_VALUE);
+        CAPACITY.setAggregatedMemoryByteSize(Long.MAX_VALUE);
+    }
 
     private DefaultJobCapacityController() {
     }
 
     @Override
-    public JobSubmissionStatus allocate(JobSpecification job) {
+    public JobSubmissionStatus allocate(JobSpecification job, JobId jobId, Set<JobFlag> jobFlags) {
         return JobSubmissionStatus.EXECUTE;
     }
 
     @Override
     public void release(JobSpecification job) {
         // No operation here.
+    }
+
+    @Override
+    public IReadOnlyClusterCapacity getClusterCapacity() {
+        return CAPACITY;
     }
 }
