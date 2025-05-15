@@ -45,5 +45,8 @@
     <Logger name="org.apache.asterix.test" level="INFO">
       <AppenderRef ref="ConsoleTest"/>
     </Logger>
+    <Logger name="org.apache.hyracks.control.cc" level="DEBUG">
+      <AppenderRef ref="ConsoleTest"/>
+    </Logger>
   </Loggers>
 </Configuration>

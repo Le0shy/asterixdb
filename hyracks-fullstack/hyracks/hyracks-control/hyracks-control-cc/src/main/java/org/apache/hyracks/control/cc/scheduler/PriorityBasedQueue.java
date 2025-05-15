@@ -55,6 +55,10 @@ public class PriorityBasedQueue implements IJobQueue {
             /* Jobs are waiting in the queue */
             activeQueues.add(jobPriority);
             jobIdToQueueMap.put(run.getJobId(), targetQueue);
+            LOGGER.log(Level.DEBUG, "JobID:{}, scheduled to PriorityBasedQueue, group:{}, priority{}",
+                    run.getJobId(), run.getJobSpecification().getGroupName(), run.getPriority());
+
+            LOGGER.log(Level.DEBUG, "{}", printQueueInfo());
         }
     }
 
@@ -78,7 +82,6 @@ public class PriorityBasedQueue implements IJobQueue {
         if (removedJob != null) {
             return removedJob;
         }
-
         return removeFromNormalQueue(jobId);
     }
 
@@ -89,7 +92,6 @@ public class PriorityBasedQueue implements IJobQueue {
         if (targetJob != null) {
             return targetJob;
         }
-
         MPLQueue queue = jobIdToQueueMap.get(jobId);
         if (queue == null) {
             return null;

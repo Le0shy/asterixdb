@@ -6,8 +6,12 @@ import java.util.Map;
 
 import org.apache.hyracks.api.job.JobSpecification;
 import org.apache.hyracks.control.cc.job.JobRun;
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 public class JobTypeManager implements IJobTypeManager {
+    private static final Logger LOGGER = LogManager.getLogger();
     private static final String GROUP_LONG_JOB = "l";
     private static final String GROUP_SHORT_JOB = "s";
     private Map<String, Long> queryGroupToPriority;
@@ -30,7 +34,6 @@ public class JobTypeManager implements IJobTypeManager {
     public void setJobType(JobRun jobRun) {
         JobSpecification job = jobRun.getJobSpecification();
         String groupName = job.getGroupName();
-
         if (queryGroupToPriority.containsKey(groupName)) {
             jobRun.setSchedulingType(JobSchedulingType.NORMAL);
             long priority = queryGroupToPriority.get(groupName);
@@ -42,6 +45,8 @@ public class JobTypeManager implements IJobTypeManager {
         } else {
             jobRun.setSchedulingType(JobSchedulingType.DEFAULT);
         }
+
+        LOGGER.log(Level.DEBUG, "JobID:{}, JobType:{}", jobRun.getJobId(), jobRun.getSchedulingType());
     }
 
     @Override

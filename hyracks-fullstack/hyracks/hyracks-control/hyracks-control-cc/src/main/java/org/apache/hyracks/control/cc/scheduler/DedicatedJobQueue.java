@@ -33,6 +33,8 @@ public class DedicatedJobQueue implements IJobQueue {
             throw HyracksException.create(ErrorCode.JOB_QUEUE_FULL, jobQueueCapacity);
         }
         jobListMap.put(run.getJobId(), run);
+        LOGGER.log(Level.DEBUG, "JobID:{} scheduled to DedicatedJobQueue, queue size:{}", run.getJobId(),
+                jobListMap.size());
     }
 
     @Override

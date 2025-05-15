@@ -45,7 +45,6 @@ public class DefaultJobQueue implements IJobQueue {
     class MPLQueue {
         private final Map<JobId, JobRun> jobs = new LinkedHashMap<>();
         private double topQuerySlowDown;
-        private long sumExecutionTimesIncludingQueueTime = 0L;
         private double betaWeight = 0.8;
         private int countOfExecutedJobs = 0;
         private Iterator<Map.Entry<JobId, JobRun>> it;
@@ -95,10 +94,15 @@ public class DefaultJobQueue implements IJobQueue {
             }
             return null;
         }
+
+        public int getQueueId(){
+            return this.id;
+        }
     }
 
     private MPLQueue getQueue(JobRun run) {
         if (run.getSchedulingType() == JobTypeManager.JobSchedulingType.LONG) {
+            LOGGER.log(Level.DEBUG, "JobID:{}, scheduled to DefaultJobQueue:Long Job Queue", run.getJobId());
             return queues.get(0);
         } else {
             if (!capacityControllerGuard.isUpdate()) {
@@ -124,6 +128,8 @@ public class DefaultJobQueue implements IJobQueue {
             } else if (ratio < 0.90) {
                 return queues.get(9);
             }
+            LOGGER.log(Level.DEBUG, "JobID:{}, scheduled to DefaultJobQueue: Memory Ratio:{}", run.getJobId(),
+                    ratio);
             return queues.get(10);
         }
     }
@@ -138,7 +144,7 @@ public class DefaultJobQueue implements IJobQueue {
         queue.put(run.getJobId(), run);
         jobIdToQueueMap.put(run.getJobId(), queue);
         queueHasAnyJob.set(queue.id);
-        //pick jobs
+        LOGGER.log(Level.DEBUG, "{}", printQueueInfo());
     }
 
     @Override
@@ -209,12 +215,14 @@ public class DefaultJobQueue implements IJobQueue {
         MPLQueue nextJobQueue = null;
         /* same timestamp instead of using JobRun.getQueueWaitTimeInMillis() */
         long now = getCurrentTime();
+        int selectedQueueNumber = -1;
         /* for every queue that has jobs, calculate the slowdowns and pick the one with max slowdown */
         for (int i = queueHasAnyJob.nextSetBit(0); i >= 0 && i < queueHasAnyJob.size(); i =
                 queueHasAnyJob.nextSetBit(i + 1)) {
             MPLQueue queue = queues.get(i);
             calculateSlowDown(queue, now);
             if (queue.topQuerySlowDown > maxSlowDown) {
+                selectedQueueNumber = i;
                 maxSlowDown = queue.topQuerySlowDown;
                 nextJobQueue = queue;
             }
@@ -222,8 +230,11 @@ public class DefaultJobQueue implements IJobQueue {
         /* get its front job and check system's capacity */
         if (nextJobQueue != null) {
             JobRun nextToRun = nextJobQueue.getFirst();
+            LOGGER.log(Level.DEBUG, "JobID:{} is pulled from DefaultJobQueue: Queue #{}", nextToRun.getJobId(),
+                    selectedQueueNumber);
             checkAndAdd(nextToRun, jobRuns);
         }
+
         return jobRuns;
     }
 
@@ -250,7 +261,10 @@ public class DefaultJobQueue implements IJobQueue {
 
     /* update exponentially weighted moving average */
     private void updateMovingAverage(MPLQueue queue, long executionTime) {
+        double old_EWMA = queue.EWMA;
         queue.EWMA = queue.EWMA * queue.betaWeight + (double) executionTime * (1 - queue.betaWeight);
+        LOGGER.log(Level.DEBUG, "Queue {} - Update EWMA: exeution time:{}, old EWMA:{}, new EWMA:{}", queue.getQueueId(),
+                executionTime, old_EWMA, queue.EWMA);
     }
 
     public void notifyJobFinished(JobRun run) {

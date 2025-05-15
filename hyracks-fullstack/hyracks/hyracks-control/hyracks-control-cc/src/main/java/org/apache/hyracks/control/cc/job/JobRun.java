@@ -483,7 +483,7 @@ public class JobRun implements IJobStatusConditionVariable {
     }
 
     public long getExecutionTime() {
-        return this.getStartTime() - this.getEndTime();
+        return this.getEndTime() - this.getStartTime();
     }
 
     public void setSchedulingType(JobTypeManager.JobSchedulingType type) {

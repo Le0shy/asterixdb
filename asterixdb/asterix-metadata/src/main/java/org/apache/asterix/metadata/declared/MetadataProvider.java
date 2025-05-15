@@ -523,6 +523,7 @@ public class MetadataProvider implements IMetadataProvider<DataSourceId, String>
         mdTxnCtx = new MetadataTransactionContext(txnId);
         SchedulerConfigMetadataEntity scme =
                 MetadataManagerUtil.findSchedulerConfigDescriptor(mdTxnCtx, SCHEDULER_STATE);
+        if (scme == null) return null;
         return MetadataManagerUtil.findSchedulerConfigDescriptor(mdTxnCtx, scme.getEnabled());
     }
 
