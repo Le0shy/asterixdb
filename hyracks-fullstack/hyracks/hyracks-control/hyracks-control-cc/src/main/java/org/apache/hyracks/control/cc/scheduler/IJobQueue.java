@@ -84,4 +84,8 @@ public interface IJobQueue {
     void notifyJobFinished(JobRun run);
 
     boolean isEmpty();
+
+    default long getCurrentTime() {
+        return System.nanoTime();
+    }
 }

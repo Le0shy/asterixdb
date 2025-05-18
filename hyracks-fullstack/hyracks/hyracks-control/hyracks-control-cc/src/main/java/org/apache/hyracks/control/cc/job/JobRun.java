@@ -87,6 +87,8 @@ public class JobRun implements IJobStatusConditionVariable {
 
     private long addedToMemoryQueueTime = -1;
 
+    private long addedToQueueTime = -1;
+
     private long executionEndTime;
 
     private long executionStartTime;
@@ -241,13 +243,7 @@ public class JobRun implements IJobStatusConditionVariable {
         operatorLocations.computeIfAbsent(op, k -> new HashMap<>()).put(partition, location);
     }
 
-    public long getExecutionStartTime() {
-        return executionStartTime;
-    }
 
-    public void setExecutionStartTime(long executionStartTime) {
-        this.executionStartTime = executionStartTime;
-    }
 
     @Override
     public synchronized void waitForCompletion() throws Exception {
@@ -466,12 +462,12 @@ public class JobRun implements IJobStatusConditionVariable {
         return result;
     }
 
-    public long getAddedToMemoryQueueTime() {
-        return addedToMemoryQueueTime;
+    public long getExecutionStartTime() {
+        return executionStartTime;
     }
 
-    public void setAddedToMemoryQueueTime(long addedToMemoryQueueTime) {
-        this.addedToMemoryQueueTime = addedToMemoryQueueTime;
+    public void setExecutionStartTime(long executionStartTime) {
+        this.executionStartTime = executionStartTime;
     }
 
     public long getExecutionEndTime() {
@@ -482,8 +478,25 @@ public class JobRun implements IJobStatusConditionVariable {
         this.executionEndTime = executionEndTime;
     }
 
+    public long getAddedToQueueTime() {
+        return addedToQueueTime;
+    }
+
+    public void setAddedToQueueTime(long addedToQueueTime) {
+        this.addedToQueueTime = addedToQueueTime;
+    }
+
+    public long getAddedToMemoryQueueTime() {
+        return addedToMemoryQueueTime;
+    }
+
+    public void setAddedToMemoryQueueTime(long addedToMemoryQueueTime) {
+        this.addedToMemoryQueueTime = addedToMemoryQueueTime;
+    }
+
+
     public long getExecutionTime() {
-        return this.getEndTime() - this.getStartTime();
+        return (this.getExecutionEndTime() - this.getExecutionStartTime()) / 1000000;
     }
 
     public void setSchedulingType(JobTypeManager.JobSchedulingType type) {

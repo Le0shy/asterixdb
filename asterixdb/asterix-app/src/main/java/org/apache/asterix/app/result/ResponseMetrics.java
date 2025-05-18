@@ -32,13 +32,18 @@ public class ResponseMetrics {
     private long queueWaitTime;
     private double bufferCacheHitRatio;
     private long bufferCachePageReadCount;
+    private long addedToQueueTime;
+    private long executionStartTime;
+    private long executionEndTime;
+    private long addedToMemoryQueueTime;
 
     private ResponseMetrics() {
     }
 
     public static ResponseMetrics of(long elapsedTime, long executionTime, long resultCount, long resultSize,
             long processedObjects, long errorCount, long warnCount, long compileTime, long queueWaitTime,
-            double bufferCacheHitRatio, long bufferCachePageReadCount) {
+            double bufferCacheHitRatio, long bufferCachePageReadCount, long addedToQueueTime,
+            long addedToMemoryQueueTime, long executionStartTime, long executionEndTime) {
         ResponseMetrics metrics = new ResponseMetrics();
         metrics.elapsedTime = elapsedTime;
         metrics.executionTime = executionTime;
@@ -51,6 +56,10 @@ public class ResponseMetrics {
         metrics.queueWaitTime = queueWaitTime;
         metrics.bufferCacheHitRatio = bufferCacheHitRatio;
         metrics.bufferCachePageReadCount = bufferCachePageReadCount;
+        metrics.addedToQueueTime = addedToQueueTime;
+        metrics.addedToMemoryQueueTime = addedToMemoryQueueTime;
+        metrics.executionStartTime = executionStartTime;
+        metrics.executionEndTime = executionEndTime;
         return metrics;
     }
 
@@ -96,5 +105,37 @@ public class ResponseMetrics {
 
     public long getBufferCachePageReadCount() {
         return bufferCachePageReadCount;
+    }
+
+    public long getAddedToQueueTime() {
+        return addedToQueueTime;
+    }
+
+    public void setAddedToQueueTime(long addedToQueueTime) {
+        this.addedToQueueTime = addedToQueueTime;
+    }
+
+    public long getExecutionStartTime() {
+        return executionStartTime;
+    }
+
+    public void setExecutionStartTime(long executionStartTime) {
+        this.executionStartTime = executionStartTime;
+    }
+
+    public long getExecutionEndTime() {
+        return executionEndTime;
+    }
+
+    public void setExecutionEndTime(long executionEndTime) {
+        this.executionEndTime = executionEndTime;
+    }
+
+    public long getAddedToMemoryQueueTime() {
+        return addedToMemoryQueueTime;
+    }
+
+    public void setAddedToMemoryQueueTime(long addedToMemoryQueueTime) {
+        this.addedToMemoryQueueTime = addedToMemoryQueueTime;
     }
 }

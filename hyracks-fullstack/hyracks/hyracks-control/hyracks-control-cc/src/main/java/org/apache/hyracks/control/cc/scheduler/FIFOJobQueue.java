@@ -67,6 +67,7 @@ public class FIFOJobQueue implements IJobQueue {
         if (size >= jobQueueCapacity) {
             throw HyracksException.create(ErrorCode.JOB_QUEUE_FULL, jobQueueCapacity);
         }
+        run.setAddedToQueueTime(getCurrentTime());
         jobListMap.put(run.getJobId(), run);
     }
 

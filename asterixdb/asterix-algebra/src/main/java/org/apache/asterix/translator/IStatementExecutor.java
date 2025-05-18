@@ -140,6 +140,10 @@ public interface IStatementExecutor {
         private long compileTime;
         private double bufferCacheHitRatio;
         private long bufferCachePageReadCount;
+        private long addedToQueueTime;
+        private long addedToTheMemoryQueueTime;
+        private long executionStartTime;
+        private long executionEndTime;
 
         public long getCount() {
             return count;
@@ -221,6 +225,38 @@ public interface IStatementExecutor {
 
         public long getBufferCachePageReadCount() {
             return bufferCachePageReadCount;
+        }
+
+        public long getAddedToTheMemoryQueueTime() {
+            return addedToTheMemoryQueueTime;
+        }
+
+        public void setAddedToTheMemoryQueueTime(long addedToTheMemoryQueueTime) {
+            this.addedToTheMemoryQueueTime = addedToTheMemoryQueueTime;
+        }
+
+        public long getAddedToQueueTime() {
+            return addedToQueueTime;
+        }
+
+        public void setAddedToQueueTime(long addedToQueueTime) {
+            this.addedToQueueTime = addedToQueueTime;
+        }
+
+        public long getExecutionStartTime() {
+            return executionStartTime;
+        }
+
+        public void setExecutionStartTime(long executionStartTime) {
+            this.executionStartTime = executionStartTime;
+        }
+
+        public long getExecutionEndTime() {
+            return executionEndTime;
+        }
+
+        public void setExecutionEndTime(long executionEndTime) {
+            this.executionEndTime = executionEndTime;
         }
     }
 

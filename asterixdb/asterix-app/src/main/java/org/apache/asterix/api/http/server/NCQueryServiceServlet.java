@@ -209,6 +209,11 @@ public class NCQueryServiceServlet extends QueryServiceServlet {
         stats.setQueueWaitTime(responseStats.getQueueWaitTime());
         stats.setBufferCacheHitRatio(responseStats.getBufferCacheHitRatio());
         stats.setBufferCachePageReadCount(responseStats.getBufferCachePageReadCount());
+
+        stats.setAddedToQueueTime(responseStats.getAddedToQueueTime());
+        stats.setAddedToTheMemoryQueueTime(responseStats.getAddedToTheMemoryQueueTime());
+        stats.setExecutionStartTime(responseStats.getExecutionStartTime());
+        stats.setExecutionEndTime(responseStats.getExecutionEndTime());
     }
 
     private static void updatePropertiesFromCC(IStatementExecutor.StatementProperties statementProperties,

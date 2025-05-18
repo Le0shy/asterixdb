@@ -55,6 +55,7 @@ public class PriorityBasedQueue implements IJobQueue {
             /* Jobs are waiting in the queue */
             activeQueues.add(jobPriority);
             jobIdToQueueMap.put(run.getJobId(), targetQueue);
+            run.setAddedToQueueTime(getCurrentTime());
             LOGGER.log(Level.DEBUG, "JobID:{}, scheduled to PriorityBasedQueue, group:{}, priority{}",
                     run.getJobId(), run.getJobSpecification().getGroupName(), run.getPriority());
 
@@ -62,7 +63,7 @@ public class PriorityBasedQueue implements IJobQueue {
         }
     }
 
-    private JobRun removeFromNormalQueue(JobId jobId) {
+    public JobRun remove(JobId jobId) {
         MPLQueue queue = jobIdToQueueMap.get(jobId);
         if (queue == null) {
             return null;
@@ -73,16 +74,6 @@ public class PriorityBasedQueue implements IJobQueue {
             activeQueues.remove(ret.getPriority());
         }
         return ret;
-    }
-
-    @Override
-    public JobRun remove(JobId jobId) {
-        JobRun removedJob;
-        removedJob = defaultJobQueue.remove(jobId);
-        if (removedJob != null) {
-            return removedJob;
-        }
-        return removeFromNormalQueue(jobId);
     }
 
     @Override
@@ -127,7 +118,7 @@ public class PriorityBasedQueue implements IJobQueue {
             if (status == IJobCapacityController.JobSubmissionStatus.EXECUTE) {
                 jobRuns.add(nextToRun);
                 /* remove it from its queue */
-                removeFromNormalQueue(nextToRun.getJobId());
+                remove(nextToRun.getJobId());
             }
         } catch (HyracksException exception) {
             /* The required capacity exceeds maximum capacity. */
@@ -136,7 +127,7 @@ public class PriorityBasedQueue implements IJobQueue {
             try {
                 /* Job fails before execution */
                 jobManager.prepareComplete(nextToRun, JobStatus.FAILURE_BEFORE_EXECUTION, exceptions);
-                removeFromNormalQueue(nextToRun.getJobId());
+                remove(nextToRun.getJobId());
             } catch (HyracksException e) {
                 LOGGER.log(Level.ERROR, e.getMessage(), e);
             }
@@ -208,7 +199,9 @@ public class PriorityBasedQueue implements IJobQueue {
 
     @Override
     public void notifyJobFinished(JobRun run) {
-        if (run.getSchedulingType() == JobTypeManager.JobSchedulingType.DEFAULT) {
+        if (run.getSchedulingType() == JobTypeManager.JobSchedulingType.NORMAL) {
+            jobIdToQueueMap.remove(run.getJobId());
+        } else {
             defaultJobQueue.notifyJobFinished(run);
         }
     }

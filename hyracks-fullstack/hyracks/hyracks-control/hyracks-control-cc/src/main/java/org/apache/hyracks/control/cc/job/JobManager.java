@@ -253,6 +253,7 @@ public class JobManager implements IJobManager {
         }
         run.setStatus(run.getPendingStatus(), run.getPendingExceptions());
         run.setEndTime(System.currentTimeMillis());
+        run.setExecutionEndTime(System.nanoTime());
         if (activeRunMap.remove(jobId) != null) {
             incrementJobCounters(run, successful);
 
@@ -390,6 +391,7 @@ public class JobManager implements IJobManager {
 
     // Executes a job when the required capacity for the job is met.
     private void executeJob(JobRun run) throws HyracksException {
+        run.setExecutionStartTime(System.nanoTime());
         run.setStartTime(System.currentTimeMillis());
         run.setStartTimeZoneId(ZoneId.systemDefault().getId());
         JobId jobId = run.getJobId();

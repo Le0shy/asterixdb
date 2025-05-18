@@ -33,6 +33,7 @@ public class DedicatedJobQueue implements IJobQueue {
             throw HyracksException.create(ErrorCode.JOB_QUEUE_FULL, jobQueueCapacity);
         }
         jobListMap.put(run.getJobId(), run);
+        run.setAddedToQueueTime(getCurrentTime());
         LOGGER.log(Level.DEBUG, "JobID:{} scheduled to DedicatedJobQueue, queue size:{}", run.getJobId(),
                 jobListMap.size());
     }
@@ -61,6 +62,8 @@ public class DedicatedJobQueue implements IJobQueue {
                 if (status == IJobCapacityController.JobSubmissionStatus.EXECUTE) {
                     jobRuns.add(run);
                     runIterator.remove(); // Removes the selected job.
+                    /* TODO: More bookkeeping for short jobs*/
+                    break;
                 }
             } catch (HyracksException exception) {
                 // The required capacity exceeds maximum capacity.
@@ -95,7 +98,7 @@ public class DedicatedJobQueue implements IJobQueue {
 
     @Override
     public void notifyJobFinished(JobRun run) {
-
+        jobListMap.remove(run.getJobId());
     }
 
     @Override

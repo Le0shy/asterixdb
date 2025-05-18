@@ -113,6 +113,7 @@ public class WorkloadManager extends JobManager {
 
     private void executeJobInternal(JobRun run) {
         try {
+            run.setExecutionStartTime(System.nanoTime());
             run.getExecutor().startJob();
         } catch (Exception e) {
             LOGGER.log(Level.ERROR, "Aborting " + run.getJobId() + " due to failure during job start", e);

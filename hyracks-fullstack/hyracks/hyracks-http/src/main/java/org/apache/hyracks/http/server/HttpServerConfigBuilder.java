@@ -27,7 +27,7 @@ public class HttpServerConfigBuilder {
     private static final int MAX_REQUEST_HEADER_SIZE = 262144;
     private static final int MAX_REQUEST_INITIAL_LINE_LENGTH = 131072;
     private static final int RESPONSE_CHUNK_SIZE = 4096;
-    private static final int DEFAULT_THREAD_COUNT = 16;
+    private static final int DEFAULT_THREAD_COUNT = 64;
     private static final int DEFAULT_MAX_QUEUE_SIZE = 256;
 
     private int maxRequestSize = Integer.MAX_VALUE;

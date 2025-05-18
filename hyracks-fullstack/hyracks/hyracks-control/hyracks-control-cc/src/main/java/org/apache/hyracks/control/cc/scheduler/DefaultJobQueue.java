@@ -109,27 +109,27 @@ public class DefaultJobQueue implements IJobQueue {
                 capacityControllerGuard.update();
             }
             double ratio = capacityControllerGuard.getMemoryRatio(run.getJobSpecification());
-            if (ratio < 0.10) {
-                return queues.get(1);
-            } else if (ratio < 0.20) {
-                return queues.get(2);
-            } else if (ratio < 0.30) {
-                return queues.get(3);
-            } else if (ratio < 0.40) {
-                return queues.get(4);
-            } else if (ratio < 0.50) {
-                return queues.get(5);
-            } else if (ratio < 0.60) {
-                return queues.get(6);
-            } else if (ratio < 0.70) {
-                return queues.get(7);
-            } else if (ratio < 0.80) {
-                return queues.get(8);
-            } else if (ratio < 0.90) {
-                return queues.get(9);
-            }
             LOGGER.log(Level.DEBUG, "JobID:{}, scheduled to DefaultJobQueue: Memory Ratio:{}", run.getJobId(),
                     ratio);
+            if (ratio <= 0.05) {
+                return queues.get(1);
+            } else if (ratio <= 0.10) {
+                return queues.get(2);
+            } else if (ratio <= 0.15) {
+                return queues.get(3);
+            } else if (ratio <= 0.20) {
+                return queues.get(4);
+            } else if (ratio <= 0.25) {
+                return queues.get(5);
+            } else if (ratio <= 0.40) {
+                return queues.get(6);
+            } else if (ratio <= 0.55) {
+                return queues.get(7);
+            } else if (ratio <= 0.70) {
+                return queues.get(8);
+            } else if (ratio <= 0.85) {
+                return queues.get(9);
+            }
             return queues.get(10);
         }
     }
@@ -140,7 +140,7 @@ public class DefaultJobQueue implements IJobQueue {
         // adding it to any queue.
         MPLQueue queue = getQueue(run);
         //Make sure ZERO is handled out of queue.
-        run.setAddedToMemoryQueueTime(getCurrentTime());
+        run.setAddedToQueueTime(getCurrentTime());
         queue.put(run.getJobId(), run);
         jobIdToQueueMap.put(run.getJobId(), queue);
         queueHasAnyJob.set(queue.id);
@@ -193,17 +193,12 @@ public class DefaultJobQueue implements IJobQueue {
     private void calculateSlowDown(MPLQueue queue, long now) {
         JobRun nextJob = queue.getFirst();
         if (nextJob != null) {
-            long createTime = nextJob.getAddedToMemoryQueueTime();
-            long waitTime = (now - createTime);
+            long queueTime = nextJob.getAddedToQueueTime();
+            long waitTime = (now - queueTime) / 1000000;
             queue.topQuerySlowDown = ((double) waitTime + queue.EWMA) / queue.EWMA;
         } else {
             queue.topQuerySlowDown = -1;
         }
-    }
-
-    /* interface for unit tests */
-    public long getCurrentTime() {
-        return System.currentTimeMillis();
     }
 
     @Override
@@ -263,8 +258,8 @@ public class DefaultJobQueue implements IJobQueue {
     private void updateMovingAverage(MPLQueue queue, long executionTime) {
         double old_EWMA = queue.EWMA;
         queue.EWMA = queue.EWMA * queue.betaWeight + (double) executionTime * (1 - queue.betaWeight);
-        LOGGER.log(Level.DEBUG, "Queue {} - Update EWMA: exeution time:{}, old EWMA:{}, new EWMA:{}", queue.getQueueId(),
-                executionTime, old_EWMA, queue.EWMA);
+        LOGGER.log(Level.DEBUG, "Queue {} - Update EWMA: old EWMA:{}, new EWMA:{}",
+                queue.getQueueId(), old_EWMA, queue.EWMA);
     }
 
     public void notifyJobFinished(JobRun run) {
@@ -272,8 +267,10 @@ public class DefaultJobQueue implements IJobQueue {
         LOGGER.info(run.toJSON());
         MPLQueue queue = jobIdToQueueMap.get(run.getJobId());
         queue.countOfExecutedJobs++;
+        jobIdToQueueMap.remove(run.getJobId());
         /* get executionTime from notifying */
         long executionTime = run.getExecutionTime();
+        LOGGER.log(Level.DEBUG, "JobId: {} finished with execution time of {}ms", run.getJobId(), executionTime);
         updateMovingAverage(queue, executionTime);
     }
 
