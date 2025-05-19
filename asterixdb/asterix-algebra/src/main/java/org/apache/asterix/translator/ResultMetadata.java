@@ -29,7 +29,6 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 public class ResultMetadata implements IResultMetadata {
     private static final long serialVersionUID = 1905367559307369036L;
 
-
     private long jobAddedToQueueTime;
     private long jobAddedToMemoryQueueTime;
     private long jobExecutionStartTime;
@@ -167,6 +166,7 @@ public class ResultMetadata implements IResultMetadata {
     public void setJobAddedToMemoryQueueTime(long jobAddedToMemoryQueueTime) {
         this.jobAddedToMemoryQueueTime = jobAddedToMemoryQueueTime;
     }
+
     @Override
     public String toString() {
         return "ResultMetadata{" + "format=" + format + ", jobDuration=" + jobDuration + ", processedObjects="

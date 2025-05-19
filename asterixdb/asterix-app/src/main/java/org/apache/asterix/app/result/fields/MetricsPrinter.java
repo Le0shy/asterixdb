@@ -91,8 +91,7 @@ public class MetricsPrinter implements IResponseFieldPrinter {
         final boolean hasErrors = metrics.getErrorCount() > 0;
         final boolean hasWarnings = metrics.getWarnCount() > 0;
         final boolean usedCache = !(Double.isNaN(metrics.getBufferCacheHitRatio()));
-        ResultUtil.printField(pw, Metrics.PROCESSED_OBJECTS_COUNT.str(), metrics.getProcessedObjects(),
-                true);
+        ResultUtil.printField(pw, Metrics.PROCESSED_OBJECTS_COUNT.str(), metrics.getProcessedObjects(), true);
         pw.print("\n");
         if (usedCache) {
             pw.print("\t");
@@ -111,7 +110,7 @@ public class MetricsPrinter implements IResponseFieldPrinter {
         }
         if (hasErrors) {
             pw.print("\t");
-            ResultUtil.printField(pw, Metrics.ERROR_COUNT.str(), metrics.getErrorCount(),  true);
+            ResultUtil.printField(pw, Metrics.ERROR_COUNT.str(), metrics.getErrorCount(), true);
             pw.print("\n");
         }
         pw.print("\t");

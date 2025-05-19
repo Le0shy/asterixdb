@@ -57,14 +57,13 @@ public class CapacityControllerGuard {
         LOGGER.log(Level.DEBUG, "Job ID:{}: required aggregated memory byte size: {}, required aggregated cores:{}",
                 jobRun.getJobId(), reqAggregatedMemoryByteSize, reqAggregatedNumCores);
 
-        if(CPUQuotaShort < reqAggregatedNumCores || getMaximumMemoryByteSizeShort() < reqAggregatedMemoryByteSize) {
+        if (CPUQuotaShort < reqAggregatedNumCores || getMaximumMemoryByteSizeShort() < reqAggregatedMemoryByteSize) {
             throw HyracksException.create(ErrorCode.JOB_REQUIREMENTS_EXCEED_CAPACITY, requiredCapacity.toString(),
                     "CapacityControllerGuard for Short Job");
         }
 
         /* check cpu quota and memory available */
-        if (CPUQuotaAvailableShort < reqAggregatedNumCores
-                || memoryAvailableShort < reqAggregatedMemoryByteSize) {
+        if (CPUQuotaAvailableShort < reqAggregatedNumCores || memoryAvailableShort < reqAggregatedMemoryByteSize) {
             return IJobCapacityController.JobSubmissionStatus.QUEUE;
         }
 
@@ -88,7 +87,7 @@ public class CapacityControllerGuard {
         long reqAggregatedMemoryByteSize = requiredCapacity.getAggregatedMemoryByteSize();
         int reqAggregatedNumCores = requiredCapacity.getAggregatedCores();
 
-        if(CPUQuotaCommon < reqAggregatedNumCores || getMaximumMemoryByteSizeCommon() < reqAggregatedMemoryByteSize) {
+        if (CPUQuotaCommon < reqAggregatedNumCores || getMaximumMemoryByteSizeCommon() < reqAggregatedMemoryByteSize) {
             throw HyracksException.create(ErrorCode.JOB_REQUIREMENTS_EXCEED_CAPACITY, requiredCapacity.toString(),
                     "CapacityControllerGuard for Long Job");
         }
@@ -227,10 +226,14 @@ public class CapacityControllerGuard {
 
     public void logGuardInfo() {
         LOGGER.log(Level.DEBUG,
-                "Resource Info from WLM: " + "CPU - Maximum Quota:{}, Short Job Quota:{}, Available Short Job Quota:{}, " + "Available Common Job Quota:{}",
+                "Resource Info from WLM: "
+                        + "CPU - Maximum Quota:{}, Short Job Quota:{}, Available Short Job Quota:{}, "
+                        + "Available Common Job Quota:{}",
                 maximumAggregatedCores, CPUQuotaShort, CPUQuotaAvailableShort, CPUQuotaAvailableCommon);
         LOGGER.log(Level.DEBUG,
-                "Resource Info from WLM: " + "Memory - Maximum Quota:{}, Short Job Quota:{}, Available Short Job Quota:{}, " + "Available Common Job Quota:{}",
+                "Resource Info from WLM: "
+                        + "Memory - Maximum Quota:{}, Short Job Quota:{}, Available Short Job Quota:{}, "
+                        + "Available Common Job Quota:{}",
                 maximumAggregatedMemoryByteSize, getMaximumMemoryByteSizeShort(), memoryAvailableShort,
                 memoryAvailableCommon);
     }

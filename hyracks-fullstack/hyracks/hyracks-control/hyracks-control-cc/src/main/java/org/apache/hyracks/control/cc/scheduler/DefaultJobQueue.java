@@ -95,7 +95,7 @@ public class DefaultJobQueue implements IJobQueue {
             return null;
         }
 
-        public int getQueueId(){
+        public int getQueueId() {
             return this.id;
         }
     }
@@ -109,8 +109,7 @@ public class DefaultJobQueue implements IJobQueue {
                 capacityControllerGuard.update();
             }
             double ratio = capacityControllerGuard.getMemoryRatio(run.getJobSpecification());
-            LOGGER.log(Level.DEBUG, "JobID:{}, scheduled to DefaultJobQueue: Memory Ratio:{}", run.getJobId(),
-                    ratio);
+            LOGGER.log(Level.DEBUG, "JobID:{}, scheduled to DefaultJobQueue: Memory Ratio:{}", run.getJobId(), ratio);
             if (ratio <= 0.05) {
                 return queues.get(1);
             } else if (ratio <= 0.10) {
@@ -203,7 +202,7 @@ public class DefaultJobQueue implements IJobQueue {
     @Override
     public List<JobRun> pull() {
         List<JobRun> jobRuns = new ArrayList<>();
-        PriorityQueue<MPLQueue> priorityQueue = new PriorityQueue<>((a, b) ->{
+        PriorityQueue<MPLQueue> priorityQueue = new PriorityQueue<>((a, b) -> {
             return (int) (b.topQuerySlowDown - a.topQuerySlowDown);
         });
         /* pulling jobs from selected queues based on the formula until no more available capacity */
@@ -222,7 +221,7 @@ public class DefaultJobQueue implements IJobQueue {
         while (!priorityQueue.isEmpty()) {
             nextJobQueue = priorityQueue.poll();
             JobRun nextToRun = nextJobQueue.getFirst();
-            if(checkAndAdd(nextToRun, jobRuns)) {
+            if (checkAndAdd(nextToRun, jobRuns)) {
                 LOGGER.log(Level.DEBUG, "JobID:{} is pulled from DefaultJobQueue: Queue #{}", nextToRun.getJobId(),
                         nextJobQueue.getQueueId());
             }
@@ -255,8 +254,8 @@ public class DefaultJobQueue implements IJobQueue {
     private void updateMovingAverage(MPLQueue queue, long executionTime) {
         double old_EWMA = queue.EWMA;
         queue.EWMA = queue.EWMA * queue.betaWeight + (double) executionTime * (1 - queue.betaWeight);
-        LOGGER.log(Level.DEBUG, "Queue {} - Update EWMA: old EWMA:{}, new EWMA:{}",
-                queue.getQueueId(), old_EWMA, queue.EWMA);
+        LOGGER.log(Level.DEBUG, "Queue {} - Update EWMA: old EWMA:{}, new EWMA:{}", queue.getQueueId(), old_EWMA,
+                queue.EWMA);
     }
 
     public void notifyJobFinished(JobRun run) {

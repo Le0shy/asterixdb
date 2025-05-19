@@ -243,8 +243,6 @@ public class JobRun implements IJobStatusConditionVariable {
         operatorLocations.computeIfAbsent(op, k -> new HashMap<>()).put(partition, location);
     }
 
-
-
     @Override
     public synchronized void waitForCompletion() throws Exception {
         while (status == JobStatus.PENDING || status == JobStatus.RUNNING) {
@@ -493,7 +491,6 @@ public class JobRun implements IJobStatusConditionVariable {
     public void setAddedToMemoryQueueTime(long addedToMemoryQueueTime) {
         this.addedToMemoryQueueTime = addedToMemoryQueueTime;
     }
-
 
     public long getExecutionTime() {
         return (this.getExecutionEndTime() - this.getExecutionStartTime()) / 1000000;

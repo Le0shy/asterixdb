@@ -56,8 +56,8 @@ public class PriorityBasedQueue implements IJobQueue {
             activeQueues.add(jobPriority);
             jobIdToQueueMap.put(run.getJobId(), targetQueue);
             run.setAddedToQueueTime(getCurrentTime());
-            LOGGER.log(Level.DEBUG, "JobID:{}, scheduled to PriorityBasedQueue, group:{}, priority{}",
-                    run.getJobId(), run.getJobSpecification().getGroupName(), run.getPriority());
+            LOGGER.log(Level.DEBUG, "JobID:{}, scheduled to PriorityBasedQueue, group:{}, priority{}", run.getJobId(),
+                    run.getJobSpecification().getGroupName(), run.getPriority());
 
             LOGGER.log(Level.DEBUG, "{}", printQueueInfo());
         }

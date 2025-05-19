@@ -367,9 +367,8 @@ public class QueryServiceServlet extends AbstractQueryApiServlet {
         final ResponseMetrics metrics = ResponseMetrics.of(System.nanoTime() - elapsedStart, executionState.duration(),
                 stats.getCount(), stats.getSize(), stats.getProcessedObjects(), errorCount,
                 stats.getTotalWarningsCount(), stats.getCompileTime(), stats.getQueueWaitTime(),
-                stats.getBufferCacheHitRatio(), stats.getBufferCachePageReadCount(),
-                stats.getAddedToQueueTime(), stats.getAddedToTheMemoryQueueTime(),
-                stats.getExecutionStartTime(), System.nanoTime());
+                stats.getBufferCacheHitRatio(), stats.getBufferCachePageReadCount(), stats.getAddedToQueueTime(),
+                stats.getAddedToTheMemoryQueueTime(), stats.getExecutionStartTime(), System.nanoTime());
         responsePrinter.addFooterPrinter(new MetricsPrinter(metrics, resultCharset));
         if (isPrintingProfile(stats)) {
             responsePrinter.addFooterPrinter(new ProfilePrinter(stats.getJobProfile()));
