@@ -66,7 +66,7 @@ public class VPartitionTupleBufferManager implements IPartitionedTupleBufferMana
     }
 
     public VPartitionTupleBufferManager(IHyracksFrameMgrContext ctx, IPartitionedMemoryConstrain constrain,
-            int partitions, int frameLimitInBytes) throws HyracksDataException {
+            int partitions, long frameLimitInBytes) throws HyracksDataException {
         this.constrain = constrain;
         this.framePool = new DeallocatableFramePool(ctx, frameLimitInBytes);
         this.partitionArray = new IFrameBufferManager[partitions];

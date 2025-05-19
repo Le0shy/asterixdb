@@ -29,11 +29,11 @@ import org.apache.hyracks.api.exceptions.HyracksDataException;
 public class DeallocatableFramePool implements IDeallocatableFramePool {
 
     private final IHyracksFrameMgrContext ctx;
-    private final int memBudget;
-    private int allocated;
+    private final long memBudget;
+    private long allocated;
     private LinkedList<ByteBuffer> buffers;
 
-    public DeallocatableFramePool(IHyracksFrameMgrContext ctx, int memBudgetInBytes) {
+    public DeallocatableFramePool(IHyracksFrameMgrContext ctx, long memBudgetInBytes) {
         this.ctx = ctx;
         this.memBudget = memBudgetInBytes;
         this.allocated = 0;
@@ -46,7 +46,7 @@ public class DeallocatableFramePool implements IDeallocatableFramePool {
     }
 
     @Override
-    public int getMemoryBudgetBytes() {
+    public long getMemoryBudgetBytes() {
         return memBudget;
     }
 
@@ -63,7 +63,7 @@ public class DeallocatableFramePool implements IDeallocatableFramePool {
     }
 
     private ByteBuffer mergeExistingFrames(int frameSize) throws HyracksDataException {
-        int mergedSize = memBudget - allocated;
+        long mergedSize = memBudget - allocated;
         for (Iterator<ByteBuffer> iter = buffers.iterator(); iter.hasNext();) {
             ByteBuffer buffer = iter.next();
             iter.remove();
@@ -71,7 +71,7 @@ public class DeallocatableFramePool implements IDeallocatableFramePool {
             ctx.deallocateFrames(buffer.capacity());
             allocated -= buffer.capacity();
             if (mergedSize >= frameSize) {
-                return createNewFrame(mergedSize);
+                return createNewFrame((int)mergedSize);
             }
         }
         return null;

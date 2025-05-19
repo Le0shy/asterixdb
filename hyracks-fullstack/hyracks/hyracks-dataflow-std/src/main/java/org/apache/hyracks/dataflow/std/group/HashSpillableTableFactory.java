@@ -144,7 +144,7 @@ public class HashSpillableTableFactory implements ISpillableTableFactory {
             private final BitSet spilledSet = new BitSet(numPartitions);
             // This frame pool will be shared by both data table and hash table.
             private final IDeallocatableFramePool framePool =
-                    new DeallocatableFramePool(ctx, framesLimit * ctx.getInitialFrameSize());
+                    new DeallocatableFramePool(ctx, (long) framesLimit * (long) ctx.getInitialFrameSize());
             // buffer manager for hash table
             private final ISimpleFrameBufferManager bufferManagerForHashTable =
                     new FramePoolBackedFrameBufferManager(framePool);

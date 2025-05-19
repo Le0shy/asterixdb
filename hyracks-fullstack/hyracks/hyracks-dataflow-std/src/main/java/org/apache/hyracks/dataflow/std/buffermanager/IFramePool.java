@@ -27,7 +27,7 @@ public interface IFramePool {
 
     int getMinFrameSize();
 
-    int getMemoryBudgetBytes();
+    long getMemoryBudgetBytes();
 
     /**
      * Get a frame of given size. <br>

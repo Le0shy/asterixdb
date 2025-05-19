@@ -34,7 +34,7 @@ public class VariableFramePool implements IFramePool {
 
     private final IHyracksFrameMgrContext ctx;
     private final int minFrameSize;
-    private final int memBudget;
+    private final long memBudget;
 
     private int allocateMem;
     private ArrayList<ByteBuffer> buffers; // the unused slots were sorted by size increasingly.
@@ -68,7 +68,7 @@ public class VariableFramePool implements IFramePool {
     }
 
     @Override
-    public int getMemoryBudgetBytes() {
+    public long getMemoryBudgetBytes() {
         return memBudget;
     }
 
@@ -147,13 +147,13 @@ public class VariableFramePool implements IFramePool {
      * @throws HyracksDataException
      */
     private ByteBuffer mergeExistingFrames(int frameSize) throws HyracksDataException {
-        int mergedSize = memBudget - allocateMem;
+        long mergedSize = memBudget - allocateMem;
         int highBound = getLastUnusedPos(used, buffers.size() - 1) + 1;
         for (int i = getFirstUnusedPos(used); i < highBound; ++i) {
             if (!used.get(i)) {
                 mergedSize += deAllocateFrame(i);
                 if (mergedSize >= frameSize) {
-                    return createNewFrame(mergedSize);
+                    return createNewFrame((int)mergedSize);
                 }
             }
         }

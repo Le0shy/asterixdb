@@ -49,7 +49,7 @@ public class VariableDeletableTupleMemoryManager implements IDeletableTupleBuffe
 
     public VariableDeletableTupleMemoryManager(IFramePool framePool, RecordDescriptor recordDescriptor) {
         this.pool = framePool;
-        int maxFrames = framePool.getMemoryBudgetBytes() / framePool.getMinFrameSize();
+        int maxFrames = (int) framePool.getMemoryBudgetBytes() / framePool.getMinFrameSize();
         this.policy = new FrameFreeSlotLastFit(maxFrames);
         this.accessor = new DeletableFrameTupleAppender(recordDescriptor);
         this.frames = new ArrayList<>();

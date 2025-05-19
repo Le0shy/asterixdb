@@ -764,8 +764,8 @@ public class OptimizedHybridHashJoinOperatorDescriptor extends AbstractOperatorD
                     boolean isReversed = pKeys == OptimizedHybridHashJoinOperatorDescriptor.this.buildKeys
                             && bKeys == OptimizedHybridHashJoinOperatorDescriptor.this.probeKeys;
                     assert isLeftOuter ? !isReversed : true : "LeftOut Join can not reverse roles";
-                    IDeallocatableFramePool framePool =
-                            new DeallocatableFramePool(jobletCtx, state.memForJoin * jobletCtx.getInitialFrameSize());
+                    IDeallocatableFramePool framePool = new DeallocatableFramePool(jobletCtx,
+                                    (long) state.memForJoin * (long) jobletCtx.getInitialFrameSize());
                     ISimpleFrameBufferManager bufferManager = new FramePoolBackedFrameBufferManager(framePool);
 
                     ISerializableTable table = new SerializableHashTable(tabSize, jobletCtx, bufferManager);
