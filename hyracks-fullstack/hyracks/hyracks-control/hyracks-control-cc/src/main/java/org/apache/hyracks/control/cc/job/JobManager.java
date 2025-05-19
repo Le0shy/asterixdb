@@ -126,6 +126,7 @@ public class JobManager implements IJobManager {
             status = jobCapacityController.allocate(job, jobRun.getJobId(), jobRun.getFlags());
             CCServiceContext serviceCtx = ccs.getContext();
             serviceCtx.notifyJobCreation(jobRun.getJobId(), job, status);
+            jobRun.setAddedToQueueTime(System.nanoTime());
             switch (status) {
                 case QUEUE:
                     queueJob(jobRun);
