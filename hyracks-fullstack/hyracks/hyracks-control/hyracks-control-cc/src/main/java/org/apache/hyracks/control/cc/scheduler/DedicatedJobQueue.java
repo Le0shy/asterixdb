@@ -63,7 +63,8 @@ public class DedicatedJobQueue implements IJobQueue {
                     jobRuns.add(run);
                     runIterator.remove(); // Removes the selected job.
                     /* TODO: More bookkeeping for short jobs*/
-                    break;
+                } else {
+                    return jobRuns;
                 }
             } catch (HyracksException exception) {
                 // The required capacity exceeds maximum capacity.

@@ -1,5 +1,6 @@
 package org.apache.hyracks.control.cc.scheduler;
 
+import org.apache.hyracks.api.exceptions.ErrorCode;
 import org.apache.hyracks.api.exceptions.HyracksException;
 import org.apache.hyracks.api.job.JobSpecification;
 import org.apache.hyracks.api.job.resource.IClusterCapacity;
@@ -20,7 +21,7 @@ public class CapacityControllerGuard {
     private int maximumAggregatedCores;
 
     /* Memory Resources */
-    private double memoryPercentAllocatedToShort = 10.0;
+    private double memoryPercentAllocatedToShort = 5.0;
     private long memoryAvailableShort;
     private long memoryAvailableCommon;
     private long maximumAggregatedMemoryByteSize;
@@ -56,9 +57,14 @@ public class CapacityControllerGuard {
         LOGGER.log(Level.DEBUG, "Job ID:{}: required aggregated memory byte size: {}, required aggregated cores:{}",
                 jobRun.getJobId(), reqAggregatedMemoryByteSize, reqAggregatedNumCores);
 
+        if(CPUQuotaShort < reqAggregatedNumCores || getMaximumMemoryByteSizeShort() < reqAggregatedMemoryByteSize) {
+            throw HyracksException.create(ErrorCode.JOB_REQUIREMENTS_EXCEED_CAPACITY, requiredCapacity.toString(),
+                    "CapacityControllerGuard for Short Job");
+        }
+
         /* check cpu quota and memory available */
-        if (CPUQuotaAvailableShort < requiredCapacity.getAggregatedCores()
-                || memoryAvailableShort < requiredCapacity.getAggregatedMemoryByteSize()) {
+        if (CPUQuotaAvailableShort < reqAggregatedNumCores
+                || memoryAvailableShort < reqAggregatedMemoryByteSize) {
             return IJobCapacityController.JobSubmissionStatus.QUEUE;
         }
 
@@ -81,6 +87,11 @@ public class CapacityControllerGuard {
         IClusterCapacity requiredCapacity = job.getRequiredClusterCapacity();
         long reqAggregatedMemoryByteSize = requiredCapacity.getAggregatedMemoryByteSize();
         int reqAggregatedNumCores = requiredCapacity.getAggregatedCores();
+
+        if(CPUQuotaCommon < reqAggregatedNumCores || getMaximumMemoryByteSizeCommon() < reqAggregatedMemoryByteSize) {
+            throw HyracksException.create(ErrorCode.JOB_REQUIREMENTS_EXCEED_CAPACITY, requiredCapacity.toString(),
+                    "CapacityControllerGuard for Long Job");
+        }
 
         /* check cpu quota and memory available */
         if (CPUQuotaAvailableCommon < requiredCapacity.getAggregatedCores()

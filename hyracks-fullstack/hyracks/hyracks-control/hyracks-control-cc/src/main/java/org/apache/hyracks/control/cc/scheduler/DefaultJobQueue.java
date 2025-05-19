@@ -164,15 +164,14 @@ public class DefaultJobQueue implements IJobQueue {
     }
 
     private boolean checkAndAdd(JobRun nextToRun, List<JobRun> jobRuns) {
-        boolean isAdmitted = true;
+        boolean isAdmitted = false;
         try {
             IJobCapacityController.JobSubmissionStatus status = capacityControllerGuard.allocate(nextToRun);
             // Checks if the job can be executed immediately.
             if (status == IJobCapacityController.JobSubmissionStatus.EXECUTE) {
                 jobRuns.add(nextToRun);
+                isAdmitted = true;
                 remove(nextToRun.getJobId());
-            } else {
-                isAdmitted = false;
             }
         } catch (HyracksException exception) {
             // The required capacity exceeds maximum capacity.
@@ -204,9 +203,10 @@ public class DefaultJobQueue implements IJobQueue {
     @Override
     public List<JobRun> pull() {
         List<JobRun> jobRuns = new ArrayList<>();
-        double maxSlowDown = -1;
+        PriorityQueue<MPLQueue> priorityQueue = new PriorityQueue<>((a, b) ->{
+            return (int) (b.topQuerySlowDown - a.topQuerySlowDown);
+        });
         /* pulling jobs from selected queues based on the formula until no more available capacity */
-
         MPLQueue nextJobQueue = null;
         /* same timestamp instead of using JobRun.getQueueWaitTimeInMillis() */
         long now = getCurrentTime();
@@ -216,20 +216,17 @@ public class DefaultJobQueue implements IJobQueue {
                 queueHasAnyJob.nextSetBit(i + 1)) {
             MPLQueue queue = queues.get(i);
             calculateSlowDown(queue, now);
-            if (queue.topQuerySlowDown > maxSlowDown) {
-                selectedQueueNumber = i;
-                maxSlowDown = queue.topQuerySlowDown;
-                nextJobQueue = queue;
-            }
+            priorityQueue.offer(queue);
         }
         /* get its front job and check system's capacity */
-        if (nextJobQueue != null) {
+        while (!priorityQueue.isEmpty()) {
+            nextJobQueue = priorityQueue.poll();
             JobRun nextToRun = nextJobQueue.getFirst();
-            LOGGER.log(Level.DEBUG, "JobID:{} is pulled from DefaultJobQueue: Queue #{}", nextToRun.getJobId(),
-                    selectedQueueNumber);
-            checkAndAdd(nextToRun, jobRuns);
+            if(checkAndAdd(nextToRun, jobRuns)) {
+                LOGGER.log(Level.DEBUG, "JobID:{} is pulled from DefaultJobQueue: Queue #{}", nextToRun.getJobId(),
+                        nextJobQueue.getQueueId());
+            }
         }
-
         return jobRuns;
     }
 

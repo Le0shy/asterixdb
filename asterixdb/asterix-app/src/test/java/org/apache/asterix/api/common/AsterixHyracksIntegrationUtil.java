@@ -188,7 +188,7 @@ public class AsterixHyracksIntegrationUtil {
         hcc = new HyracksConnection(cc.getConfig().getClientListenAddress(), cc.getConfig().getClientListenPort(),
                 cc.getNetworkSecurityManager().getSocketChannelFactory());
         this.ncs = nodeControllers.toArray(new NodeControllerService[nodeControllers.size()]);
-        initializeJobManager();
+        //initializeJobManager();
     }
 
     @NotNull
