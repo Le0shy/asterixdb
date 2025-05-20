@@ -159,6 +159,9 @@ public class DefaultJobQueue implements IJobQueue {
     @Override
     public JobRun get(JobId jobId) {
         MPLQueue queue = jobIdToQueueMap.get(jobId);
+        if (queue == null) {
+            return null;
+        }
         return queue.get(jobId);
     }
 
@@ -224,6 +227,8 @@ public class DefaultJobQueue implements IJobQueue {
             if (checkAndAdd(nextToRun, jobRuns)) {
                 LOGGER.log(Level.DEBUG, "JobID:{} is pulled from DefaultJobQueue: Queue #{}", nextToRun.getJobId(),
                         nextJobQueue.getQueueId());
+            } else {
+                break;
             }
         }
         return jobRuns;

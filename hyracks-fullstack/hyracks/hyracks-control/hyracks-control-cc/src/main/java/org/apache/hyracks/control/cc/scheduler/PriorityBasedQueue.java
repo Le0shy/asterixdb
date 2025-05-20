@@ -108,16 +108,15 @@ public class PriorityBasedQueue implements IJobQueue {
         return left;
     }
 
-    private void checkAndAdd(JobRun nextToRun, List<JobRun> jobRuns) {
-        if (nextToRun == null) {
-            return;
-        }
+    private boolean checkAndAdd(JobRun nextToRun, List<JobRun> jobRuns) {
+        boolean isAdmitted = false;
         try {
             IJobCapacityController.JobSubmissionStatus status = capacityControllerGuard.allocate(nextToRun);
             /* Checks if the job can be executed immediately. */
             if (status == IJobCapacityController.JobSubmissionStatus.EXECUTE) {
                 jobRuns.add(nextToRun);
                 /* remove it from its queue */
+                isAdmitted = true;
                 remove(nextToRun.getJobId());
             }
         } catch (HyracksException exception) {
@@ -132,6 +131,7 @@ public class PriorityBasedQueue implements IJobQueue {
                 LOGGER.log(Level.ERROR, e.getMessage(), e);
             }
         }
+        return isAdmitted;
     }
 
     @Override
@@ -145,6 +145,10 @@ public class PriorityBasedQueue implements IJobQueue {
         if (numNonEmptyQueues == 0) {
             return jobRuns;
         }
+        if (numNonEmptyQueues == 1 && !defaultJobQueue.isEmpty()) {
+            return defaultJobQueue.pull();
+        }
+
         long[] distribution = new long[numNonEmptyQueues + 1];
         distribution[0] = 0;
         if (!defaultJobQueue.isEmpty()) {
@@ -176,8 +180,14 @@ public class PriorityBasedQueue implements IJobQueue {
             /* other queue gets selected */
             int targetedPriority = (int) (distribution[selectedIdx] - distribution[selectedIdx - 1]);
             MPLQueue selectedQueue = queues.get(targetedPriority);
-            JobRun nextToRun = selectedQueue.getFirst();
-            checkAndAdd(nextToRun, jobRuns);
+            boolean canExecute = true;
+            while (canExecute) {
+                JobRun nextToRun = selectedQueue.getFirst();
+                if (nextToRun == null) {
+                    break;
+                }
+                canExecute = checkAndAdd(nextToRun, jobRuns);
+            }
             return jobRuns;
         }
     }
