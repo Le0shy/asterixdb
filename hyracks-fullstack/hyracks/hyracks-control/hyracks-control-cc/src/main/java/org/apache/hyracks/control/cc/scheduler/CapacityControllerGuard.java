@@ -14,7 +14,7 @@ public class CapacityControllerGuard {
     private static final Logger LOGGER = LogManager.getLogger();
     private final IJobCapacityController jobCapacityController;
     /* CPU Resources */
-    private int CPUQuotaShort = 8;
+    private int CPUQuotaShort = 4;
     private int CPUQuotaCommon;
     private int CPUQuotaAvailableShort;
     private int CPUQuotaAvailableCommon;
@@ -162,7 +162,7 @@ public class CapacityControllerGuard {
 
     public boolean isSQAResourcesAvailable() {
         /* TODO not necessary ? */
-        return CPUQuotaShort >= 3;
+        return CPUQuotaShort > 3;
     }
 
     public long getMaximumMemoryByteSizeShort() {
