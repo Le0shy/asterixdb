@@ -24,6 +24,9 @@ public class PriorityBasedQueue implements IJobQueue {
     private final Random random = new Random();
     private final Map<Integer, MPLQueue> queues;
     private final Set<Integer> activeQueues;
+    private boolean isDefaultQueuePicked = false;
+    private boolean isPrioritizedGroupQueuePicked = false;
+    private int candidatePrioritizedGroupPriority = -1;
 
     public PriorityBasedQueue(IJobManager jobManager, CapacityControllerGuard capacityControllerGuard) {
         defaultJobQueue = new DefaultJobQueue(jobManager, capacityControllerGuard);
@@ -138,6 +141,33 @@ public class PriorityBasedQueue implements IJobQueue {
     public List<JobRun> pull() {
         /* Generate probability distribution based on queues' (those have jobs waiting) priorities */
         List<JobRun> jobRuns = new ArrayList<>();
+
+        if (isDefaultQueuePicked) {
+            jobRuns = defaultJobQueue.pull();
+            if (!jobRuns.isEmpty()) {
+                isDefaultQueuePicked = false;
+                LOGGER.log(Level.DEBUG, "cache for default queue has been released");
+            }
+            return jobRuns;
+        }
+
+        if (isPrioritizedGroupQueuePicked) {
+            MPLQueue selectedQueue = queues.get(candidatePrioritizedGroupPriority);
+            boolean canExecute = true;
+            while (canExecute) {
+                JobRun nextToRun = selectedQueue.getFirst();
+                if (nextToRun == null) {
+                    break;
+                }
+                canExecute = checkAndAdd(nextToRun, jobRuns);
+            }
+            if (!jobRuns.isEmpty()) {
+                isPrioritizedGroupQueuePicked = false;
+                LOGGER.log(Level.DEBUG, "cache for priority {} has been released",candidatePrioritizedGroupPriority);
+            }
+            return jobRuns;
+        }
+
         int numNonEmptyQueues = activeQueues.size();
         if (!defaultJobQueue.isEmpty()) {
             numNonEmptyQueues += 1;
@@ -175,7 +205,12 @@ public class PriorityBasedQueue implements IJobQueue {
 
         if (!defaultJobQueue.isEmpty() && selectedIdx == 1) {
             /* default queue gets selected */
-            return defaultJobQueue.pull();
+            jobRuns = defaultJobQueue.pull();
+            if (jobRuns.isEmpty()) {
+                isDefaultQueuePicked = true;
+                LOGGER.log(Level.DEBUG, "default queue has been cached" );
+            }
+            return jobRuns;
         } else {
             /* other queue gets selected */
             int targetedPriority = (int) (distribution[selectedIdx] - distribution[selectedIdx - 1]);
@@ -187,6 +222,11 @@ public class PriorityBasedQueue implements IJobQueue {
                     break;
                 }
                 canExecute = checkAndAdd(nextToRun, jobRuns);
+            }
+            if (jobRuns.isEmpty()) {
+                isPrioritizedGroupQueuePicked = true;
+                candidatePrioritizedGroupPriority = targetedPriority;
+                LOGGER.log(Level.DEBUG, "priority {} has been cached", targetedPriority);
             }
             return jobRuns;
         }
