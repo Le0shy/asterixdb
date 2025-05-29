@@ -15,7 +15,7 @@ public class JobTypeManager implements IJobTypeManager {
     private static final String GROUP_LONG_JOB = "l";
     private static final String GROUP_SHORT_JOB = "s";
     private Map<String, Long> queryGroupToPriority;
-    private long defaultPriority = 3;
+    private long defaultPriority = 10;
 
     public enum JobSchedulingType {
         SHORT,
@@ -30,10 +30,10 @@ public class JobTypeManager implements IJobTypeManager {
         queryGroupToPriority = new HashMap<>();
         queryGroupToPriority.put("g0", 1L);
         queryGroupToPriority.put("g1", 2L);
-        queryGroupToPriority.put("g2", 3L);
-        queryGroupToPriority.put("g3", 4L);
-        queryGroupToPriority.put("g4", 5L);
-        queryGroupToPriority.put("g5", 6L);
+        queryGroupToPriority.put("g2", 4L);
+        queryGroupToPriority.put("g3", 8L);
+        queryGroupToPriority.put("g4", 12L);
+        queryGroupToPriority.put("g5", 16L);
     }
 
     @Override
