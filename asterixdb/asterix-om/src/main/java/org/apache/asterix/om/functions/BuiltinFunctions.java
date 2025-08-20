@@ -1150,6 +1150,9 @@ public class BuiltinFunctions {
     public static final FunctionIdentifier GET_OVERLAPPING_INTERVAL =
             FunctionConstants.newAsterix("get-overlapping-interval", 2);
 
+    // Vector search functions
+    public static final FunctionIdentifier ANN_DISTANCE = FunctionConstants.newAsterix("ann-distance", 3);
+
     // Temporal functions
     public static final FunctionIdentifier UNIX_TIME_FROM_DATE_IN_DAYS =
             FunctionConstants.newAsterix("unix-time-from-date-in-days", 1);
@@ -2162,6 +2165,9 @@ public class BuiltinFunctions {
         addFunction(INTERVAL_CONSTRUCTOR_START_FROM_DATE, AIntervalTypeComputer.INSTANCE, true);
         addFunction(INTERVAL_CONSTRUCTOR_START_FROM_DATETIME, AIntervalTypeComputer.INSTANCE, true);
         addFunction(INTERVAL_CONSTRUCTOR_START_FROM_TIME, AIntervalTypeComputer.INSTANCE, true);
+
+        // Vector search functions
+        addFunction(ANN_DISTANCE, ADoubleTypeComputer.INSTANCE, true);
 
         // meta() function
         addFunction(META, OpenARecordTypeComputer.INSTANCE, true);
