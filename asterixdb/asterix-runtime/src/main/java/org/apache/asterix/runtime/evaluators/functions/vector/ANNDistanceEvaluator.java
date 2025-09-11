@@ -1,5 +1,11 @@
 package org.apache.asterix.runtime.evaluators.functions.vector;
 
+import static org.apache.asterix.om.types.EnumDeserializer.ATYPETAGDESERIALIZER;
+
+import java.io.DataOutput;
+import java.io.IOException;
+import java.util.Map;
+
 import org.apache.asterix.common.exceptions.ErrorCode;
 import org.apache.asterix.common.exceptions.RuntimeDataException;
 import org.apache.asterix.dataflow.data.nontagged.serde.*;
@@ -25,12 +31,6 @@ import org.apache.hyracks.data.std.primitive.VoidPointable;
 import org.apache.hyracks.data.std.util.ArrayBackedValueStorage;
 import org.apache.hyracks.dataflow.common.data.accessors.IFrameTupleReference;
 import org.apache.hyracks.util.string.UTF8StringUtil;
-
-import java.io.DataOutput;
-import java.io.IOException;
-import java.util.Map;
-
-import static org.apache.asterix.om.types.EnumDeserializer.ATYPETAGDESERIALIZER;
 
 public class ANNDistanceEvaluator implements IScalarEvaluator {
     private final ListAccessor[] listAccessor = new ListAccessor[2];
@@ -76,9 +76,8 @@ public class ANNDistanceEvaluator implements IScalarEvaluator {
     public double[][] primitiveArrayConstant = new double[2][];
     public final boolean[] isConstant = new boolean[3];
 
-    public ANNDistanceEvaluator(IEvaluatorContext context,
-            final IScalarEvaluatorFactory[] evaluatorFactories, FunctionIdentifier funcId, SourceLocation sourceLoc)
-            throws HyracksDataException {
+    public ANNDistanceEvaluator(IEvaluatorContext context, final IScalarEvaluatorFactory[] evaluatorFactories,
+            FunctionIdentifier funcId, SourceLocation sourceLoc) throws HyracksDataException {
         pointables = new IPointable[evaluatorFactories.length];
         evaluators = new IScalarEvaluator[evaluatorFactories.length];
         for (int i = 0; i < evaluators.length; ++i) {

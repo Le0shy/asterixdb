@@ -463,15 +463,15 @@ public class IndexTupleTranslator extends AbstractTupleTranslator<Index> {
                         timeFormat);
                 break;
             case VECTOR:
-                 keyFieldNames =
+                keyFieldNames =
                         searchElements.stream().map(Pair::getSecond).map(List::getFirst).collect(Collectors.toList());
-                 keyFieldTypes = searchKeyType.stream().map(List::getFirst).collect(Collectors.toList());
+                keyFieldTypes = searchKeyType.stream().map(List::getFirst).collect(Collectors.toList());
 
                 excludeUnknownKey = OptionalBoolean.empty();
                 castDefaultNull = OptionalBoolean.empty();
-                indexDetails = new Index.VectorIndexDetails(keyFieldNames.getFirst(), keyFieldNames, keyFieldSourceIndicator,
-                        keyFieldTypes, isOverridingKeyTypes, excludeUnknownKey, castDefaultNull, null,
-                        null, null, null);
+                indexDetails = new Index.VectorIndexDetails(keyFieldNames.getFirst(), keyFieldNames,
+                        keyFieldSourceIndicator, keyFieldTypes, isOverridingKeyTypes, excludeUnknownKey,
+                        castDefaultNull, null, null, null, null);
                 break;
             case TEXT:
                 keyFieldNames =
@@ -710,7 +710,7 @@ public class IndexTupleTranslator extends AbstractTupleTranslator<Index> {
         }
         writeSearchKeyType(index);
 
-        if(Index.IndexCategory.of(index.getIndexType()) == Index.IndexCategory.VECTOR) {
+        if (Index.IndexCategory.of(index.getIndexType()) == Index.IndexCategory.VECTOR) {
             // Vector indexes do not have enforced keys.
             return;
         }
@@ -851,7 +851,7 @@ public class IndexTupleTranslator extends AbstractTupleTranslator<Index> {
         recordBuilder.addField(nameValue, fieldValue);
     }
 
-    private void writeIncludeFields(Index.VectorIndexDetails index) throws HyracksDataException{
+    private void writeIncludeFields(Index.VectorIndexDetails index) throws HyracksDataException {
         List<List<String>> includeElements = index.getIncludeFieldNames();
         OrderedListBuilder listBuilder = new OrderedListBuilder();
         listBuilder.reset(new AOrderedListType(BuiltinType.ASTRING, null));

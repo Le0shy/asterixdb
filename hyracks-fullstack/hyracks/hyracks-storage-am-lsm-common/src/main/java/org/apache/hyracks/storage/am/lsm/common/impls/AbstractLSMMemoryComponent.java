@@ -250,7 +250,7 @@ public abstract class AbstractLSMMemoryComponent extends AbstractLSMComponent im
     }
 
     @Override
-    public final void reset() throws HyracksDataException {
+    public void reset() throws HyracksDataException {
         state = ComponentState.INACTIVE;
         isModified.set(false);
         metadata.reset();

@@ -1,5 +1,7 @@
 package org.apache.asterix.lang.common.statement;
 
+import java.util.List;
+
 import org.apache.asterix.common.exceptions.CompilationException;
 import org.apache.asterix.common.metadata.DataverseName;
 import org.apache.asterix.common.metadata.Namespace;
@@ -9,8 +11,6 @@ import org.apache.asterix.lang.common.struct.Identifier;
 import org.apache.asterix.lang.common.util.VectorIndexDeclUtil;
 import org.apache.asterix.lang.common.visitor.base.ILangVisitor;
 import org.apache.asterix.object.base.AdmObjectNode;
-
-import java.util.List;
 
 public class CreateVectorIndexStatement extends AbstractStatement {
 
@@ -24,8 +24,7 @@ public class CreateVectorIndexStatement extends AbstractStatement {
 
     public CreateVectorIndexStatement(Namespace namespace, Identifier datasetName, Identifier vectorIndexName,
             CreateIndexStatement.IndexedElement vectorField, List<CreateIndexStatement.IndexedElement> includedFields,
-            RecordConstructor withRecord, boolean ifNotExists)
-            throws CompilationException {
+            RecordConstructor withRecord, boolean ifNotExists) throws CompilationException {
         this.namespace = namespace;
         this.vectorIndexName = vectorIndexName;
         this.datasetName = datasetName;
@@ -50,6 +49,7 @@ public class CreateVectorIndexStatement extends AbstractStatement {
     public Identifier getDatasetName() {
         return datasetName;
     }
+
     public boolean isIfNotExists() {
         return ifNotExists;
     }
@@ -69,20 +69,20 @@ public class CreateVectorIndexStatement extends AbstractStatement {
         return null;
     }
 
-//    public static final class IncludedFields {
-//        private final String fieldName;
-//        private final String fieldType;
-//
-//        public IncludedFields(String fieldName, String fieldType) {
-//            this.fieldName = fieldName;
-//            this.fieldType = fieldType;
-//        }
-//
-//        public String getFieldName() {
-//            return fieldName;
-//        }
-//
-//        public String getFieldType() {
-//            return fieldType;
-//        }
+    //    public static final class IncludedFields {
+    //        private final String fieldName;
+    //        private final String fieldType;
+    //
+    //        public IncludedFields(String fieldName, String fieldType) {
+    //            this.fieldName = fieldName;
+    //            this.fieldType = fieldType;
+    //        }
+    //
+    //        public String getFieldName() {
+    //            return fieldName;
+    //        }
+    //
+    //        public String getFieldType() {
+    //            return fieldType;
+    //        }
 }
