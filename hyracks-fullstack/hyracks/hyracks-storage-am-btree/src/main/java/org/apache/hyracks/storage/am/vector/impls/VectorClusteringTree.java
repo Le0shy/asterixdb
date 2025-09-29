@@ -19,15 +19,18 @@
 
 package org.apache.hyracks.storage.am.vector.impls;
 
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
 import org.apache.hyracks.api.dataflow.value.IBinaryComparatorFactory;
+import org.apache.hyracks.api.dataflow.value.ISerializerDeserializer;
 import org.apache.hyracks.api.exceptions.ErrorCode;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
 import org.apache.hyracks.api.io.FileReference;
 import org.apache.hyracks.dataflow.common.data.accessors.ITupleReference;
+import org.apache.hyracks.dataflow.common.data.marshalling.FloatArraySerializerDeserializer;
+import org.apache.hyracks.dataflow.common.data.marshalling.IntegerSerializerDeserializer;
+import org.apache.hyracks.dataflow.common.utils.TupleUtils;
 import org.apache.hyracks.storage.am.common.api.IPageManager;
 import org.apache.hyracks.storage.am.common.api.ITreeIndexAccessor;
 import org.apache.hyracks.storage.am.common.api.ITreeIndexCursor;
@@ -53,6 +56,8 @@ import org.apache.hyracks.storage.common.buffercache.ICachedPage;
 import org.apache.hyracks.storage.common.buffercache.IPageWriteCallback;
 import org.apache.hyracks.storage.common.file.BufferedFileHandle;
 
+import static org.apache.hyracks.storage.common.buffercache.context.read.DefaultBufferCacheReadContextProvider.NEW;
+
 /**
  * Vector Clustering Tree implementation for multi-level k-means vector index.
  *
@@ -71,6 +76,10 @@ public class VectorClusteringTree extends AbstractTreeIndex {
     // Add missing frameTuple declaration
     private ITreeIndexTupleReference frameTuple;
 
+    private VectorClusteringTreeStaticInitializer staticInitializer;
+
+    private boolean isStaticStructureInitialized = false;
+
     public VectorClusteringTree(IBufferCache bufferCache, IPageManager freePageManager,
             ITreeIndexFrameFactory interiorFrameFactory, ITreeIndexFrameFactory leafFrameFactory,
             ITreeIndexFrameFactory metadataFrameFactory, ITreeIndexFrameFactory dataFrameFactory,
@@ -79,6 +88,7 @@ public class VectorClusteringTree extends AbstractTreeIndex {
         this.vectorDimensions = vectorDimensions;
         this.metadataFrameFactory = metadataFrameFactory;
         this.dataFrameFactory = dataFrameFactory;
+        staticInitializer = null;
     }
 
     /**
@@ -119,7 +129,7 @@ public class VectorClusteringTree extends AbstractTreeIndex {
     public IIndexBulkLoader createBulkLoader(float fillFactor, boolean verifyInput, long numElementsHint,
             boolean checkIfEmptyIndex, IPageWriteCallback callback) throws HyracksDataException {
         // TODO: Implement vector clustering tree bulk loader
-        throw new UnsupportedOperationException("VectorClusteringTree bulk loader not implemented");
+        return new VectorClusteringTreeBulkLoader(fillFactor, verifyInput, numElementsHint, this, callback);
     }
 
     /**
@@ -128,6 +138,12 @@ public class VectorClusteringTree extends AbstractTreeIndex {
      */
     private void insertVector(ITupleReference tuple, VectorClusteringOpContext ctx) throws HyracksDataException {
         // Use unified cluster search and access pattern
+        if(!isStaticStructureInitialized()){
+            staticInitializer =new VectorClusteringTreeStaticInitializer(this);
+            staticInitializer.initializeThreeLevelStructure();
+            setStaticStructureInitialized();
+        }
+
         ClusterAccessResult accessResult = findClusterAndPrepareAccess(tuple, ctx, true);
 
         try {
@@ -328,60 +344,28 @@ public class VectorClusteringTree extends AbstractTreeIndex {
 
         // Create new data page for split
         int newDataPageId = freePageManager.takePage(ctx.getMetaFrame());
-        ICachedPage newDataPage = bufferCache.pin(BufferedFileHandle.getDiskPageId(getFileId(), newDataPageId));
+        ICachedPage newDataPage = bufferCache.pin(BufferedFileHandle.getDiskPageId(getFileId(), newDataPageId), NEW);
 
         try {
             newDataPage.acquireWriteLatch();
-            IVectorClusteringDataFrame newFrame = (IVectorClusteringDataFrame) dataFrameFactory.createFrame();
+            VectorClusteringDataFrame newFrame = (VectorClusteringDataFrame) dataFrameFactory.createFrame();
             newFrame.setPage(newDataPage);
             newFrame.initBuffer((byte) 0);
 
-            int originalTupleCount = ctx.getDataFrame().getTupleCount();
-            int splitPoint = originalTupleCount / 2;
+            // Use the frame's split method (following BTree pattern)
+            ctx.getDataFrame().split(newFrame, newTuple, insertIndex);
 
-            // Move second half of tuples to new page
-            List<ITupleReference> tuplesForNewPage = new ArrayList<>();
-
-            // Initialize frameTuple if not already done
-            if (frameTuple == null) {
-                frameTuple = ctx.getDataFrame().createTupleReference();
-            }
-
-            for (int i = splitPoint; i < originalTupleCount; i++) {
-                frameTuple.resetByTupleIndex(ctx.getDataFrame(), i);
-                SimpleTupleReference tupleCopy = new SimpleTupleReference();
-                copyTuple(frameTuple, tupleCopy);
-                tuplesForNewPage.add(tupleCopy);
-            }
-
-            // Remove moved tuples from original page
-            for (int i = originalTupleCount - 1; i >= splitPoint; i--) {
-                frameTuple.resetByTupleIndex(ctx.getDataFrame(), i);
-                ctx.getDataFrame().delete(frameTuple, i);
-            }
-
-            // Insert tuples into new page
-            for (ITupleReference tuple : tuplesForNewPage) {
-                newFrame.insert(tuple, newFrame.getTupleCount());
-            }
-
-            // Insert new tuple into appropriate page
-            if (insertIndex < splitPoint) {
-                ctx.getDataFrame().insert(newTuple, insertIndex);
-            } else {
-                newFrame.insert(newTuple, insertIndex - splitPoint);
-            }
-
-            // Update page links
+            // Update page links (maintain linked list structure)
             int originalNextPage = ctx.getDataFrame().getNextPage();
             ctx.getDataFrame().setNextPage(newDataPageId);
             newFrame.setNextPage(originalNextPage);
 
             // Update page LSNs
-            ctx.getDataFrame().setPageLsn(ctx.getDataFrame().getPageLsn() + 1);
-            newFrame.setPageLsn(newFrame.getPageLsn() + 1);
+            long currentLsn = System.currentTimeMillis(); // Or use proper LSN management
+            ctx.getDataFrame().setPageLsn(currentLsn);
+            newFrame.setPageLsn(currentLsn);
 
-            // Update metadata to reflect split - need to add new metadata entry
+            // Update metadata to reflect the split
             updateMetadataAfterDataSplit(dataPageId, newDataPageId, ctx);
 
         } finally {
@@ -995,7 +979,7 @@ public class VectorClusteringTree extends AbstractTreeIndex {
 
         // Create a new data page for overflow
         int newDataPageId = pageManager.takePage(ctx.getMetaFrame());
-        ICachedPage newPage = bufferCache.pin(BufferedFileHandle.getDiskPageId(getFileId(), newDataPageId));
+        ICachedPage newPage = bufferCache.pin(BufferedFileHandle.getDiskPageId(getFileId(), newDataPageId), NEW);
 
         try {
             newPage.acquireWriteLatch();
@@ -1110,7 +1094,7 @@ public class VectorClusteringTree extends AbstractTreeIndex {
     /**
      * Find the closest cluster starting from root and traversing down to leaf level.
      */
-    private ClusterSearchResult findClosestClusterFromRoot(float[] queryVector, VectorClusteringOpContext ctx)
+    public ClusterSearchResult findClosestClusterFromRoot(float[] queryVector, VectorClusteringOpContext ctx)
             throws HyracksDataException {
 
         System.out.println("DEBUG: Starting findClosestClusterFromRoot with rootPage=" + rootPage);
@@ -1246,24 +1230,30 @@ public class VectorClusteringTree extends AbstractTreeIndex {
      */
     private double[] extractCentroidFromLeafTuple(ITreeIndexTupleReference tuple) {
         // Centroid is the second field in leaf frame tuples
-        byte[] data = tuple.getFieldData(1);
-        int offset = tuple.getFieldStart(1);
-        int length = tuple.getFieldLength(1);
+        try {
+            // Create field serializers array - specify only the centroid field we need
+            ISerializerDeserializer[] fieldSerdes = new ISerializerDeserializer[3];
+            fieldSerdes[0] = IntegerSerializerDeserializer.INSTANCE;           // Field 0: cid
+            fieldSerdes[1] = FloatArraySerializerDeserializer.INSTANCE;        // Field 1: centroid
+            fieldSerdes[2] = IntegerSerializerDeserializer.INSTANCE;           // Field 2: metadata_pointer
 
-        // Assuming centroid is stored as array of doubles
-        int numDimensions = length / 8; // 8 bytes per double
-        double[] centroid = new double[numDimensions];
+            // Deserialize the tuple using the proper TupleUtils method
+            Object[] fieldValues = TupleUtils.deserializeTuple(tuple, fieldSerdes);
 
-        for (int i = 0; i < numDimensions; i++) {
-            int doubleOffset = offset + (i * 8);
-            long bits = ((long) data[doubleOffset] << 56) | (((long) data[doubleOffset + 1] & 0xFF) << 48)
-                    | (((long) data[doubleOffset + 2] & 0xFF) << 40) | (((long) data[doubleOffset + 3] & 0xFF) << 32)
-                    | (((long) data[doubleOffset + 4] & 0xFF) << 24) | (((long) data[doubleOffset + 5] & 0xFF) << 16)
-                    | (((long) data[doubleOffset + 6] & 0xFF) << 8) | ((long) data[doubleOffset + 7] & 0xFF);
-            centroid[i] = Double.longBitsToDouble(bits);
+            // Extract the centroid from the deserialized fields
+            float[] floatCentroid = (float[]) fieldValues[1];
+
+            // Convert from float[] to double[]
+            double[] doubleCentroid = new double[floatCentroid.length];
+            for (int i = 0; i < floatCentroid.length; i++) {
+                doubleCentroid[i] =  floatCentroid[i];
+            }
+
+            return doubleCentroid;
+
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to extract centroid from interior tuple using TupleUtils.deserializeTuple()", e);
         }
-
-        return centroid;
     }
 
     /**
@@ -1271,28 +1261,46 @@ public class VectorClusteringTree extends AbstractTreeIndex {
      */
     private double[] extractCentroidFromInteriorTuple(ITreeIndexTupleReference tuple) {
         // Centroid is the second field in interior frame tuples
-        byte[] data = tuple.getFieldData(1);
-        int offset = tuple.getFieldStart(1);
-        int length = tuple.getFieldLength(1);
+        try {
+            // Create field serializers array - specify only the centroid field we need
+            ISerializerDeserializer[] fieldSerdes = new ISerializerDeserializer[3];
+            fieldSerdes[0] = IntegerSerializerDeserializer.INSTANCE;           // Field 0: cid
+            fieldSerdes[1] = FloatArraySerializerDeserializer.INSTANCE;        // Field 1: centroid
+            fieldSerdes[2] = IntegerSerializerDeserializer.INSTANCE;           // Field 2: metadata_pointer
 
-        // Assuming centroid is stored as array of doubles
-        int numDimensions = length / 8; // 8 bytes per double
-        double[] centroid = new double[numDimensions];
+            // Deserialize the tuple using the proper TupleUtils method
+            Object[] fieldValues = TupleUtils.deserializeTuple(tuple, fieldSerdes);
 
-        for (int i = 0; i < numDimensions; i++) {
-            int doubleOffset = offset + (i * 8);
-            long bits = ((long) data[doubleOffset] << 56) | (((long) data[doubleOffset + 1] & 0xFF) << 48)
-                    | (((long) data[doubleOffset + 2] & 0xFF) << 40) | (((long) data[doubleOffset + 3] & 0xFF) << 32)
-                    | (((long) data[doubleOffset + 4] & 0xFF) << 24) | (((long) data[doubleOffset + 5] & 0xFF) << 16)
-                    | (((long) data[doubleOffset + 6] & 0xFF) << 8) | ((long) data[doubleOffset + 7] & 0xFF);
-            centroid[i] = Double.longBitsToDouble(bits);
+            // Extract the centroid from the deserialized fields
+            float[] floatCentroid = (float[]) fieldValues[1];
+
+            // Convert from float[] to double[]
+            double[] doubleCentroid = new double[floatCentroid.length];
+            for (int i = 0; i < floatCentroid.length; i++) {
+                doubleCentroid[i] =  floatCentroid[i];
+            }
+
+            return doubleCentroid;
+
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to extract centroid from interior tuple using TupleUtils.deserializeTuple()", e);
         }
-
-        return centroid;
     }
 
     public int getVectorDimensions() {
         return vectorDimensions;
+    }
+
+    public List<Integer> getAllPageIds() {
+        throw new UnsupportedOperationException("Use bulkLoadFromTree() instead");
+    }
+
+    public boolean isStaticStructureInitialized() {
+        return isStaticStructureInitialized;
+    }
+
+    public void setStaticStructureInitialized() {
+        isStaticStructureInitialized = true;
     }
 
     /**
@@ -1448,8 +1456,16 @@ public class VectorClusteringTree extends AbstractTreeIndex {
             // No need to call tree.search() anymore since the cursor does everything
             VectorClusteringSearchCursor vectorCursor = (VectorClusteringSearchCursor) cursor;
 
+            // Configure cursor with tree navigation capabilities
+            vectorCursor.setBufferCache(tree.bufferCache);
+            vectorCursor.setFileId(tree.getFileId());
+            vectorCursor.setRootPageId(tree.rootPage);
+            vectorCursor.setFrameFactories(tree.interiorFrameFactory, tree.leafFrameFactory, tree.metadataFrameFactory,
+                    tree.dataFrameFactory);
+
             // Create a simple initial state (the cursor will find the centroid itself)
             VectorCursorInitialState initialState = new VectorCursorInitialState();
+            initialState.setRootPageId(tree.rootPage);
 
             // Open the cursor - it will perform centroid finding and position on data pages
             vectorCursor.open(initialState, searchPred);

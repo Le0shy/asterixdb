@@ -23,6 +23,7 @@ import java.util.List;
 
 import org.apache.hyracks.api.dataflow.value.IBinaryComparatorFactory;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
+import org.apache.hyracks.api.io.FileReference;
 import org.apache.hyracks.api.io.IIOManager;
 import org.apache.hyracks.dataflow.common.data.accessors.ITupleReference;
 import org.apache.hyracks.storage.am.btree.impls.RangePredicate;
@@ -51,6 +52,7 @@ import org.apache.hyracks.storage.am.lsm.common.impls.LSMComponentFileReferences
 import org.apache.hyracks.storage.am.lsm.common.impls.LSMComponentFilterManager;
 import org.apache.hyracks.storage.am.lsm.common.impls.LSMTreeIndexAccessor.ICursorFactory;
 import org.apache.hyracks.storage.am.vector.impls.VectorClusteringTree;
+import org.apache.hyracks.storage.am.vector.impls.VectorClusteringTreeBulkLoader;
 import org.apache.hyracks.storage.common.IIndexAccessParameters;
 import org.apache.hyracks.storage.common.IIndexCursor;
 import org.apache.hyracks.storage.common.ISearchPredicate;
@@ -90,12 +92,12 @@ public class LSMVCTree extends AbstractLSMIndex implements ITreeIndex {
             ILSMOperationTracker opTracker, ILSMIOOperationScheduler ioScheduler,
             ILSMIOOperationCallbackFactory ioOpCallbackFactory, ILSMPageWriteCallbackFactory pageWriteCallbackFactory,
             boolean needKeyDupCheck, int vectorDimensions, int[] vectorFields, int[] filterFields, boolean durable,
-            ITracer tracer, boolean atomic) throws HyracksDataException {
+            boolean atomic) throws HyracksDataException {
 
         super(ioManager, virtualBufferCaches, diskBufferCache, fileManager, bloomFilterFalsePositiveRate, mergePolicy,
                 opTracker, ioScheduler, ioOpCallbackFactory, pageWriteCallbackFactory, componentFactory,
                 bulkLoadComponentFactory, filterFrameFactory, filterManager, filterFields, durable, filterHelper,
-                vectorFields, tracer, atomic);
+                vectorFields, ITracer.NONE, atomic);
 
         this.interiorFrameFactory = interiorFrameFactory;
         this.leafFrameFactory = leafFrameFactory;
@@ -188,6 +190,50 @@ public class LSMVCTree extends AbstractLSMIndex implements ITreeIndex {
         LSMVCTreeFlushOperation flushOp = (LSMVCTreeFlushOperation) operation;
         LSMVCTreeMemoryComponent flushingComponent = (LSMVCTreeMemoryComponent) flushOp.getFlushingComponent();
 
+        ILSMDiskComponent component = null;
+        ILSMDiskComponentBulkLoader componentBulkLoader;
+        try {
+            component = createDiskComponentFromFlushingComponent(flushingComponent, componentFactory, false);
+
+            componentBulkLoader = component.createBulkLoader(operation, 1.0f, false, 0L,
+                    false, false, false, pageWriteCallbackFactory.createPageWriteCallback());
+            try {
+                // Simple bulk load - just copy all pages
+                componentBulkLoader.end();
+
+            } catch (Throwable e) {
+                componentBulkLoader.abort();
+                throw e;
+            }
+        } catch (Throwable e) {
+            if (component != null) {
+                component.destroy();
+            }
+            throw e;
+        }
+        return component;
+    }
+
+    protected ILSMDiskComponent createDiskComponentFromFlushingComponent(LSMVCTreeMemoryComponent flushingComponent,
+            ILSMDiskComponentFactory factory, boolean createComponent)
+            throws HyracksDataException {
+        LSMVCTreeDiskComponentFactory lsmVCTreeFactory = (LSMVCTreeDiskComponentFactory) factory;
+        ILSMDiskComponent component = lsmVCTreeFactory.createComponent(flushingComponent, this);
+        try {
+            component.activate(createComponent);
+        } catch (HyracksDataException e) {
+            component.returnPages();
+            throw e;
+        }
+        return component;
+    }
+
+    /*
+    @Override
+    public ILSMDiskComponent doFlush(ILSMIOOperation operation) throws HyracksDataException {
+        LSMVCTreeFlushOperation flushOp = (LSMVCTreeFlushOperation) operation;
+        LSMVCTreeMemoryComponent flushingComponent = (LSMVCTreeMemoryComponent) flushOp.getFlushingComponent();
+
         // Create the disk component
         ILSMDiskComponent component = null;
         try {
@@ -247,6 +293,7 @@ public class LSMVCTree extends AbstractLSMIndex implements ITreeIndex {
         }
         return component;
     }
+    */
 
     @Override
     public ILSMDiskComponent doMerge(ILSMIOOperation operation) throws HyracksDataException {

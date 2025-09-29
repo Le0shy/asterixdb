@@ -25,7 +25,7 @@ import org.apache.hyracks.api.dataflow.value.ISerializerDeserializer;
 import org.apache.hyracks.dataflow.common.data.accessors.ITupleReference;
 import org.apache.hyracks.dataflow.common.data.marshalling.FloatArraySerializerDeserializer;
 import org.apache.hyracks.dataflow.common.data.marshalling.UTF8StringSerializerDeserializer;
-import org.apache.hyracks.storage.am.btree.frames.BTreeLeafFrameType;
+import org.apache.hyracks.storage.am.vector.frames.VectorTreeFrameType;
 import org.apache.hyracks.storage.am.config.AccessMethodTestsConfig;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -37,22 +37,22 @@ public abstract class AbstractVectorTreeTestDriver {
 
     protected static final int numTuplesToInsert = AccessMethodTestsConfig.BTREE_NUM_TUPLES_TO_INSERT;
 
-    protected abstract org.apache.hyracks.storage.am.vector.AbstractVectorTreeTestContext createTestContext(
-            ISerializerDeserializer[] fieldSerdes, int numKeys, BTreeLeafFrameType leafType, boolean filtered)
+    protected abstract AbstractVectorTreeTestContext createTestContext(
+            ISerializerDeserializer[] fieldSerdes, int numKeys, VectorTreeFrameType frameType, boolean filtered)
             throws Exception;
 
     protected abstract Random getRandom();
 
-    protected abstract void runTest(ISerializerDeserializer[] fieldSerdes, int numKeys, BTreeLeafFrameType leafType,
+    protected abstract void runTest(ISerializerDeserializer[] fieldSerdes, int numKeys, VectorTreeFrameType frameType,
             ITupleReference lowKey, ITupleReference highKey, ITupleReference prefixLowKey,
             ITupleReference prefixHighKey) throws Exception;
 
     protected abstract String getTestOpName();
 
-    protected final BTreeLeafFrameType[] leafFrameTypesToTest;
+    protected final VectorTreeFrameType[] frameTypesToTest;
 
-    public AbstractVectorTreeTestDriver(BTreeLeafFrameType[] leafFrameTypesToTest) {
-        this.leafFrameTypesToTest = leafFrameTypesToTest;
+    public AbstractVectorTreeTestDriver(VectorTreeFrameType[] frameTypesToTest) {
+        this.frameTypesToTest = frameTypesToTest;
     }
 
     @Test
@@ -64,8 +64,8 @@ public abstract class AbstractVectorTreeTestDriver {
         ISerializerDeserializer[] fieldSerdes =
                 { FloatArraySerializerDeserializer.INSTANCE, new UTF8StringSerializerDeserializer() };
 
-        for (BTreeLeafFrameType leafFrameType : leafFrameTypesToTest) {
-            runTest(fieldSerdes, 1, leafFrameType, null, null, null, null);
+        for (VectorTreeFrameType frameType : frameTypesToTest) {
+            runTest(fieldSerdes, 1, frameType, null, null, null, null);
         }
     }
 
@@ -78,8 +78,8 @@ public abstract class AbstractVectorTreeTestDriver {
         ISerializerDeserializer[] fieldSerdes =
                 { FloatArraySerializerDeserializer.INSTANCE, FloatArraySerializerDeserializer.INSTANCE };
 
-        for (BTreeLeafFrameType leafFrameType : leafFrameTypesToTest) {
-            runTest(fieldSerdes, 2, leafFrameType, null, null, null, null);
+        for (VectorTreeFrameType frameType : frameTypesToTest) {
+            runTest(fieldSerdes, 2, frameType, null, null, null, null);
         }
     }
 
@@ -93,8 +93,8 @@ public abstract class AbstractVectorTreeTestDriver {
                 { FloatArraySerializerDeserializer.INSTANCE, FloatArraySerializerDeserializer.INSTANCE,
                         new UTF8StringSerializerDeserializer(), new UTF8StringSerializerDeserializer() };
 
-        for (BTreeLeafFrameType leafFrameType : leafFrameTypesToTest) {
-            runTest(fieldSerdes, 2, leafFrameType, null, null, null, null);
+        for (VectorTreeFrameType frameType : frameTypesToTest) {
+            runTest(fieldSerdes, 2, frameType, null, null, null, null);
         }
     }
 
@@ -107,8 +107,8 @@ public abstract class AbstractVectorTreeTestDriver {
         ISerializerDeserializer[] fieldSerdes =
                 { new UTF8StringSerializerDeserializer(), FloatArraySerializerDeserializer.INSTANCE };
 
-        for (BTreeLeafFrameType leafFrameType : leafFrameTypesToTest) {
-            runTest(fieldSerdes, 1, leafFrameType, null, null, null, null);
+        for (VectorTreeFrameType frameType : frameTypesToTest) {
+            runTest(fieldSerdes, 1, frameType, null, null, null, null);
         }
     }
 
@@ -121,8 +121,8 @@ public abstract class AbstractVectorTreeTestDriver {
         ISerializerDeserializer[] fieldSerdes = { new UTF8StringSerializerDeserializer(),
                 new UTF8StringSerializerDeserializer(), FloatArraySerializerDeserializer.INSTANCE };
 
-        for (BTreeLeafFrameType leafFrameType : leafFrameTypesToTest) {
-            runTest(fieldSerdes, 2, leafFrameType, null, null, null, null);
+        for (VectorTreeFrameType frameType : frameTypesToTest) {
+            runTest(fieldSerdes, 2, frameType, null, null, null, null);
         }
     }
 
@@ -136,8 +136,8 @@ public abstract class AbstractVectorTreeTestDriver {
                 { new UTF8StringSerializerDeserializer(), new UTF8StringSerializerDeserializer(),
                         FloatArraySerializerDeserializer.INSTANCE, new UTF8StringSerializerDeserializer() };
 
-        for (BTreeLeafFrameType leafFrameType : leafFrameTypesToTest) {
-            runTest(fieldSerdes, 2, leafFrameType, null, null, null, null);
+        for (VectorTreeFrameType frameType : frameTypesToTest) {
+            runTest(fieldSerdes, 2, frameType, null, null, null, null);
         }
     }
 }

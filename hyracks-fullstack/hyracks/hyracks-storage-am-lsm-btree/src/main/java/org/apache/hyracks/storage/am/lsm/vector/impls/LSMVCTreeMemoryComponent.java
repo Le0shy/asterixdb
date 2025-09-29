@@ -63,7 +63,7 @@ public class LSMVCTreeMemoryComponent extends AbstractLSMMemoryComponent {
     @Override
     public int getWriterCount() {
         // Vector clustering trees typically have a single writer
-        return 1;
+        return 0;
     }
 
     @Override

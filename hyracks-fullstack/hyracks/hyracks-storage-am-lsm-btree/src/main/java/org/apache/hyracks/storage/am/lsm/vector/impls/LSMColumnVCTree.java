@@ -77,7 +77,7 @@ public class LSMColumnVCTree extends LSMVCTree {
                 columnDataFrameFactory, diskBufferCache, fileManager, componentFactory, bulkLoadComponentFactory,
                 filterHelper, filterFrameFactory, filterManager, bloomFilterFalsePositiveRate, cmpFactories,
                 mergePolicy, opTracker, ioScheduler, ioOpCallbackFactory, pageWriteCallbackFactory, needKeyDupCheck,
-                vectorDimensions, vectorFields, filterFields, durable, tracer, atomic);
+                vectorDimensions, vectorFields, filterFields, durable, atomic);
 
         this.columnDataFrameFactory = columnDataFrameFactory;
         this.vectorDimensions = vectorDimensions;

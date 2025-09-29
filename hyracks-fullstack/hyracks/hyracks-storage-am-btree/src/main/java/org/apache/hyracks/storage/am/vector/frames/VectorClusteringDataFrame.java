@@ -20,16 +20,22 @@
 package org.apache.hyracks.storage.am.vector.frames;
 
 import java.io.ByteArrayOutputStream;
+import java.io.DataOutput;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
 import org.apache.hyracks.api.exceptions.HyracksDataException;
 import org.apache.hyracks.data.std.primitive.FloatPointable;
+import org.apache.hyracks.dataflow.common.comm.io.ArrayTupleBuilder;
+import org.apache.hyracks.dataflow.common.comm.io.ArrayTupleReference;
 import org.apache.hyracks.dataflow.common.data.accessors.ITupleReference;
+import org.apache.hyracks.dataflow.common.data.marshalling.DoubleSerializerDeserializer;
 import org.apache.hyracks.dataflow.common.data.marshalling.FloatSerializerDeserializer;
+import org.apache.hyracks.dataflow.common.utils.TupleUtils;
 import org.apache.hyracks.storage.am.btree.frames.OrderedSlotManager;
 import org.apache.hyracks.storage.am.common.api.ITreeIndexFrame;
 import org.apache.hyracks.storage.am.common.api.ITreeIndexTupleWriter;
@@ -347,6 +353,61 @@ public class VectorClusteringDataFrame extends VectorClusteringNSMFrame implemen
     }
 
     /**
+     * Split this data frame using BTree-style approach.
+     * Follows the exact pattern from BTreeNSMLeafFrame.split().
+     */
+    public void split(VectorClusteringDataFrame rightFrame, ITupleReference tuple, int insertIndex)
+            throws HyracksDataException {
+
+        int tupleCount = getTupleCount();
+
+        // Determine split point and target frame
+        int tuplesToLeft = tupleCount / 2;
+        int tuplesToRight = tupleCount - tuplesToLeft;
+
+        // Determine which frame gets the new tuple
+        VectorClusteringDataFrame targetFrame;
+        if (insertIndex < tuplesToLeft) {
+            targetFrame = this;  // Insert into left (original) frame
+        } else {
+            targetFrame = rightFrame;  // Insert into right (new) frame
+        }
+
+        // STEP 1: Copy entire page buffer (BTree approach)
+        ByteBuffer rightBuffer = rightFrame.getBuffer();
+        System.arraycopy(buf.array(), 0, rightBuffer.array(), 0, buf.capacity());
+
+        // STEP 2: Adjust slot tables for right page
+        // Copy rightmost slots to the left on right page
+        int src = rightFrame.getSlotManager().getSlotEndOff();
+        int dest = rightFrame.getSlotManager().getSlotEndOff()
+                + tuplesToLeft * rightFrame.getSlotManager().getSlotSize();
+        int length = rightFrame.getSlotManager().getSlotSize() * tuplesToRight;
+        System.arraycopy(rightBuffer.array(), src, rightBuffer.array(), dest, length);
+
+        // STEP 3: Update tuple counts
+        rightBuffer.putInt(Constants.TUPLE_COUNT_OFFSET, tuplesToRight);
+        buf.putInt(Constants.TUPLE_COUNT_OFFSET, tuplesToLeft);
+
+        // STEP 4: Compact both pages
+        rightFrame.compact();
+        this.compact();
+
+        // STEP 5: Insert the new tuple into appropriate frame
+        int targetTupleIndex;
+        if (insertIndex < tuplesToLeft) {
+            // Insert into left frame
+            targetTupleIndex = insertIndex;
+            this.insert(tuple, targetTupleIndex);
+        } else {
+            // Insert into right frame
+            targetTupleIndex = insertIndex - tuplesToLeft;
+            rightFrame.insert(tuple, targetTupleIndex);
+        }
+    }
+
+
+    /**
      * Split data frame when it becomes full, maintaining distance-based ordering.
      */
     public void split(IVectorClusteringDataFrame rightFrame, ITupleReference tuple) throws HyracksDataException {
@@ -530,17 +591,45 @@ public class VectorClusteringDataFrame extends VectorClusteringNSMFrame implemen
     public ITupleReference createDataTuple(float[] vector, double distance, double cosineSim,
             ITupleReference originalTuple) throws HyracksDataException {
         // Extract primary key from original tuple (assume last field)
-        int pkFieldIndex = originalTuple.getFieldCount() - 1;
-        byte[] pkData = originalTuple.getFieldData(pkFieldIndex);
-        int pkOffset = originalTuple.getFieldStart(pkFieldIndex);
-        int pkLength = originalTuple.getFieldLength(pkFieldIndex);
+        try {
+            // Step 1: Create tuple builder for the new computed fields (distance, cosine)
+            ArrayTupleBuilder computedFieldsBuilder = new ArrayTupleBuilder(2);
+            DataOutput dos = computedFieldsBuilder.getDataOutput();
 
-        // Create byte array for primary key
-        byte[] primaryKey = new byte[pkLength];
-        System.arraycopy(pkData, pkOffset, primaryKey, 0, pkLength);
+            // Add distance field
+            DoubleSerializerDeserializer.INSTANCE.serialize(distance, dos);
+            computedFieldsBuilder.addFieldEndOffset();
 
-        // Use existing method with converted types
-        return createDataTuple(vector, (float) distance, (float) cosineSim, primaryKey);
+            // Add cosine similarity field
+            DoubleSerializerDeserializer.INSTANCE.serialize(cosineSim, dos);
+            computedFieldsBuilder.addFieldEndOffset();
+
+            // Step 2: Create tuple builder for original fields (vector, primary key)
+            ArrayTupleBuilder originalFieldsBuilder = new ArrayTupleBuilder(originalTuple.getFieldCount());
+
+            // Copy all fields from original tuple
+            for (int i = 0; i < originalTuple.getFieldCount(); i++) {
+                originalFieldsBuilder.addField(originalTuple.getFieldData(i),
+                        originalTuple.getFieldStart(i),
+                        originalTuple.getFieldLength(i));
+            }
+
+            // Step 3: Create final data tuple builder and use addFields to combine
+            ArrayTupleBuilder dataTupleBuilder = new ArrayTupleBuilder(4); // 2 computed + 2 original
+
+            // CRITICAL: Use TupleUtils.addFields to properly combine tuple builders
+            TupleUtils.addFields(computedFieldsBuilder, dataTupleBuilder);    // Add distance, cosine
+            TupleUtils.addFields(originalFieldsBuilder, dataTupleBuilder);    // Add vector, primary_key
+
+            // Step 4: Create the final tuple reference
+            ArrayTupleReference datatupleRef = new ArrayTupleReference();
+            datatupleRef.reset(dataTupleBuilder.getFieldEndOffsets(), dataTupleBuilder.getByteArray());
+
+            return datatupleRef;
+
+        } catch (Exception e) {
+            throw new HyracksDataException("Failed to create data tuple using TupleUtils.addFields", e);
+        }
     }
 
     /**

@@ -23,8 +23,11 @@ import java.util.Arrays;
 
 import org.apache.hyracks.api.exceptions.HyracksDataException;
 import org.apache.hyracks.dataflow.common.data.accessors.ITupleReference;
+import org.apache.hyracks.dataflow.common.data.marshalling.FloatArraySerializerDeserializer;
+import org.apache.hyracks.dataflow.common.data.marshalling.UTF8StringSerializerDeserializer;
 import org.apache.hyracks.dataflow.common.utils.TupleUtils;
 import org.apache.hyracks.storage.am.common.tuples.SimpleTupleReference;
+import org.apache.hyracks.api.dataflow.value.ISerializerDeserializer;
 import org.apache.hyracks.storage.am.vector.util.VectorUtils;
 
 /**
@@ -101,51 +104,26 @@ public class VectorClusteringTupleUtils {
             return null;
         }
 
-        // Check if tuple has at least 2 fields (for input tuples with vector + PK)
-        if (tuple.getFieldCount() < 2) {
-            return null;
-        }
-
         // Determine the vector field index based on tuple type:
         // 1. Data tuples: <distance, cosine, vector, PK> - vector is in field 2
         // 2. Input tuples: <vector, PK> - vector is in field 0
         // 3. Update tuples with included fields: <vector, included_field1, ..., included_fieldN, PK> - vector is in field 0
 
-        int vectorFieldIndex;
-        if (tuple.getFieldCount() == 4) {
-            // Could be either data tuple or update tuple with 2 included fields
-            // Try to distinguish by attempting vector extraction from field 0 first
-            byte[] field0Data = tuple.getFieldData(0);
-            if (field0Data != null && field0Data.length > 0) {
-                int field0Length = tuple.getFieldLength(0);
-                // Check if field 0 looks like vector data (length multiple of 4)
-                if (field0Length % 4 == 0 && field0Length >= 4) {
-                    vectorFieldIndex = 0; // Update tuple with included fields
-                } else {
-                    vectorFieldIndex = 2; // Data tuple
-                }
-            } else {
-                vectorFieldIndex = 2; // Default to data tuple if field 0 is null/empty
-            }
-        } else {
-            // For all other cases (2 fields, 3 fields, 5+ fields), vector is at index 0
-            vectorFieldIndex = 0;
-        }
-
-        byte[] data = tuple.getFieldData(vectorFieldIndex);
-        if (data == null) {
-            return null;
-        }
-
-        int offset = tuple.getFieldStart(vectorFieldIndex);
-        int length = tuple.getFieldLength(vectorFieldIndex);
-
-        if (length <= 0) {
+        if (tuple.getFieldCount() != 2) {
+            System.err.println("ERROR: unsupported tuple format");
             return null;
         }
 
         try {
-            return VectorUtils.bytesToFloatArray(Arrays.copyOfRange(data, offset, offset + length));
+            ISerializerDeserializer[] fieldSerdes = new ISerializerDeserializer[tuple.getFieldCount()];
+            fieldSerdes[0] = FloatArraySerializerDeserializer.INSTANCE;
+            fieldSerdes[1] = new UTF8StringSerializerDeserializer();
+
+            // Deserialize the tuple using the proper TupleUtils method
+            Object[] fieldValues = TupleUtils.deserializeTuple(tuple, fieldSerdes);
+
+            // Extract the vector from the deserialized fields
+            return (float[]) fieldValues[0];
         } catch (Exception e) {
             // Log the error and return null instead of crashing
             System.err.println("ERROR: Failed to extract vector from tuple: " + e.getMessage());

@@ -18,8 +18,13 @@
  */
 package org.apache.hyracks.storage.am.vector.impls;
 
+import org.apache.hyracks.api.dataflow.value.ISerializerDeserializer;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
+import org.apache.hyracks.data.std.primitive.IntegerPointable;
 import org.apache.hyracks.dataflow.common.data.accessors.ITupleReference;
+import org.apache.hyracks.dataflow.common.data.marshalling.FloatArraySerializerDeserializer;
+import org.apache.hyracks.dataflow.common.data.marshalling.IntegerSerializerDeserializer;
+import org.apache.hyracks.dataflow.common.utils.TupleUtils;
 import org.apache.hyracks.storage.am.common.api.ITreeIndexFrameFactory;
 import org.apache.hyracks.storage.am.common.api.ITreeIndexTupleReference;
 import org.apache.hyracks.storage.am.vector.api.IVectorClusteringDataFrame;
@@ -67,6 +72,7 @@ public class VectorClusteringSearchCursor implements IIndexCursor {
         this.currentTupleIndex = 0;
         this.tupleCount = 0;
         this.currentDataPageId = -1;
+        this.targetMetadataPageId = -1;
     }
 
     public void setBufferCache(IBufferCache bufferCache) {
@@ -267,15 +273,14 @@ public class VectorClusteringSearchCursor implements IIndexCursor {
     private long extractDataPageIdFromMetadataTuple(ITreeIndexTupleReference tuple) {
         // Metadata tuple format: <max_distance, data_page_id>
         // Data page ID is in the second field
-        byte[] data = tuple.getFieldData(1);
-        int offset = tuple.getFieldStart(1);
 
-        // Assuming data page ID is stored as a long (8 bytes)
-        long dataPageId = 0;
-        for (int i = 0; i < 8; i++) {
-            dataPageId = (dataPageId << 8) | (data[offset + i] & 0xFF);
-        }
-        return dataPageId;
+        // Metadata tuple format: <max_distance, data_page_id>
+        // Data page ID is in the second field (field index 1)
+        byte[] data = tuple.getFieldData(1);  // Returns entire buffer
+        int offset = tuple.getFieldStart(1);  // Offset to field 1 within buffer
+
+        // FIXED: Use IntegerPointable to extract 4-byte integer (not 8-byte long)
+        return IntegerPointable.getInteger(data, offset);
     }
 
     /**
@@ -458,51 +463,65 @@ public class VectorClusteringSearchCursor implements IIndexCursor {
     }
 
     /**
-     * Extract centroid from leaf tuple.
+     * Extract centroid from a leaf frame tuple (format: <cid, centroid, metadata_ptr>).
      */
     private double[] extractCentroidFromLeafTuple(ITreeIndexTupleReference tuple) {
-        // In leaf frames, centroid is typically in the second field
-        // This is a simplified implementation - you'd need proper deserialization
-        // based on your tuple format
-        byte[] centroidData = tuple.getFieldData(1);
-        int offset = tuple.getFieldStart(1);
-        int length = tuple.getFieldLength(1);
+        // Centroid is the second field in leaf frame tuples
+        try {
+            // Create field serializers array - specify only the centroid field we need
+            ISerializerDeserializer[] fieldSerdes = new ISerializerDeserializer[3];
+            fieldSerdes[0] = IntegerSerializerDeserializer.INSTANCE;           // Field 0: cid
+            fieldSerdes[1] = FloatArraySerializerDeserializer.INSTANCE;        // Field 1: centroid
+            fieldSerdes[2] = IntegerSerializerDeserializer.INSTANCE;           // Field 2: metadata_pointer
 
-        // Assuming centroid is stored as array of doubles
-        int dimensions = length / 8; // 8 bytes per double
-        double[] centroid = new double[dimensions];
-        for (int i = 0; i < dimensions; i++) {
-            long bits = 0;
-            for (int j = 0; j < 8; j++) {
-                bits = (bits << 8) | (centroidData[offset + i * 8 + j] & 0xFF);
+            // Deserialize the tuple using the proper TupleUtils method
+            Object[] fieldValues = TupleUtils.deserializeTuple(tuple, fieldSerdes);
+
+            // Extract the centroid from the deserialized fields
+            float[] floatCentroid = (float[]) fieldValues[1];
+
+            // Convert from float[] to double[]
+            double[] doubleCentroid = new double[floatCentroid.length];
+            for (int i = 0; i < floatCentroid.length; i++) {
+                doubleCentroid[i] =  floatCentroid[i];
             }
-            centroid[i] = Double.longBitsToDouble(bits);
+
+            return doubleCentroid;
+
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to extract centroid from interior tuple using TupleUtils.deserializeTuple()", e);
         }
-        return centroid;
     }
 
     /**
-     * Extract centroid from interior tuple.
+     * Extract centroid from an interior frame tuple (format: <cid, centroid, child_ptr>).
      */
     private double[] extractCentroidFromInteriorTuple(ITreeIndexTupleReference tuple) {
-        // In interior frames, centroid is typically in the second field  
-        // This is a simplified implementation - you'd need proper deserialization
-        // based on your tuple format
-        byte[] centroidData = tuple.getFieldData(1);
-        int offset = tuple.getFieldStart(1);
-        int length = tuple.getFieldLength(1);
+        // Centroid is the second field in interior frame tuples
+        try {
+            // Create field serializers array - specify only the centroid field we need
+            ISerializerDeserializer[] fieldSerdes = new ISerializerDeserializer[3];
+            fieldSerdes[0] = IntegerSerializerDeserializer.INSTANCE;           // Field 0: cid
+            fieldSerdes[1] = FloatArraySerializerDeserializer.INSTANCE;        // Field 1: centroid
+            fieldSerdes[2] = IntegerSerializerDeserializer.INSTANCE;           // Field 2: metadata_pointer
 
-        // Assuming centroid is stored as array of doubles
-        int dimensions = length / 8; // 8 bytes per double
-        double[] centroid = new double[dimensions];
-        for (int i = 0; i < dimensions; i++) {
-            long bits = 0;
-            for (int j = 0; j < 8; j++) {
-                bits = (bits << 8) | (centroidData[offset + i * 8 + j] & 0xFF);
+            // Deserialize the tuple using the proper TupleUtils method
+            Object[] fieldValues = TupleUtils.deserializeTuple(tuple, fieldSerdes);
+
+            // Extract the centroid from the deserialized fields
+            float[] floatCentroid = (float[]) fieldValues[1];
+
+            // Convert from float[] to double[]
+            double[] doubleCentroid = new double[floatCentroid.length];
+            for (int i = 0; i < floatCentroid.length; i++) {
+                doubleCentroid[i] =  floatCentroid[i];
             }
-            centroid[i] = Double.longBitsToDouble(bits);
+
+            return doubleCentroid;
+
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to extract centroid from interior tuple using TupleUtils.deserializeTuple()", e);
         }
-        return centroid;
     }
 
     @Override

@@ -40,10 +40,13 @@ public class VectorCursorInitialState implements ICursorInitialState {
     private MultiComparator originalKeyCmp;
 
     public VectorCursorInitialState() {
+        this.targetDataPageId = -1;
+        this.metadataPageId = -1;
     }
 
     public VectorCursorInitialState(long metadataPageId, float[] queryVector) {
         this.metadataPageId = metadataPageId;
+        this.targetDataPageId = -1;
         this.queryVector = queryVector != null ? queryVector.clone() : null;
     }
 

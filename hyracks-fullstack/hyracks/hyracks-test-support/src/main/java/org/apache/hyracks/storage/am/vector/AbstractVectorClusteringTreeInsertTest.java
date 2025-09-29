@@ -23,7 +23,7 @@ import org.apache.hyracks.api.dataflow.value.ISerializerDeserializer;
 import org.apache.hyracks.dataflow.common.data.accessors.ITupleReference;
 import org.apache.hyracks.dataflow.common.data.marshalling.FloatArraySerializerDeserializer;
 import org.apache.hyracks.dataflow.common.data.marshalling.UTF8StringSerializerDeserializer;
-import org.apache.hyracks.storage.am.btree.frames.BTreeLeafFrameType;
+import org.apache.hyracks.storage.am.vector.frames.VectorTreeFrameType;
 
 /**
  * Abstract base class for VectorClusteringTree insert tests.
@@ -39,18 +39,17 @@ import org.apache.hyracks.storage.am.btree.frames.BTreeLeafFrameType;
 public abstract class AbstractVectorClusteringTreeInsertTest extends AbstractVectorTreeTestDriver {
 
     private final VectorTreeTestUtils vectorTreeTestUtils;
-
-    public AbstractVectorClusteringTreeInsertTest(BTreeLeafFrameType[] leafFrameTypesToTest) {
-        super(leafFrameTypesToTest);
+    public AbstractVectorClusteringTreeInsertTest(VectorTreeFrameType[] frameTypesToTest) {
+        super(frameTypesToTest);
         this.vectorTreeTestUtils = new VectorTreeTestUtils();
     }
 
     @Override
-    protected void runTest(ISerializerDeserializer[] fieldSerdes, int numKeys, BTreeLeafFrameType leafType,
+    protected void runTest(ISerializerDeserializer[] fieldSerdes, int numKeys, VectorTreeFrameType frameType,
             ITupleReference lowKey, ITupleReference highKey, ITupleReference prefixLowKey,
             ITupleReference prefixHighKey) throws Exception {
-
-        AbstractVectorTreeTestContext ctx = createTestContext(fieldSerdes, numKeys, leafType, false);
+        
+        AbstractVectorTreeTestContext ctx = createTestContext(fieldSerdes, numKeys, frameType, false);
         ctx.getIndex().create();
         ctx.getIndex().activate();
 

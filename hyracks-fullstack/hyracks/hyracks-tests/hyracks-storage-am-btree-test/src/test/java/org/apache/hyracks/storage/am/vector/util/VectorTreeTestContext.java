@@ -25,36 +25,42 @@ import org.apache.hyracks.api.dataflow.value.ITypeTraits;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
 import org.apache.hyracks.api.io.FileReference;
 import org.apache.hyracks.api.io.IIOManager;
-import org.apache.hyracks.dataflow.common.data.marshalling.FloatArraySerializerDeserializer;
+import org.apache.hyracks.data.std.accessors.IntegerBinaryComparatorFactory;
+import org.apache.hyracks.data.std.accessors.UTF8StringBinaryComparatorFactory;
 import org.apache.hyracks.dataflow.common.data.marshalling.UTF8StringSerializerDeserializer;
-import org.apache.hyracks.storage.am.btree.frames.BTreeLeafFrameType;
+import org.apache.hyracks.dataflow.common.utils.SerdeUtils;
+import org.apache.hyracks.storage.am.vector.frames.VectorTreeFrameType;
+import org.apache.hyracks.storage.am.vector.impls.VectorClusteringTree;
+import org.apache.hyracks.storage.am.vector.VectorTreeUtils;
 import org.apache.hyracks.storage.am.vector.AbstractVectorTreeTestContext;
-import org.apache.hyracks.storage.common.ICursorInitialState;
-import org.apache.hyracks.storage.common.IIndex;
-import org.apache.hyracks.storage.common.IIndexAccessParameters;
-import org.apache.hyracks.storage.common.IIndexAccessor;
-import org.apache.hyracks.storage.common.IIndexBulkLoader;
-import org.apache.hyracks.storage.common.IIndexCursor;
-import org.apache.hyracks.storage.common.ISearchPredicate;
+import org.apache.hyracks.storage.am.common.api.IPageManager;
+import org.apache.hyracks.storage.am.common.freepage.AppendOnlyLinkedMetadataPageManagerFactory;
 import org.apache.hyracks.storage.common.buffercache.IBufferCache;
-import org.apache.hyracks.storage.common.buffercache.IPageWriteCallback;
 
 /**
- * Test context for VectorClusteringTree tests, providing a mock implementation
- * until the actual VectorClusteringTree is implemented.
+ * Test context for VectorClusteringTree tests, using actual VectorClusteringTree implementation.
  */
 @SuppressWarnings("rawtypes")
 public class VectorTreeTestContext extends AbstractVectorTreeTestContext {
 
-    public VectorTreeTestContext(ISerializerDeserializer[] fieldSerdes, IIndex index, boolean filtered,
+    public VectorTreeTestContext(ISerializerDeserializer[] fieldSerdes, VectorClusteringTree index, boolean filtered,
             int vectorDimensions) throws HyracksDataException {
         super(fieldSerdes, index, filtered, vectorDimensions);
     }
 
     @Override
     public IBinaryComparatorFactory[] getComparatorFactories() {
-        // Return empty array for now - vector comparators would be needed
-        return new IBinaryComparatorFactory[0];
+        // Create comparator factories for vector tree fields
+        IBinaryComparatorFactory[] cmpFactories = new IBinaryComparatorFactory[fieldSerdes.length];
+        for (int i = 0; i < fieldSerdes.length; i++) {
+            if (fieldSerdes[i] instanceof UTF8StringSerializerDeserializer) {
+                cmpFactories[i] = UTF8StringBinaryComparatorFactory.INSTANCE;
+            } else {
+                // For vector field and other numeric fields, use integer comparator for now
+                cmpFactories[i] = IntegerBinaryComparatorFactory.INSTANCE;
+            }
+        }
+        return cmpFactories;
     }
 
     @Override
@@ -65,198 +71,30 @@ public class VectorTreeTestContext extends AbstractVectorTreeTestContext {
 
     public static VectorTreeTestContext create(IIOManager ioManager, IBufferCache virtualBufferCache,
             FileReference fileRef, IBufferCache diskBufferCache, ISerializerDeserializer[] fieldSerdes, int numKeys,
-            BTreeLeafFrameType leafType, int vectorDimensions) throws Exception {
+            VectorTreeFrameType frameType, int vectorDimensions) throws Exception {
 
         // Create type traits for the fields
-        ITypeTraits[] typeTraits = new ITypeTraits[fieldSerdes.length];
+        ITypeTraits[] typeTraits = SerdeUtils.serdesToTypeTraits(fieldSerdes);
+
+        // Create comparator factories
+        IBinaryComparatorFactory[] cmpFactories = new IBinaryComparatorFactory[fieldSerdes.length];
         for (int i = 0; i < fieldSerdes.length; i++) {
-            if (fieldSerdes[i] instanceof FloatArraySerializerDeserializer) {
-                // Vector field - for now use a simple type trait
-                typeTraits[i] = new ITypeTraits() {
-                    private static final long serialVersionUID = 1L;
-
-                    @Override
-                    public boolean isFixedLength() {
-                        return false; // Vectors can be variable length
-                    }
-
-                    @Override
-                    public int getFixedLength() {
-                        return -1; // Variable length
-                    }
-                };
-            } else if (fieldSerdes[i] instanceof UTF8StringSerializerDeserializer) {
-                // String field
-                typeTraits[i] = new ITypeTraits() {
-                    private static final long serialVersionUID = 1L;
-
-                    @Override
-                    public boolean isFixedLength() {
-                        return false;
-                    }
-
-                    @Override
-                    public int getFixedLength() {
-                        return -1;
-                    }
-                };
+            if (fieldSerdes[i] instanceof UTF8StringSerializerDeserializer) {
+                cmpFactories[i] = UTF8StringBinaryComparatorFactory.INSTANCE;
+            } else {
+                // For vector field and other numeric fields, use integer comparator for now
+                cmpFactories[i] = IntegerBinaryComparatorFactory.INSTANCE;
             }
         }
 
-        // For now, create a mock index that implements the basic IIndex interface
-        // TODO: Replace with actual VectorClusteringTree once implemented
-        IIndex mockIndex = new MockVectorIndex(fileRef);
+        // Create page manager using AppendOnlyLinkedMetadataPageManagerFactory
+        AppendOnlyLinkedMetadataPageManagerFactory pageManagerFactory = AppendOnlyLinkedMetadataPageManagerFactory.INSTANCE;
+        IPageManager pageManager = pageManagerFactory.createPageManager(diskBufferCache);
 
-        return new VectorTreeTestContext(fieldSerdes, mockIndex, false, vectorDimensions);
+        // Create VectorClusteringTree using VectorTreeUtils
+        VectorClusteringTree index = VectorTreeUtils.createVectorClusteringTree(
+                diskBufferCache, typeTraits, cmpFactories, vectorDimensions, fileRef, pageManager);
+
+        return new VectorTreeTestContext(fieldSerdes, index, false, vectorDimensions);
     }
-
-    // Mock implementation of IIndex for testing purposes
-    private static class MockVectorIndex implements IIndex {
-        @SuppressWarnings("unused")
-        private final FileReference fileRef;
-        @SuppressWarnings("unused")
-        private boolean activated = false;
-        @SuppressWarnings("unused")
-        private boolean created = false;
-
-        public MockVectorIndex(FileReference fileRef) {
-            this.fileRef = fileRef;
-        }
-
-        @Override
-        public void create() throws HyracksDataException {
-            created = true;
-        }
-
-        @Override
-        public void activate() throws HyracksDataException {
-            activated = true;
-        }
-
-        @Override
-        public void deactivate() throws HyracksDataException {
-            activated = false;
-        }
-
-        @Override
-        public void destroy() throws HyracksDataException {
-            created = false;
-            activated = false;
-        }
-
-        @Override
-        public void clear() throws HyracksDataException {
-            // Mock implementation
-        }
-
-        @Override
-        public IIndexAccessor createAccessor(IIndexAccessParameters iap) throws HyracksDataException {
-            return new MockVectorIndexAccessor();
-        }
-
-        @Override
-        public void validate() throws HyracksDataException {
-            // Mock validation - always passes
-        }
-
-        @Override
-        public IBufferCache getBufferCache() {
-            return null; // Mock implementation
-        }
-
-        @Override
-        public int getNumOfFilterFields() {
-            return 0;
-        }
-
-        @Override
-        public IIndexBulkLoader createBulkLoader(float fillLevel, boolean verifyInput, long numElementsHint,
-                boolean checkIfEmptyIndex, IPageWriteCallback callback) throws HyracksDataException {
-            return null; // Mock bulk loader
-        }
-
-        @Override
-        public void purge() throws HyracksDataException {
-            // Mock purge
-        }
-
-        // Mock IndexAccessor
-        private static class MockVectorIndexAccessor implements IIndexAccessor {
-
-            @Override
-            public void insert(org.apache.hyracks.dataflow.common.data.accessors.ITupleReference tuple)
-                    throws HyracksDataException {
-                // Mock insertion - just log that it happened
-            }
-
-            @Override
-            public void update(org.apache.hyracks.dataflow.common.data.accessors.ITupleReference tuple)
-                    throws HyracksDataException {
-                // Mock update
-            }
-
-            @Override
-            public void delete(org.apache.hyracks.dataflow.common.data.accessors.ITupleReference tuple)
-                    throws HyracksDataException {
-                // Mock delete
-            }
-
-            @Override
-            public void upsert(org.apache.hyracks.dataflow.common.data.accessors.ITupleReference tuple)
-                    throws HyracksDataException {
-                // Mock upsert
-            }
-
-            @Override
-            public IIndexCursor createSearchCursor(boolean exclusive) {
-                return new MockVectorIndexCursor();
-            }
-
-            @Override
-            public void search(IIndexCursor cursor, ISearchPredicate searchPred) throws HyracksDataException {
-                // Mock search
-            }
-
-            @Override
-            public void destroy() throws HyracksDataException {
-                // Mock destroy
-            }
-        }
-
-        // Mock IndexCursor
-        private static class MockVectorIndexCursor implements IIndexCursor {
-
-            @Override
-            public void open(ICursorInitialState initialState, ISearchPredicate searchPred)
-                    throws HyracksDataException {
-                // Mock open
-            }
-
-            @Override
-            public boolean hasNext() throws HyracksDataException {
-                return false; // Mock - no results
-            }
-
-            @Override
-            public void next() throws HyracksDataException {
-                // Mock next
-            }
-
-            @Override
-            public org.apache.hyracks.dataflow.common.data.accessors.ITupleReference getTuple() {
-                return null; // Mock - no tuple
-            }
-
-            @Override
-            public void close() throws HyracksDataException {
-                // Mock close
-            }
-
-            @Override
-            public void destroy() throws HyracksDataException {
-                // Mock destroy
-            }
-        }
-    }
-
 }

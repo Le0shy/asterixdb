@@ -26,8 +26,6 @@ import java.util.Random;
 import org.apache.hyracks.api.context.IHyracksTaskContext;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
 import org.apache.hyracks.api.io.FileReference;
-import org.apache.hyracks.api.io.IIOManager;
-import org.apache.hyracks.storage.am.vector.frames.VectorTreeFrameType;
 import org.apache.hyracks.storage.am.common.api.IMetadataPageManagerFactory;
 import org.apache.hyracks.storage.am.common.freepage.LinkedMetadataPageManagerFactory;
 import org.apache.hyracks.storage.am.config.AccessMethodTestsConfig;
@@ -35,23 +33,18 @@ import org.apache.hyracks.storage.common.buffercache.IBufferCache;
 import org.apache.hyracks.test.support.TestStorageManagerComponentHolder;
 import org.apache.hyracks.test.support.TestUtils;
 
-public class VectorTreeTestHarness {
-
+public class VCTreeTestHarness {
+    
     private static final long RANDOM_SEED = 50;
-    public static final int DEFAULT_VECTOR_DIMENSIONS = 2;
-
-    public static final VectorTreeFrameType[] LEAF_FRAMES_TO_TEST =
-            new VectorTreeFrameType[] { VectorTreeFrameType.REGULAR_NSM };
 
     protected final int pageSize;
     protected final int numPages;
     protected final int maxOpenFiles;
     protected final int hyracksFrameSize;
-    protected int vectorDimensions;
+    protected final int vectorDimensions;
 
     protected IHyracksTaskContext ctx;
     protected IBufferCache bufferCache;
-    protected IBufferCache diskBufferCache;
     protected FileReference file;
     protected IMetadataPageManagerFactory pageManagerFactory;
 
@@ -60,16 +53,15 @@ public class VectorTreeTestHarness {
     protected final String tmpDir = System.getProperty("java.io.tmpdir");
     protected final String sep = System.getProperty("file.separator");
 
-    public VectorTreeTestHarness() {
-        this.pageSize = 512;
+    public VCTreeTestHarness() {
+        this.pageSize = AccessMethodTestsConfig.BTREE_PAGE_SIZE;
         this.numPages = AccessMethodTestsConfig.BTREE_NUM_PAGES;
         this.maxOpenFiles = AccessMethodTestsConfig.BTREE_MAX_OPEN_FILES;
         this.hyracksFrameSize = AccessMethodTestsConfig.BTREE_HYRACKS_FRAME_SIZE;
-        this.vectorDimensions = DEFAULT_VECTOR_DIMENSIONS;
+        this.vectorDimensions = 2; // Default to 2D vectors for simplicity
     }
 
-    public VectorTreeTestHarness(int pageSize, int numPages, int maxOpenFiles, int hyracksFrameSize,
-            int vectorDimensions) {
+    public VCTreeTestHarness(int pageSize, int numPages, int maxOpenFiles, int hyracksFrameSize, int vectorDimensions) {
         this.pageSize = pageSize;
         this.numPages = numPages;
         this.maxOpenFiles = maxOpenFiles;
@@ -81,18 +73,14 @@ public class VectorTreeTestHarness {
         ctx = TestUtils.create(getHyracksFrameSize());
         TestStorageManagerComponentHolder.init(pageSize, numPages, maxOpenFiles);
         bufferCache = TestStorageManagerComponentHolder.getBufferCache(ctx.getJobletContext().getServiceContext());
-        diskBufferCache = bufferCache; // For simplicity, use same buffer cache
         file = ctx.getIoManager().getFileReference(0, simpleDateFormat.format(new Date()));
         pageManagerFactory = new LinkedMetadataPageManagerFactory();
         rnd.setSeed(RANDOM_SEED);
     }
 
     public void tearDown() throws HyracksDataException {
-        try {
-            bufferCache.close();
-        } finally {
-            file.delete();
-        }
+        bufferCache.close();
+        file.delete();
     }
 
     public IHyracksTaskContext getHyracksTaskContext() {
@@ -101,18 +89,6 @@ public class VectorTreeTestHarness {
 
     public IBufferCache getBufferCache() {
         return bufferCache;
-    }
-
-    public IBufferCache getDiskBufferCache() {
-        return diskBufferCache;
-    }
-
-    public IBufferCache getVirtualBufferCache() {
-        return bufferCache;
-    }
-
-    public IIOManager getIOManager() {
-        return ctx.getIoManager();
     }
 
     public FileReference getFileReference() {
@@ -142,17 +118,8 @@ public class VectorTreeTestHarness {
     public IMetadataPageManagerFactory getPageManagerFactory() {
         return pageManagerFactory;
     }
-
-    public IMetadataPageManagerFactory getMetadataPageManagerFactory() {
-        return pageManagerFactory;
-    }
-
+    
     public int getVectorDimensions() {
         return vectorDimensions;
     }
-
-    public void setVectorDimensions(int vectorDimensions) {
-        this.vectorDimensions = vectorDimensions;
-    }
-
 }

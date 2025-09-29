@@ -21,6 +21,7 @@ package org.apache.hyracks.storage.am.vector.api;
 
 import org.apache.hyracks.api.exceptions.HyracksDataException;
 import org.apache.hyracks.dataflow.common.data.accessors.ITupleReference;
+import org.apache.hyracks.storage.am.vector.frames.VectorClusteringDataFrame;
 
 /**
  * Interface for vector clustering data frames.
@@ -106,4 +107,7 @@ public interface IVectorClusteringDataFrame extends IVectorClusteringFrame {
      * @throws HyracksDataException if an error occurs
      */
     int[] findDistanceRange(double minDistance, double maxDistance) throws HyracksDataException;
+
+    public void split(VectorClusteringDataFrame rightFrame, ITupleReference tuple, int insertIndex)
+            throws HyracksDataException;
 }

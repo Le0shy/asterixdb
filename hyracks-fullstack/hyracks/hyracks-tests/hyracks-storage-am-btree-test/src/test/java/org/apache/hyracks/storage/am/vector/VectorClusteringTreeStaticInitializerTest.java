@@ -25,7 +25,7 @@ import org.apache.hyracks.api.dataflow.value.ISerializerDeserializer;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
 import org.apache.hyracks.dataflow.common.data.marshalling.FloatArraySerializerDeserializer;
 import org.apache.hyracks.dataflow.common.data.marshalling.UTF8StringSerializerDeserializer;
-import org.apache.hyracks.storage.am.btree.frames.BTreeLeafFrameType;
+import org.apache.hyracks.storage.am.vector.frames.VectorTreeFrameType;
 import org.apache.hyracks.storage.am.vector.impls.VectorClusteringTreeStaticInitializer;
 import org.apache.hyracks.storage.am.vector.util.VectorTreeTestContext;
 import org.apache.hyracks.storage.am.vector.util.VectorTreeTestHarness;
@@ -74,7 +74,7 @@ public class VectorClusteringTreeStaticInitializerTest {
         ISerializerDeserializer[] fieldSerdes =
                 { FloatArraySerializerDeserializer.INSTANCE, new UTF8StringSerializerDeserializer() };
 
-        AbstractVectorTreeTestContext ctx = createTestContext(fieldSerdes, 1, BTreeLeafFrameType.REGULAR_NSM, false);
+        AbstractVectorTreeTestContext ctx = createTestContext(fieldSerdes, 1, VectorTreeFrameType.REGULAR_NSM, false);
         ctx.getIndex().create();
         ctx.getIndex().activate();
 
@@ -114,7 +114,7 @@ public class VectorClusteringTreeStaticInitializerTest {
         ISerializerDeserializer[] fieldSerdes =
                 { FloatArraySerializerDeserializer.INSTANCE, new UTF8StringSerializerDeserializer() };
 
-        AbstractVectorTreeTestContext ctx = createTestContext(fieldSerdes, 1, BTreeLeafFrameType.REGULAR_NSM, false);
+        AbstractVectorTreeTestContext ctx = createTestContext(fieldSerdes, 1, VectorTreeFrameType.REGULAR_NSM, false);
         ctx.getIndex().create();
         ctx.getIndex().activate();
 
@@ -158,7 +158,7 @@ public class VectorClusteringTreeStaticInitializerTest {
         ISerializerDeserializer[] fieldSerdes =
                 { FloatArraySerializerDeserializer.INSTANCE, new UTF8StringSerializerDeserializer() };
 
-        AbstractVectorTreeTestContext ctx = createTestContext(fieldSerdes, 1, BTreeLeafFrameType.REGULAR_NSM, false);
+        AbstractVectorTreeTestContext ctx = createTestContext(fieldSerdes, 1, VectorTreeFrameType.REGULAR_NSM, false);
         ctx.getIndex().create();
         ctx.getIndex().activate();
 
@@ -198,7 +198,7 @@ public class VectorClusteringTreeStaticInitializerTest {
         ISerializerDeserializer[] fieldSerdes =
                 { FloatArraySerializerDeserializer.INSTANCE, new UTF8StringSerializerDeserializer() };
 
-        AbstractVectorTreeTestContext ctx = createTestContext(fieldSerdes, 1, BTreeLeafFrameType.REGULAR_NSM, false);
+        AbstractVectorTreeTestContext ctx = createTestContext(fieldSerdes, 1, VectorTreeFrameType.REGULAR_NSM, false);
         ctx.getIndex().create();
         ctx.getIndex().activate();
 
@@ -226,7 +226,7 @@ public class VectorClusteringTreeStaticInitializerTest {
      * Helper method to create test context
      */
     private AbstractVectorTreeTestContext createTestContext(ISerializerDeserializer[] fieldSerdes, int numKeys,
-            BTreeLeafFrameType leafType, boolean filtered) throws Exception {
+            VectorTreeFrameType leafType, boolean filtered) throws Exception {
         return VectorTreeTestContext.create(harness.getIOManager(), harness.getVirtualBufferCache(),
                 harness.getFileReference(), harness.getDiskBufferCache(), fieldSerdes, numKeys, leafType,
                 harness.getVectorDimensions());

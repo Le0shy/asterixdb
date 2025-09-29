@@ -34,8 +34,7 @@ import org.apache.hyracks.storage.am.common.tuples.SimpleTupleReference;
 import org.apache.hyracks.storage.am.vector.api.IVectorClusteringMetadataFrame;
 
 /**
- * Vector clustering metadata frame implementation.
- * Contains metadata entries: <max_distance, pointer_to_data_page>
+ * Vector clustering metadata frame implementation. Contains metadata entries: <max_distance, pointer_to_data_page>
  * Entries are sorted by max_distance in ascending order.
  */
 public class VectorClusteringMetadataFrame extends VectorClusteringNSMFrame implements IVectorClusteringMetadataFrame {
@@ -144,9 +143,8 @@ public class VectorClusteringMetadataFrame extends VectorClusteringNSMFrame impl
 
         if (totalFreeSpace >= tupleSize) {
             return FrameOpSpaceStatus.SUFFICIENT_CONTIGUOUS_SPACE;
-        } else if (getFreeSpaceOff()
-                - ((getTupleCount() + 1) * slotManager.getSlotSize() + getPageHeaderSize()) >= tupleWriter
-                        .bytesRequired(tuple)) {
+        } else if (getFreeSpaceOff() - ((getTupleCount() + 1) * slotManager.getSlotSize() + getPageHeaderSize()) >= tupleWriter.bytesRequired(
+                tuple)) {
             return FrameOpSpaceStatus.SUFFICIENT_SPACE;
         } else {
             return FrameOpSpaceStatus.INSUFFICIENT_SPACE;
@@ -172,8 +170,7 @@ public class VectorClusteringMetadataFrame extends VectorClusteringNSMFrame impl
     }
 
     /**
-     * Find the appropriate insertion position for a new metadata entry.
-     * Maintains sorted order by max distance.
+     * Find the appropriate insertion position for a new metadata entry. Maintains sorted order by max distance.
      */
     public int findInsertPosition(float maxDistance) throws HyracksDataException {
         int tupleCount = getTupleCount();
@@ -250,16 +247,18 @@ public class VectorClusteringMetadataFrame extends VectorClusteringNSMFrame impl
 
     /**
      * Create metadata tuple for metadata frame.
-     * 
-     * @param maxDistance Maximum distance for this cluster
-     * @param dataPageId Pointer to the data page
+     *
+     * @param maxDistance
+     *         Maximum distance for this cluster
+     * @param dataPageId
+     *         Pointer to the data page
      * @return ITupleReference representing the metadata tuple
-     * @throws HyracksDataException if tuple creation fails
+     * @throws HyracksDataException
+     *         if tuple creation fails
      */
     public ITupleReference createMetadataTuple(float maxDistance, int dataPageId) throws HyracksDataException {
         // Use TupleUtils for consistent tuple creation
-        return TupleUtils.createTuple(
-                new org.apache.hyracks.api.dataflow.value.ISerializerDeserializer[] {
+        return TupleUtils.createTuple(new org.apache.hyracks.api.dataflow.value.ISerializerDeserializer[] {
                         org.apache.hyracks.dataflow.common.data.marshalling.FloatSerializerDeserializer.INSTANCE,
                         org.apache.hyracks.dataflow.common.data.marshalling.IntegerSerializerDeserializer.INSTANCE },
                 maxDistance, dataPageId);
