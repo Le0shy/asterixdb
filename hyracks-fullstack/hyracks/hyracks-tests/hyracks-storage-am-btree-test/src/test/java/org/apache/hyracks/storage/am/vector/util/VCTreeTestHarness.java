@@ -34,7 +34,7 @@ import org.apache.hyracks.test.support.TestStorageManagerComponentHolder;
 import org.apache.hyracks.test.support.TestUtils;
 
 public class VCTreeTestHarness {
-    
+
     private static final long RANDOM_SEED = 50;
 
     protected final int pageSize;
@@ -118,7 +118,7 @@ public class VCTreeTestHarness {
     public IMetadataPageManagerFactory getPageManagerFactory() {
         return pageManagerFactory;
     }
-    
+
     public int getVectorDimensions() {
         return vectorDimensions;
     }

@@ -25,8 +25,8 @@ import org.apache.hyracks.api.dataflow.value.ISerializerDeserializer;
 import org.apache.hyracks.dataflow.common.data.accessors.ITupleReference;
 import org.apache.hyracks.dataflow.common.data.marshalling.FloatArraySerializerDeserializer;
 import org.apache.hyracks.dataflow.common.data.marshalling.UTF8StringSerializerDeserializer;
-import org.apache.hyracks.storage.am.vector.frames.VectorTreeFrameType;
 import org.apache.hyracks.storage.am.config.AccessMethodTestsConfig;
+import org.apache.hyracks.storage.am.vector.frames.VectorTreeFrameType;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.junit.Test;
@@ -37,9 +37,8 @@ public abstract class AbstractVectorTreeTestDriver {
 
     protected static final int numTuplesToInsert = AccessMethodTestsConfig.BTREE_NUM_TUPLES_TO_INSERT;
 
-    protected abstract AbstractVectorTreeTestContext createTestContext(
-            ISerializerDeserializer[] fieldSerdes, int numKeys, VectorTreeFrameType frameType, boolean filtered)
-            throws Exception;
+    protected abstract AbstractVectorTreeTestContext createTestContext(ISerializerDeserializer[] fieldSerdes,
+            int numKeys, VectorTreeFrameType frameType, boolean filtered) throws Exception;
 
     protected abstract Random getRandom();
 

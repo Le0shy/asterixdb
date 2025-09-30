@@ -18,7 +18,6 @@ import org.apache.hyracks.storage.am.lsm.vector.impls.LSMVCTree;
 import org.apache.hyracks.storage.am.lsm.vector.utils.LSMVCTreeUtils;
 import org.apache.hyracks.storage.am.vector.AbstractVectorTreeTestContext;
 import org.apache.hyracks.storage.common.buffercache.IBufferCache;
-import org.apache.hyracks.util.trace.ITracer;
 
 /**
  * Test context for LSM Vector Clustering Tree tests.
@@ -53,9 +52,9 @@ public final class LSMVCTreeTestContext extends AbstractVectorTreeTestContext {
             FileReference file, IBufferCache diskBufferCache, ISerializerDeserializer[] fieldSerdes,
             int numVectorFields, ILSMMergePolicy mergePolicy, ILSMOperationTracker opTracker,
             ILSMIOOperationScheduler ioScheduler, ILSMIOOperationCallbackFactory ioOpCallbackFactory,
-            ILSMPageWriteCallbackFactory pageWriteCallbackFactory, IMetadataPageManagerFactory metadataPageManagerFactory)
-            throws Exception {
-        
+            ILSMPageWriteCallbackFactory pageWriteCallbackFactory,
+            IMetadataPageManagerFactory metadataPageManagerFactory) throws Exception {
+
         ITypeTraits[] typeTraits = SerdeUtils.serdesToTypeTraits(fieldSerdes);
 
         IBinaryComparatorFactory[] cmpFactories = new IBinaryComparatorFactory[fieldSerdes.length];
@@ -70,10 +69,9 @@ public final class LSMVCTreeTestContext extends AbstractVectorTreeTestContext {
 
         // Create the LSM Vector Clustering Tree
         LSMVCTree lsmVCTree = LSMVCTreeUtils.createLSMTree(ioManager, virtualBufferCaches, file, diskBufferCache,
-                typeTraits, cmpFactories, null, -1,  mergePolicy, opTracker, ioScheduler,
-                ioOpCallbackFactory, pageWriteCallbackFactory, false, numVectorFields, null, null,
-                true, metadataPageManagerFactory);
-        
+                typeTraits, cmpFactories, null, -1, mergePolicy, opTracker, ioScheduler, ioOpCallbackFactory,
+                pageWriteCallbackFactory, false, numVectorFields, null, null, true, metadataPageManagerFactory);
+
         LSMVCTreeTestContext testCtx = new LSMVCTreeTestContext(fieldSerdes, lsmVCTree, numVectorFields);
         return testCtx;
     }

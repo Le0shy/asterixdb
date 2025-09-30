@@ -17,8 +17,8 @@ public class LSMVCTreeLifecycleTest extends AbstractIndexLifecycleTest {
     private final ISerializerDeserializer[] fieldSerdes = { IntegerSerializerDeserializer.INSTANCE,
             IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE,
             IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE };
-//    private final IPrimitiveValueProviderFactory[] valueProviderFactories =
-//            VectorTreeUtils.createPrimitiveValueProviderFactories(4, IntegerPointable.FACTORY);
+    //    private final IPrimitiveValueProviderFactory[] valueProviderFactories =
+    //            VectorTreeUtils.createPrimitiveValueProviderFactories(4, IntegerPointable.FACTORY);
     private final int numKeys = 4;
 
     private final LSMVCTreeTestHarness harness = new LSMVCTreeTestHarness();
@@ -44,10 +44,10 @@ public class LSMVCTreeLifecycleTest extends AbstractIndexLifecycleTest {
     @Override
     public void setup() throws Exception {
         harness.setUp();
-        testCtx = LSMVCTreeTestContext.create(harness.getIOManager(), harness.getVirtualBufferCaches(), harness.getFileReference(),
-                harness.getDiskBufferCache(), fieldSerdes, 0, harness.getMergePolicy(), harness.getOperationTracker(),
-                harness.getIOScheduler(), harness.getIOOperationCallbackFactory(), harness.getPageWriteCallbackFactory(),
-                harness.getMetadataPageManagerFactory());
+        testCtx = LSMVCTreeTestContext.create(harness.getIOManager(), harness.getVirtualBufferCaches(),
+                harness.getFileReference(), harness.getDiskBufferCache(), fieldSerdes, 0, harness.getMergePolicy(),
+                harness.getOperationTracker(), harness.getIOScheduler(), harness.getIOOperationCallbackFactory(),
+                harness.getPageWriteCallbackFactory(), harness.getMetadataPageManagerFactory());
         index = testCtx.getIndex();
     }
 

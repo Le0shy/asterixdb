@@ -1,16 +1,14 @@
 package org.apache.hyracks.storage.am.lsm.vector;
 
+import static org.apache.hyracks.storage.am.lsm.vector.util.LSMVCTreeTestHarness.LEAF_FRAMES_TO_TEST;
+
+import java.util.Random;
+
 import org.apache.hyracks.api.dataflow.value.ISerializerDeserializer;
-import org.apache.hyracks.storage.am.config.AccessMethodTestsConfig;
-import org.apache.hyracks.storage.am.lsm.vector.impls.LSMVCTree;
 import org.apache.hyracks.storage.am.lsm.vector.util.LSMVCTreeTestHarness;
 import org.apache.hyracks.storage.am.vector.AbstractVectorClusteringTreeInsertTest;
 import org.apache.hyracks.storage.am.vector.AbstractVectorTreeTestContext;
 import org.apache.hyracks.storage.am.vector.frames.VectorTreeFrameType;
-
-import java.util.Random;
-
-import static org.apache.hyracks.storage.am.lsm.vector.util.LSMVCTreeTestHarness.LEAF_FRAMES_TO_TEST;
 
 @SuppressWarnings("rawtypes")
 public class LSMVCTreeInsertTest extends AbstractVectorClusteringTreeInsertTest {

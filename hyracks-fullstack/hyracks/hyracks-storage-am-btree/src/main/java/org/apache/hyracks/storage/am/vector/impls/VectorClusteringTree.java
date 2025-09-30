@@ -19,6 +19,8 @@
 
 package org.apache.hyracks.storage.am.vector.impls;
 
+import static org.apache.hyracks.storage.common.buffercache.context.read.DefaultBufferCacheReadContextProvider.NEW;
+
 import java.util.Arrays;
 import java.util.List;
 
@@ -55,8 +57,6 @@ import org.apache.hyracks.storage.common.buffercache.IBufferCache;
 import org.apache.hyracks.storage.common.buffercache.ICachedPage;
 import org.apache.hyracks.storage.common.buffercache.IPageWriteCallback;
 import org.apache.hyracks.storage.common.file.BufferedFileHandle;
-
-import static org.apache.hyracks.storage.common.buffercache.context.read.DefaultBufferCacheReadContextProvider.NEW;
 
 /**
  * Vector Clustering Tree implementation for multi-level k-means vector index.
@@ -138,8 +138,8 @@ public class VectorClusteringTree extends AbstractTreeIndex {
      */
     private void insertVector(ITupleReference tuple, VectorClusteringOpContext ctx) throws HyracksDataException {
         // Use unified cluster search and access pattern
-        if(!isStaticStructureInitialized()){
-            staticInitializer =new VectorClusteringTreeStaticInitializer(this);
+        if (!isStaticStructureInitialized()) {
+            staticInitializer = new VectorClusteringTreeStaticInitializer(this);
             staticInitializer.initializeThreeLevelStructure();
             setStaticStructureInitialized();
         }
@@ -1233,9 +1233,9 @@ public class VectorClusteringTree extends AbstractTreeIndex {
         try {
             // Create field serializers array - specify only the centroid field we need
             ISerializerDeserializer[] fieldSerdes = new ISerializerDeserializer[3];
-            fieldSerdes[0] = IntegerSerializerDeserializer.INSTANCE;           // Field 0: cid
-            fieldSerdes[1] = FloatArraySerializerDeserializer.INSTANCE;        // Field 1: centroid
-            fieldSerdes[2] = IntegerSerializerDeserializer.INSTANCE;           // Field 2: metadata_pointer
+            fieldSerdes[0] = IntegerSerializerDeserializer.INSTANCE; // Field 0: cid
+            fieldSerdes[1] = FloatArraySerializerDeserializer.INSTANCE; // Field 1: centroid
+            fieldSerdes[2] = IntegerSerializerDeserializer.INSTANCE; // Field 2: metadata_pointer
 
             // Deserialize the tuple using the proper TupleUtils method
             Object[] fieldValues = TupleUtils.deserializeTuple(tuple, fieldSerdes);
@@ -1246,13 +1246,14 @@ public class VectorClusteringTree extends AbstractTreeIndex {
             // Convert from float[] to double[]
             double[] doubleCentroid = new double[floatCentroid.length];
             for (int i = 0; i < floatCentroid.length; i++) {
-                doubleCentroid[i] =  floatCentroid[i];
+                doubleCentroid[i] = floatCentroid[i];
             }
 
             return doubleCentroid;
 
         } catch (Exception e) {
-            throw new RuntimeException("Failed to extract centroid from interior tuple using TupleUtils.deserializeTuple()", e);
+            throw new RuntimeException(
+                    "Failed to extract centroid from interior tuple using TupleUtils.deserializeTuple()", e);
         }
     }
 
@@ -1264,9 +1265,9 @@ public class VectorClusteringTree extends AbstractTreeIndex {
         try {
             // Create field serializers array - specify only the centroid field we need
             ISerializerDeserializer[] fieldSerdes = new ISerializerDeserializer[3];
-            fieldSerdes[0] = IntegerSerializerDeserializer.INSTANCE;           // Field 0: cid
-            fieldSerdes[1] = FloatArraySerializerDeserializer.INSTANCE;        // Field 1: centroid
-            fieldSerdes[2] = IntegerSerializerDeserializer.INSTANCE;           // Field 2: metadata_pointer
+            fieldSerdes[0] = IntegerSerializerDeserializer.INSTANCE; // Field 0: cid
+            fieldSerdes[1] = FloatArraySerializerDeserializer.INSTANCE; // Field 1: centroid
+            fieldSerdes[2] = IntegerSerializerDeserializer.INSTANCE; // Field 2: metadata_pointer
 
             // Deserialize the tuple using the proper TupleUtils method
             Object[] fieldValues = TupleUtils.deserializeTuple(tuple, fieldSerdes);
@@ -1277,13 +1278,14 @@ public class VectorClusteringTree extends AbstractTreeIndex {
             // Convert from float[] to double[]
             double[] doubleCentroid = new double[floatCentroid.length];
             for (int i = 0; i < floatCentroid.length; i++) {
-                doubleCentroid[i] =  floatCentroid[i];
+                doubleCentroid[i] = floatCentroid[i];
             }
 
             return doubleCentroid;
 
         } catch (Exception e) {
-            throw new RuntimeException("Failed to extract centroid from interior tuple using TupleUtils.deserializeTuple()", e);
+            throw new RuntimeException(
+                    "Failed to extract centroid from interior tuple using TupleUtils.deserializeTuple()", e);
         }
     }
 

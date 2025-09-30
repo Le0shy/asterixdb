@@ -143,8 +143,9 @@ public class VectorClusteringMetadataFrame extends VectorClusteringNSMFrame impl
 
         if (totalFreeSpace >= tupleSize) {
             return FrameOpSpaceStatus.SUFFICIENT_CONTIGUOUS_SPACE;
-        } else if (getFreeSpaceOff() - ((getTupleCount() + 1) * slotManager.getSlotSize() + getPageHeaderSize()) >= tupleWriter.bytesRequired(
-                tuple)) {
+        } else if (getFreeSpaceOff()
+                - ((getTupleCount() + 1) * slotManager.getSlotSize() + getPageHeaderSize()) >= tupleWriter
+                        .bytesRequired(tuple)) {
             return FrameOpSpaceStatus.SUFFICIENT_SPACE;
         } else {
             return FrameOpSpaceStatus.INSUFFICIENT_SPACE;
@@ -258,7 +259,8 @@ public class VectorClusteringMetadataFrame extends VectorClusteringNSMFrame impl
      */
     public ITupleReference createMetadataTuple(float maxDistance, int dataPageId) throws HyracksDataException {
         // Use TupleUtils for consistent tuple creation
-        return TupleUtils.createTuple(new org.apache.hyracks.api.dataflow.value.ISerializerDeserializer[] {
+        return TupleUtils.createTuple(
+                new org.apache.hyracks.api.dataflow.value.ISerializerDeserializer[] {
                         org.apache.hyracks.dataflow.common.data.marshalling.FloatSerializerDeserializer.INSTANCE,
                         org.apache.hyracks.dataflow.common.data.marshalling.IntegerSerializerDeserializer.INSTANCE },
                 maxDistance, dataPageId);

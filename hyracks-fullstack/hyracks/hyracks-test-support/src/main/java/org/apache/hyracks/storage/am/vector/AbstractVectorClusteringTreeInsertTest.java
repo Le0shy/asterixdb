@@ -39,6 +39,7 @@ import org.apache.hyracks.storage.am.vector.frames.VectorTreeFrameType;
 public abstract class AbstractVectorClusteringTreeInsertTest extends AbstractVectorTreeTestDriver {
 
     private final VectorTreeTestUtils vectorTreeTestUtils;
+
     public AbstractVectorClusteringTreeInsertTest(VectorTreeFrameType[] frameTypesToTest) {
         super(frameTypesToTest);
         this.vectorTreeTestUtils = new VectorTreeTestUtils();
@@ -48,7 +49,7 @@ public abstract class AbstractVectorClusteringTreeInsertTest extends AbstractVec
     protected void runTest(ISerializerDeserializer[] fieldSerdes, int numKeys, VectorTreeFrameType frameType,
             ITupleReference lowKey, ITupleReference highKey, ITupleReference prefixLowKey,
             ITupleReference prefixHighKey) throws Exception {
-        
+
         AbstractVectorTreeTestContext ctx = createTestContext(fieldSerdes, numKeys, frameType, false);
         ctx.getIndex().create();
         ctx.getIndex().activate();

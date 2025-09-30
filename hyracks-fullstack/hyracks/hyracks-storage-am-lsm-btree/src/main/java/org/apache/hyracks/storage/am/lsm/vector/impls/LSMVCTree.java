@@ -23,7 +23,6 @@ import java.util.List;
 
 import org.apache.hyracks.api.dataflow.value.IBinaryComparatorFactory;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
-import org.apache.hyracks.api.io.FileReference;
 import org.apache.hyracks.api.io.IIOManager;
 import org.apache.hyracks.dataflow.common.data.accessors.ITupleReference;
 import org.apache.hyracks.storage.am.btree.impls.RangePredicate;
@@ -52,7 +51,6 @@ import org.apache.hyracks.storage.am.lsm.common.impls.LSMComponentFileReferences
 import org.apache.hyracks.storage.am.lsm.common.impls.LSMComponentFilterManager;
 import org.apache.hyracks.storage.am.lsm.common.impls.LSMTreeIndexAccessor.ICursorFactory;
 import org.apache.hyracks.storage.am.vector.impls.VectorClusteringTree;
-import org.apache.hyracks.storage.am.vector.impls.VectorClusteringTreeBulkLoader;
 import org.apache.hyracks.storage.common.IIndexAccessParameters;
 import org.apache.hyracks.storage.common.IIndexCursor;
 import org.apache.hyracks.storage.common.ISearchPredicate;
@@ -195,8 +193,8 @@ public class LSMVCTree extends AbstractLSMIndex implements ITreeIndex {
         try {
             component = createDiskComponentFromFlushingComponent(flushingComponent, componentFactory, false);
 
-            componentBulkLoader = component.createBulkLoader(operation, 1.0f, false, 0L,
-                    false, false, false, pageWriteCallbackFactory.createPageWriteCallback());
+            componentBulkLoader = component.createBulkLoader(operation, 1.0f, false, 0L, false, false, false,
+                    pageWriteCallbackFactory.createPageWriteCallback());
             try {
                 // Simple bulk load - just copy all pages
                 componentBulkLoader.end();
@@ -215,8 +213,7 @@ public class LSMVCTree extends AbstractLSMIndex implements ITreeIndex {
     }
 
     protected ILSMDiskComponent createDiskComponentFromFlushingComponent(LSMVCTreeMemoryComponent flushingComponent,
-            ILSMDiskComponentFactory factory, boolean createComponent)
-            throws HyracksDataException {
+            ILSMDiskComponentFactory factory, boolean createComponent) throws HyracksDataException {
         LSMVCTreeDiskComponentFactory lsmVCTreeFactory = (LSMVCTreeDiskComponentFactory) factory;
         ILSMDiskComponent component = lsmVCTreeFactory.createComponent(flushingComponent, this);
         try {
@@ -233,27 +230,27 @@ public class LSMVCTree extends AbstractLSMIndex implements ITreeIndex {
     public ILSMDiskComponent doFlush(ILSMIOOperation operation) throws HyracksDataException {
         LSMVCTreeFlushOperation flushOp = (LSMVCTreeFlushOperation) operation;
         LSMVCTreeMemoryComponent flushingComponent = (LSMVCTreeMemoryComponent) flushOp.getFlushingComponent();
-
+    
         // Create the disk component
         ILSMDiskComponent component = null;
         try {
             component = createDiskComponent(componentFactory, flushOp.getTarget(), null, null, true);
-
+    
             // Create a bulk loader for the disk component
             ILSMDiskComponentBulkLoader componentBulkLoader = component.createBulkLoader(operation, 1.0f, false, 0L,
                     false, false, false, pageWriteCallbackFactory.createPageWriteCallback());
-
+    
             try {
                 // Scan the memory component and load into disk component
                 LSMVCTreeOpContext opCtx = (LSMVCTreeOpContext) flushOp.getAccessor().getOpContext();
                 LSMVCTreeSearchCursor cursor = new LSMVCTreeSearchCursor(opCtx);
                 RangePredicate pred = new RangePredicate(null, null, true, true, null, null);
-
+    
                 // Create initial state for cursor
                 LSMVCTreeCursorInitialState initialState = new LSMVCTreeCursorInitialState(interiorFrameFactory,
                         leafFrameFactory, metadataFrameFactory, dataFrameFactory, MultiComparator.create(cmpFactories),
                         getHarness(), pred, opCtx.getSearchOperationCallback(), opCtx.getComponentHolder());
-
+    
                 // Search the memory component
                 cursor.open(initialState, pred);
                 try {
@@ -265,7 +262,7 @@ public class LSMVCTree extends AbstractLSMIndex implements ITreeIndex {
                 } finally {
                     cursor.close();
                 }
-
+    
                 // Copy metadata from memory component to disk component
                 flushingComponent.getMetadata().copy(component.getMetadata());
                 componentBulkLoader.end();

@@ -21,8 +21,6 @@ package org.apache.hyracks.storage.am.lsm.vector.utils;
 
 import java.util.List;
 
-import org.apache.hyracks.api.application.INCServiceContext;
-import org.apache.hyracks.api.compression.ICompressorDecompressorFactory;
 import org.apache.hyracks.api.dataflow.value.IBinaryComparatorFactory;
 import org.apache.hyracks.api.dataflow.value.ITypeTraits;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
@@ -43,22 +41,20 @@ import org.apache.hyracks.storage.am.lsm.common.api.ILSMMergePolicy;
 import org.apache.hyracks.storage.am.lsm.common.api.ILSMOperationTracker;
 import org.apache.hyracks.storage.am.lsm.common.api.ILSMPageWriteCallbackFactory;
 import org.apache.hyracks.storage.am.lsm.common.api.IVirtualBufferCache;
-import org.apache.hyracks.storage.am.lsm.common.impls.ComponentFilterHelper;
 import org.apache.hyracks.storage.am.lsm.common.impls.LSMComponentFilterManager;
 import org.apache.hyracks.storage.am.lsm.vector.impls.LSMVCTree;
 import org.apache.hyracks.storage.am.lsm.vector.impls.LSMVCTreeDiskComponentFactory;
 import org.apache.hyracks.storage.am.lsm.vector.impls.LSMVCTreeFileManager;
 import org.apache.hyracks.storage.am.lsm.vector.impls.VectorClusteringTreeFactory;
+import org.apache.hyracks.storage.am.vector.frames.VectorClusteringDataFrameFactory;
 import org.apache.hyracks.storage.am.vector.frames.VectorClusteringInteriorFrameFactory;
 import org.apache.hyracks.storage.am.vector.frames.VectorClusteringLeafFrameFactory;
-import org.apache.hyracks.storage.am.vector.frames.VectorClusteringDataFrameFactory;
 import org.apache.hyracks.storage.am.vector.frames.VectorClusteringMetadataFrameFactory;
 import org.apache.hyracks.storage.am.vector.tuples.VectorClusteringDataTupleWriterFactory;
 import org.apache.hyracks.storage.am.vector.tuples.VectorClusteringInteriorTupleWriterFactory;
 import org.apache.hyracks.storage.am.vector.tuples.VectorClusteringLeafTupleWriterFactory;
 import org.apache.hyracks.storage.am.vector.tuples.VectorClusteringMetadataTupleWriterFactory;
 import org.apache.hyracks.storage.common.buffercache.IBufferCache;
-import org.apache.hyracks.util.trace.ITracer;
 
 /**
  * Utility class for creating LSM Vector Clustering Tree instances.
@@ -69,7 +65,6 @@ public class LSMVCTreeUtils {
     private LSMVCTreeUtils() {
         // Utility class, no instantiation
     }
-
 
     /**
      * Creates an LSMVCTree with compression support.
@@ -101,37 +96,36 @@ public class LSMVCTreeUtils {
      */
     public static LSMVCTree createLSMTree(IIOManager ioManager, List<IVirtualBufferCache> virtualBufferCaches,
             FileReference file, IBufferCache diskBufferCache, ITypeTraits[] typeTraits,
-            IBinaryComparatorFactory[] cmpFactories, double bloomFilterFalsePositiveRate,
-            ILSMMergePolicy mergePolicy, ILSMOperationTracker opTracker, ILSMIOOperationScheduler ioScheduler,
+            IBinaryComparatorFactory[] cmpFactories, double bloomFilterFalsePositiveRate, ILSMMergePolicy mergePolicy,
+            ILSMOperationTracker opTracker, ILSMIOOperationScheduler ioScheduler,
             ILSMIOOperationCallbackFactory ioOpCallbackFactory, ILSMPageWriteCallbackFactory pageWriteCallbackFactory,
             boolean needKeyDupCheck, int vectorDimensions, int[] vectorFields, int[] filterFields,
             ILSMComponentFilterFrameFactory filterFrameFactory, LSMComponentFilterManager filterManager,
-            IComponentFilterHelper filterHelper, boolean durable, IMetadataPageManagerFactory metadataPageManagerFactory,
-            boolean atomic)
-            throws HyracksDataException {
+            IComponentFilterHelper filterHelper, boolean durable,
+            IMetadataPageManagerFactory metadataPageManagerFactory, boolean atomic) throws HyracksDataException {
 
         // We need null-related types for tuple writers - use simple defaults for testing
-        ITypeTraits nullTypeTraits = null;  // Can be null for basic testing
-        INullIntrospector nullIntrospector = null;  // Can be null for basic testing
+        ITypeTraits nullTypeTraits = null; // Can be null for basic testing
+        INullIntrospector nullIntrospector = null; // Can be null for basic testing
 
         // Create specific type traits using primitive type traits for better performance
         // Interior/Leaf frames need 3-field cluster tuples: <cid, centroid, pointer>
         ITypeTraits[] clusterTypeTraits = new ITypeTraits[3];
-        clusterTypeTraits[0] = IntegerPointable.TYPE_TRAITS;        // cluster ID (int) - Fixed 4 bytes
-        clusterTypeTraits[1] = VarLengthTypeTrait.INSTANCE;         // centroid (float array) - Variable
-        clusterTypeTraits[2] = IntegerPointable.TYPE_TRAITS;        // pointer (int) - Fixed 4 bytes
+        clusterTypeTraits[0] = IntegerPointable.TYPE_TRAITS; // cluster ID (int) - Fixed 4 bytes
+        clusterTypeTraits[1] = VarLengthTypeTrait.INSTANCE; // centroid (float array) - Variable
+        clusterTypeTraits[2] = IntegerPointable.TYPE_TRAITS; // pointer (int) - Fixed 4 bytes
 
         // Metadata frames need 2-field metadata tuples: <max_distance, page_pointer>
         ITypeTraits[] metadataTypeTraits = new ITypeTraits[2];
-        metadataTypeTraits[0] = FloatPointable.TYPE_TRAITS;        // max distance (double) - Fixed 4 bytes
-        metadataTypeTraits[1] = IntegerPointable.TYPE_TRAITS;       // page pointer (int) - Fixed 4 bytes
+        metadataTypeTraits[0] = FloatPointable.TYPE_TRAITS; // max distance (double) - Fixed 4 bytes
+        metadataTypeTraits[1] = IntegerPointable.TYPE_TRAITS; // page pointer (int) - Fixed 4 bytes
 
         // Data frames need 4-field data tuples: <distance, cosine_similarity, vector, primary_key>
         ITypeTraits[] dataTypeTraits = new ITypeTraits[4];
-        dataTypeTraits[0] = DoublePointable.TYPE_TRAITS;            // distance (double) - Fixed 8 bytes
-        dataTypeTraits[1] = DoublePointable.TYPE_TRAITS;            // cosine similarity (double) - Fixed 8 bytes
-        dataTypeTraits[2] = VarLengthTypeTrait.INSTANCE;            // vector (float array) - Variable
-        dataTypeTraits[3] = VarLengthTypeTrait.INSTANCE;            // primary key (string/variable) - Variable
+        dataTypeTraits[0] = DoublePointable.TYPE_TRAITS; // distance (double) - Fixed 8 bytes
+        dataTypeTraits[1] = DoublePointable.TYPE_TRAITS; // cosine similarity (double) - Fixed 8 bytes
+        dataTypeTraits[2] = VarLengthTypeTrait.INSTANCE; // vector (float array) - Variable
+        dataTypeTraits[3] = VarLengthTypeTrait.INSTANCE; // primary key (string/variable) - Variable
 
         // Create individual tuple writer factories with correct type traits for each frame type
         VectorClusteringInteriorTupleWriterFactory interiorTupleWriterFactory =
@@ -159,8 +153,8 @@ public class LSMVCTreeUtils {
                 new VectorClusteringDataFrameFactory(dataTupleWriterFactory, vectorDimensions);
 
         VectorClusteringTreeFactory vctreeFactory = new VectorClusteringTreeFactory(ioManager, diskBufferCache,
-                metadataPageManagerFactory, interiorFrameFactory, leafFrameFactory,
-                metadataFrameFactory, dataFrameFactory, cmpFactories, 4, vectorDimensions);
+                metadataPageManagerFactory, interiorFrameFactory, leafFrameFactory, metadataFrameFactory,
+                dataFrameFactory, cmpFactories, 4, vectorDimensions);
         // Create file manager for LSM components
         ILSMIndexFileManager fileManager = new LSMVCTreeFileManager(ioManager, file, vctreeFactory);
 
@@ -170,10 +164,9 @@ public class LSMVCTreeUtils {
         // Create the LSMVCTree instance
         return new LSMVCTree(ioManager, virtualBufferCaches, interiorFrameFactory, leafFrameFactory,
                 metadataFrameFactory, dataFrameFactory, diskBufferCache, fileManager, componentFactory,
-                componentFactory, filterHelper, filterFrameFactory, filterManager,
-                bloomFilterFalsePositiveRate, cmpFactories, mergePolicy, opTracker, ioScheduler,
-                ioOpCallbackFactory, pageWriteCallbackFactory, needKeyDupCheck, vectorDimensions, vectorFields,
-                filterFields, durable, atomic);
+                componentFactory, filterHelper, filterFrameFactory, filterManager, bloomFilterFalsePositiveRate,
+                cmpFactories, mergePolicy, opTracker, ioScheduler, ioOpCallbackFactory, pageWriteCallbackFactory,
+                needKeyDupCheck, vectorDimensions, vectorFields, filterFields, durable, atomic);
     }
 
     /**
@@ -206,7 +199,8 @@ public class LSMVCTreeUtils {
             double bloomFilterFalsePositiveRate, ILSMMergePolicy mergePolicy, ILSMOperationTracker opTracker,
             ILSMIOOperationScheduler ioScheduler, ILSMIOOperationCallbackFactory ioOpCallbackFactory,
             ILSMPageWriteCallbackFactory pageWriteCallbackFactory, boolean needKeyDupCheck, int vectorDimensions,
-            int[] vectorFields, int[] filterFields, boolean durable, IMetadataPageManagerFactory metadataPageManagerFactory) throws HyracksDataException {
+            int[] vectorFields, int[] filterFields, boolean durable,
+            IMetadataPageManagerFactory metadataPageManagerFactory) throws HyracksDataException {
 
         // Use default configurations for simplified creation
         ILSMComponentFilterFrameFactory filterFrameFactory = null; // No filtering by default
@@ -219,7 +213,6 @@ public class LSMVCTreeUtils {
                 pageWriteCallbackFactory, needKeyDupCheck, vectorDimensions, vectorFields, filterFields,
                 filterFrameFactory, filterManager, filterHelper, durable, metadataPageManagerFactory, atomic);
     }
-
 
     /**
      * Validates the configuration parameters for LSMVCTree creation.

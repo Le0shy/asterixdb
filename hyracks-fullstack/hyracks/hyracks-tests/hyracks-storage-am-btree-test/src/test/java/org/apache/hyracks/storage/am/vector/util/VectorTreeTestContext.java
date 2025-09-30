@@ -29,12 +29,12 @@ import org.apache.hyracks.data.std.accessors.IntegerBinaryComparatorFactory;
 import org.apache.hyracks.data.std.accessors.UTF8StringBinaryComparatorFactory;
 import org.apache.hyracks.dataflow.common.data.marshalling.UTF8StringSerializerDeserializer;
 import org.apache.hyracks.dataflow.common.utils.SerdeUtils;
-import org.apache.hyracks.storage.am.vector.frames.VectorTreeFrameType;
-import org.apache.hyracks.storage.am.vector.impls.VectorClusteringTree;
-import org.apache.hyracks.storage.am.vector.VectorTreeUtils;
-import org.apache.hyracks.storage.am.vector.AbstractVectorTreeTestContext;
 import org.apache.hyracks.storage.am.common.api.IPageManager;
 import org.apache.hyracks.storage.am.common.freepage.AppendOnlyLinkedMetadataPageManagerFactory;
+import org.apache.hyracks.storage.am.vector.AbstractVectorTreeTestContext;
+import org.apache.hyracks.storage.am.vector.VectorTreeUtils;
+import org.apache.hyracks.storage.am.vector.frames.VectorTreeFrameType;
+import org.apache.hyracks.storage.am.vector.impls.VectorClusteringTree;
 import org.apache.hyracks.storage.common.buffercache.IBufferCache;
 
 /**
@@ -88,12 +88,13 @@ public class VectorTreeTestContext extends AbstractVectorTreeTestContext {
         }
 
         // Create page manager using AppendOnlyLinkedMetadataPageManagerFactory
-        AppendOnlyLinkedMetadataPageManagerFactory pageManagerFactory = AppendOnlyLinkedMetadataPageManagerFactory.INSTANCE;
+        AppendOnlyLinkedMetadataPageManagerFactory pageManagerFactory =
+                AppendOnlyLinkedMetadataPageManagerFactory.INSTANCE;
         IPageManager pageManager = pageManagerFactory.createPageManager(diskBufferCache);
 
         // Create VectorClusteringTree using VectorTreeUtils
-        VectorClusteringTree index = VectorTreeUtils.createVectorClusteringTree(
-                diskBufferCache, typeTraits, cmpFactories, vectorDimensions, fileRef, pageManager);
+        VectorClusteringTree index = VectorTreeUtils.createVectorClusteringTree(diskBufferCache, typeTraits,
+                cmpFactories, vectorDimensions, fileRef, pageManager);
 
         return new VectorTreeTestContext(fieldSerdes, index, false, vectorDimensions);
     }

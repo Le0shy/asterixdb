@@ -25,9 +25,6 @@ import java.util.PriorityQueue;
 
 import org.apache.hyracks.api.exceptions.HyracksDataException;
 import org.apache.hyracks.dataflow.common.data.accessors.ITupleReference;
-import org.apache.hyracks.dataflow.common.data.marshalling.FloatArraySerializerDeserializer;
-import org.apache.hyracks.dataflow.common.data.marshalling.DoubleSerializerDeserializer;
-import org.apache.hyracks.dataflow.common.utils.TupleUtils;
 import org.apache.hyracks.storage.am.lsm.common.api.ILSMComponent;
 import org.apache.hyracks.storage.am.lsm.common.api.ILSMIndexOperationContext;
 import org.apache.hyracks.storage.am.lsm.common.impls.AbstractLSMIndexOperationContext;
@@ -153,8 +150,7 @@ public class LSMVCTreeSearchCursor implements IIndexCursor {
     /**
      * Open cursor for memory component.
      */
-    private void openMemoryComponentCursor(ILSMComponent component, int componentIndex)
-            throws HyracksDataException {
+    private void openMemoryComponentCursor(ILSMComponent component, int componentIndex) throws HyracksDataException {
         LSMVCTreeMemoryComponent memComponent = (LSMVCTreeMemoryComponent) component;
         VectorClusteringTree vcTree = memComponent.getIndex();
 
@@ -163,12 +159,8 @@ public class LSMVCTreeSearchCursor implements IIndexCursor {
         vcCursor.setBufferCache(vcTree.getBufferCache());
         vcCursor.setFileId(vcTree.getFileId());
         vcCursor.setRootPageId(vcTree.getRootPageId());
-        vcCursor.setFrameFactories(
-                vcTree.getInteriorFrameFactory(),
-                vcTree.getLeafFrameFactory(),
-                vcTree.getMetadataFrameFactory(),
-                vcTree.getDataFrameFactory()
-        );
+        vcCursor.setFrameFactories(vcTree.getInteriorFrameFactory(), vcTree.getLeafFrameFactory(),
+                vcTree.getMetadataFrameFactory(), vcTree.getDataFrameFactory());
         vcCursor.setQueryVector(queryVector);
 
         rangeCursors.set(componentIndex, vcCursor);
@@ -180,8 +172,7 @@ public class LSMVCTreeSearchCursor implements IIndexCursor {
     /**
      * Open cursor for disk component.
      */
-    private void openDiskComponentCursor(ILSMComponent component, int componentIndex)
-            throws HyracksDataException {
+    private void openDiskComponentCursor(ILSMComponent component, int componentIndex) throws HyracksDataException {
         LSMVCTreeDiskComponent diskComponent = (LSMVCTreeDiskComponent) component;
         VectorClusteringTree vcTree = diskComponent.getIndex();
 
@@ -190,12 +181,8 @@ public class LSMVCTreeSearchCursor implements IIndexCursor {
         vcCursor.setBufferCache(vcTree.getBufferCache());
         vcCursor.setFileId(vcTree.getFileId());
         vcCursor.setRootPageId(vcTree.getRootPageId());
-        vcCursor.setFrameFactories(
-                vcTree.getInteriorFrameFactory(),
-                vcTree.getLeafFrameFactory(),
-                vcTree.getMetadataFrameFactory(),
-                vcTree.getDataFrameFactory()
-        );
+        vcCursor.setFrameFactories(vcTree.getInteriorFrameFactory(), vcTree.getLeafFrameFactory(),
+                vcTree.getMetadataFrameFactory(), vcTree.getDataFrameFactory());
         vcCursor.setQueryVector(queryVector);
 
         rangeCursors.set(componentIndex, vcCursor);
@@ -213,7 +200,8 @@ public class LSMVCTreeSearchCursor implements IIndexCursor {
         // Process results from each component cursor
         for (int i = 0; i < rangeCursors.size(); i++) {
             IIndexCursor cursor = rangeCursors.get(i);
-            if (cursor == null) continue;
+            if (cursor == null)
+                continue;
 
             System.out.println("DEBUG: Processing component " + i);
 
@@ -300,7 +288,8 @@ public class LSMVCTreeSearchCursor implements IIndexCursor {
             return VectorUtils.calculateEuclideanDistance(queryVector, resultVector);
 
         } catch (Exception e) {
-            System.out.println("WARNING: Failed to calculate distance for tuple, using distance field: " + e.getMessage());
+            System.out.println(
+                    "WARNING: Failed to calculate distance for tuple, using distance field: " + e.getMessage());
 
             // Fallback: try to use pre-calculated distance from field 0
             try {
@@ -346,8 +335,8 @@ public class LSMVCTreeSearchCursor implements IIndexCursor {
         currentTuple = result.tuple;
         resultIndex++;
 
-        System.out.println("DEBUG: Returning result " + resultIndex + " with distance " + result.distance +
-                " from component " + result.componentIndex);
+        System.out.println("DEBUG: Returning result " + resultIndex + " with distance " + result.distance
+                + " from component " + result.componentIndex);
     }
 
     @Override
@@ -432,5 +421,3 @@ public class LSMVCTreeSearchCursor implements IIndexCursor {
         return k;
     }
 }
-
-

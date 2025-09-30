@@ -368,9 +368,9 @@ public class VectorClusteringDataFrame extends VectorClusteringNSMFrame implemen
         // Determine which frame gets the new tuple
         VectorClusteringDataFrame targetFrame;
         if (insertIndex < tuplesToLeft) {
-            targetFrame = this;  // Insert into left (original) frame
+            targetFrame = this; // Insert into left (original) frame
         } else {
-            targetFrame = rightFrame;  // Insert into right (new) frame
+            targetFrame = rightFrame; // Insert into right (new) frame
         }
 
         // STEP 1: Copy entire page buffer (BTree approach)
@@ -380,8 +380,8 @@ public class VectorClusteringDataFrame extends VectorClusteringNSMFrame implemen
         // STEP 2: Adjust slot tables for right page
         // Copy rightmost slots to the left on right page
         int src = rightFrame.getSlotManager().getSlotEndOff();
-        int dest = rightFrame.getSlotManager().getSlotEndOff()
-                + tuplesToLeft * rightFrame.getSlotManager().getSlotSize();
+        int dest =
+                rightFrame.getSlotManager().getSlotEndOff() + tuplesToLeft * rightFrame.getSlotManager().getSlotSize();
         int length = rightFrame.getSlotManager().getSlotSize() * tuplesToRight;
         System.arraycopy(rightBuffer.array(), src, rightBuffer.array(), dest, length);
 
@@ -405,7 +405,6 @@ public class VectorClusteringDataFrame extends VectorClusteringNSMFrame implemen
             rightFrame.insert(tuple, targetTupleIndex);
         }
     }
-
 
     /**
      * Split data frame when it becomes full, maintaining distance-based ordering.
@@ -609,8 +608,7 @@ public class VectorClusteringDataFrame extends VectorClusteringNSMFrame implemen
 
             // Copy all fields from original tuple
             for (int i = 0; i < originalTuple.getFieldCount(); i++) {
-                originalFieldsBuilder.addField(originalTuple.getFieldData(i),
-                        originalTuple.getFieldStart(i),
+                originalFieldsBuilder.addField(originalTuple.getFieldData(i), originalTuple.getFieldStart(i),
                         originalTuple.getFieldLength(i));
             }
 
@@ -618,8 +616,8 @@ public class VectorClusteringDataFrame extends VectorClusteringNSMFrame implemen
             ArrayTupleBuilder dataTupleBuilder = new ArrayTupleBuilder(4); // 2 computed + 2 original
 
             // CRITICAL: Use TupleUtils.addFields to properly combine tuple builders
-            TupleUtils.addFields(computedFieldsBuilder, dataTupleBuilder);    // Add distance, cosine
-            TupleUtils.addFields(originalFieldsBuilder, dataTupleBuilder);    // Add vector, primary_key
+            TupleUtils.addFields(computedFieldsBuilder, dataTupleBuilder); // Add distance, cosine
+            TupleUtils.addFields(originalFieldsBuilder, dataTupleBuilder); // Add vector, primary_key
 
             // Step 4: Create the final tuple reference
             ArrayTupleReference datatupleRef = new ArrayTupleReference();

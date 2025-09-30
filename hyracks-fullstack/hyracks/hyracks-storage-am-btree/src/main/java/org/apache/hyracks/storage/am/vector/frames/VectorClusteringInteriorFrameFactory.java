@@ -23,9 +23,6 @@ import org.apache.hyracks.storage.am.common.api.ITreeIndexFrameFactory;
 import org.apache.hyracks.storage.am.common.api.ITreeIndexTupleWriter;
 import org.apache.hyracks.storage.am.common.api.ITreeIndexTupleWriterFactory;
 import org.apache.hyracks.storage.am.vector.api.IVectorClusteringInteriorFrame;
-import org.apache.hyracks.storage.am.vector.impls.VectorClusteringTree;
-import org.apache.hyracks.storage.am.vector.impls.VectorClusteringTreeBulkLoader;
-import org.apache.hyracks.storage.am.vector.tuples.VectorClusteringInteriorTupleWriter;
 
 /**
  * Factory for creating vector clustering interior frames.

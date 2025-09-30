@@ -18,6 +18,8 @@
  */
 package org.apache.hyracks.storage.am.vector.impls;
 
+import static org.apache.hyracks.storage.common.buffercache.context.read.DefaultBufferCacheReadContextProvider.NEW;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -34,8 +36,6 @@ import org.apache.hyracks.storage.common.MultiComparator;
 import org.apache.hyracks.storage.common.buffercache.IBufferCache;
 import org.apache.hyracks.storage.common.buffercache.ICachedPage;
 import org.apache.hyracks.storage.common.file.BufferedFileHandle;
-
-import static org.apache.hyracks.storage.common.buffercache.context.read.DefaultBufferCacheReadContextProvider.NEW;
 
 /**
  * Static structure initializer for VectorClusteringTree for unit testing purposes. This class creates predictable
@@ -143,15 +143,14 @@ public class VectorClusteringTreeStaticInitializer {
         this.testPages = new ArrayList<>();
 
         // Initialize tuple writers for different frame types
-        this.leafTupleWriter =
-                (org.apache.hyracks.storage.am.vector.tuples.VectorClusteringLeafTupleWriter) vectorTree.getLeafFrameFactory()
-                        .createFrame().getTupleWriter();
+        this.leafTupleWriter = (org.apache.hyracks.storage.am.vector.tuples.VectorClusteringLeafTupleWriter) vectorTree
+                .getLeafFrameFactory().createFrame().getTupleWriter();
         this.interiorTupleWriter =
-                (org.apache.hyracks.storage.am.vector.tuples.VectorClusteringInteriorTupleWriter) vectorTree.getInteriorFrameFactory()
-                        .createFrame().getTupleWriter();
+                (org.apache.hyracks.storage.am.vector.tuples.VectorClusteringInteriorTupleWriter) vectorTree
+                        .getInteriorFrameFactory().createFrame().getTupleWriter();
         this.metadataTupleWriter =
-                (org.apache.hyracks.storage.am.vector.tuples.VectorClusteringMetadataTupleWriter) vectorTree.getMetadataFrameFactory()
-                        .createFrame().getTupleWriter();
+                (org.apache.hyracks.storage.am.vector.tuples.VectorClusteringMetadataTupleWriter) vectorTree
+                        .getMetadataFrameFactory().createFrame().getTupleWriter();
     }
 
     /**
@@ -253,9 +252,8 @@ public class VectorClusteringTreeStaticInitializer {
 
             // Group current level pages under interior/root pages
             for (int i = 0; i < currentLevel.size(); i += 2) {
-                TestPage.PageType pageType = (currentLevel.size() <= 2 && nextLevel.isEmpty()) ?
-                        TestPage.PageType.ROOT :
-                        TestPage.PageType.INTERIOR;
+                TestPage.PageType pageType = (currentLevel.size() <= 2 && nextLevel.isEmpty()) ? TestPage.PageType.ROOT
+                        : TestPage.PageType.INTERIOR;
 
                 TestPage parentPage = createPage(pageType);
 
@@ -301,7 +299,7 @@ public class VectorClusteringTreeStaticInitializer {
 
         // Step 3: Pin the page in buffer cache (keep pinned for initialization)
         ICachedPage page = bufferCache.pin(dpid, NEW);
-        
+
         // CRITICAL FIX: Do not unpin immediately - page stays pinned until after initialization
         // The caller is responsible for proper latch management during modification
 
@@ -352,8 +350,8 @@ public class VectorClusteringTreeStaticInitializer {
             throws HyracksDataException {
         // Use VectorClusteringInteriorFrame for proper initialization
         org.apache.hyracks.storage.am.vector.frames.VectorClusteringInteriorFrame interiorFrame =
-                (org.apache.hyracks.storage.am.vector.frames.VectorClusteringInteriorFrame) vectorTree.getInteriorFrameFactory()
-                        .createFrame();
+                (org.apache.hyracks.storage.am.vector.frames.VectorClusteringInteriorFrame) vectorTree
+                        .getInteriorFrameFactory().createFrame();
 
         // CRITICAL FIX: Proper buffer management pattern
         interiorPage.page.acquireWriteLatch();
@@ -423,8 +421,8 @@ public class VectorClusteringTreeStaticInitializer {
      * Get all pages of a specific type
      */
     public List<TestPage> getPagesByType(TestPage.PageType type) {
-        return testPages.stream().filter(page -> page.type == type)
-                .collect(ArrayList::new, (list, page) -> list.add(page), ArrayList::addAll);
+        return testPages.stream().filter(page -> page.type == type).collect(ArrayList::new,
+                (list, page) -> list.add(page), ArrayList::addAll);
     }
 
     /**
@@ -738,8 +736,8 @@ public class VectorClusteringTreeStaticInitializer {
     private void initializeInteriorPageWithHierarchicalCentroid(TestPage interiorPage, int interiorIndex,
             int leftChildPageId, int rightChildPageId) throws HyracksDataException {
         org.apache.hyracks.storage.am.vector.frames.VectorClusteringInteriorFrame interiorFrame =
-                (org.apache.hyracks.storage.am.vector.frames.VectorClusteringInteriorFrame) vectorTree.getInteriorFrameFactory()
-                        .createFrame();
+                (org.apache.hyracks.storage.am.vector.frames.VectorClusteringInteriorFrame) vectorTree
+                        .getInteriorFrameFactory().createFrame();
 
         interiorFrame.setPage(interiorPage.page);
         interiorFrame.initBuffer((byte) 1); // Interior level is 1
@@ -782,8 +780,8 @@ public class VectorClusteringTreeStaticInitializer {
     private void initializeRootPageWith4Children(TestPage rootPage, List<Integer> interiorPageIds)
             throws HyracksDataException {
         org.apache.hyracks.storage.am.vector.frames.VectorClusteringInteriorFrame rootFrame =
-                (org.apache.hyracks.storage.am.vector.frames.VectorClusteringInteriorFrame) vectorTree.getInteriorFrameFactory()
-                        .createFrame();
+                (org.apache.hyracks.storage.am.vector.frames.VectorClusteringInteriorFrame) vectorTree
+                        .getInteriorFrameFactory().createFrame();
 
         rootFrame.setPage(rootPage.page);
         rootFrame.initBuffer((byte) 2); // Root level is 2
@@ -830,15 +828,33 @@ public class VectorClusteringTreeStaticInitializer {
         switch (level) {
             case 0: // Leaf level - 8 distinct clusters
                 switch (index) {
-                    case 0: centroid = new double[] { 20.0, 20.0, 20.0, 20.0 }; break;
-                    case 1: centroid = new double[] { 25.0, 25.0, 15.0, 15.0 }; break;
-                    case 2: centroid = new double[] { 15.0, 15.0, 25.0, 25.0 }; break;
-                    case 3: centroid = new double[] { 30.0, 10.0, 20.0, 30.0 }; break;
-                    case 4: centroid = new double[] { -20.0, -20.0, -20.0, -20.0 }; break;
-                    case 5: centroid = new double[] { -25.0, -25.0, -15.0, -15.0 }; break;
-                    case 6: centroid = new double[] { -15.0, -15.0, -25.0, -25.0 }; break;
-                    case 7: centroid = new double[] { -30.0, -10.0, -20.0, -30.0 }; break;
-                    default: centroid = new double[] { 0.0, 0.0, 0.0, 0.0 }; break;
+                    case 0:
+                        centroid = new double[] { 20.0, 20.0, 20.0, 20.0 };
+                        break;
+                    case 1:
+                        centroid = new double[] { 25.0, 25.0, 15.0, 15.0 };
+                        break;
+                    case 2:
+                        centroid = new double[] { 15.0, 15.0, 25.0, 25.0 };
+                        break;
+                    case 3:
+                        centroid = new double[] { 30.0, 10.0, 20.0, 30.0 };
+                        break;
+                    case 4:
+                        centroid = new double[] { -20.0, -20.0, -20.0, -20.0 };
+                        break;
+                    case 5:
+                        centroid = new double[] { -25.0, -25.0, -15.0, -15.0 };
+                        break;
+                    case 6:
+                        centroid = new double[] { -15.0, -15.0, -25.0, -25.0 };
+                        break;
+                    case 7:
+                        centroid = new double[] { -30.0, -10.0, -20.0, -30.0 };
+                        break;
+                    default:
+                        centroid = new double[] { 0.0, 0.0, 0.0, 0.0 };
+                        break;
                 }
                 break;
 
@@ -868,11 +884,21 @@ public class VectorClusteringTreeStaticInitializer {
 
             case 2: // Root level - 4 different centroids
                 switch (index) {
-                    case 0: centroid = new double[] { 22.5, 22.5, 17.5, 17.5 }; break;  // Covers interior 0
-                    case 1: centroid = new double[] { 22.5, 12.5, 22.5, 27.5 }; break;  // Covers interior 1
-                    case 2: centroid = new double[] { -22.5, -22.5, -17.5, -17.5 }; break; // Covers interior 2
-                    case 3: centroid = new double[] { -22.5, -12.5, -22.5, -27.5 }; break; // Covers interior 3
-                    default: centroid = new double[] { 0.0, 0.0, 0.0, 0.0 }; break;
+                    case 0:
+                        centroid = new double[] { 22.5, 22.5, 17.5, 17.5 };
+                        break; // Covers interior 0
+                    case 1:
+                        centroid = new double[] { 22.5, 12.5, 22.5, 27.5 };
+                        break; // Covers interior 1
+                    case 2:
+                        centroid = new double[] { -22.5, -22.5, -17.5, -17.5 };
+                        break; // Covers interior 2
+                    case 3:
+                        centroid = new double[] { -22.5, -12.5, -22.5, -27.5 };
+                        break; // Covers interior 3
+                    default:
+                        centroid = new double[] { 0.0, 0.0, 0.0, 0.0 };
+                        break;
                 }
                 break;
 
@@ -917,8 +943,8 @@ public class VectorClusteringTreeStaticInitializer {
      */
     private void initializeEmptyMetadataPage(TestPage metadataPage, int clusterIndex) throws HyracksDataException {
         org.apache.hyracks.storage.am.vector.frames.VectorClusteringMetadataFrame metadataFrame =
-                (org.apache.hyracks.storage.am.vector.frames.VectorClusteringMetadataFrame) vectorTree.getMetadataFrameFactory()
-                        .createFrame();
+                (org.apache.hyracks.storage.am.vector.frames.VectorClusteringMetadataFrame) vectorTree
+                        .getMetadataFrameFactory().createFrame();
 
         metadataFrame.setPage(metadataPage.page);
         metadataFrame.initBuffer((byte) 0); // Metadata pages are at level 0

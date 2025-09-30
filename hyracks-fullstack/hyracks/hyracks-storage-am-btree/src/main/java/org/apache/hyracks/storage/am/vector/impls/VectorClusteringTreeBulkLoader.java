@@ -7,9 +7,7 @@ import org.apache.hyracks.storage.common.buffercache.ICachedPage;
 import org.apache.hyracks.storage.common.buffercache.IPageWriteCallback;
 import org.apache.hyracks.storage.common.file.BufferedFileHandle;
 
-
 public class VectorClusteringTreeBulkLoader extends AbstractTreeIndexBulkLoader {
-
 
     public VectorClusteringTreeBulkLoader(float fillFactor, boolean verifyInput, long numElementsHint,
             VectorClusteringTree treeIndex, IPageWriteCallback callback) throws HyracksDataException {
@@ -31,8 +29,8 @@ public class VectorClusteringTreeBulkLoader extends AbstractTreeIndexBulkLoader 
 
         // Copy each page from source to target
         for (int id = 0; id <= maxPageId; id++) {
-            ICachedPage sourcePage = treeIndex.getBufferCache().pin(
-                    BufferedFileHandle.getDiskPageId(treeIndex.getFileId(), id));
+            ICachedPage sourcePage =
+                    treeIndex.getBufferCache().pin(BufferedFileHandle.getDiskPageId(treeIndex.getFileId(), id));
             try {
                 write(sourcePage);
             } finally {
@@ -46,21 +44,20 @@ public class VectorClusteringTreeBulkLoader extends AbstractTreeIndexBulkLoader 
      */
     private void copyPage(int sourcePageId) throws HyracksDataException {
         // Pin source page
-        ICachedPage sourcePage = treeIndex.getBufferCache().pin(
-                BufferedFileHandle.getDiskPageId(treeIndex.getFileId(), sourcePageId));
+        ICachedPage sourcePage =
+                treeIndex.getBufferCache().pin(BufferedFileHandle.getDiskPageId(treeIndex.getFileId(), sourcePageId));
 
         try {
             sourcePage.acquireReadLatch();
 
             // Get new page in target tree
             int targetPageId = freePageManager.takePage(metaFrame);
-            ICachedPage targetPage = bufferCache.confiscatePage(
-                    BufferedFileHandle.getDiskPageId(treeIndex.getFileId(), targetPageId));
+            ICachedPage targetPage =
+                    bufferCache.confiscatePage(BufferedFileHandle.getDiskPageId(treeIndex.getFileId(), targetPageId));
 
             try {
                 // Copy entire page content
-                System.arraycopy(sourcePage.getBuffer().array(), 0,
-                        targetPage.getBuffer().array(), 0,
+                System.arraycopy(sourcePage.getBuffer().array(), 0, targetPage.getBuffer().array(), 0,
                         sourcePage.getBuffer().capacity());
 
                 // WRITE PAGE TO DISK
@@ -77,7 +74,6 @@ public class VectorClusteringTreeBulkLoader extends AbstractTreeIndexBulkLoader 
             treeIndex.getBufferCache().unpin(sourcePage);
         }
     }
-
 
     @Override
     public void end() throws HyracksDataException {

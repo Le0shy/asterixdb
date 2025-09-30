@@ -276,8 +276,8 @@ public class VectorClusteringSearchCursor implements IIndexCursor {
 
         // Metadata tuple format: <max_distance, data_page_id>
         // Data page ID is in the second field (field index 1)
-        byte[] data = tuple.getFieldData(1);  // Returns entire buffer
-        int offset = tuple.getFieldStart(1);  // Offset to field 1 within buffer
+        byte[] data = tuple.getFieldData(1); // Returns entire buffer
+        int offset = tuple.getFieldStart(1); // Offset to field 1 within buffer
 
         // FIXED: Use IntegerPointable to extract 4-byte integer (not 8-byte long)
         return IntegerPointable.getInteger(data, offset);
@@ -470,9 +470,9 @@ public class VectorClusteringSearchCursor implements IIndexCursor {
         try {
             // Create field serializers array - specify only the centroid field we need
             ISerializerDeserializer[] fieldSerdes = new ISerializerDeserializer[3];
-            fieldSerdes[0] = IntegerSerializerDeserializer.INSTANCE;           // Field 0: cid
-            fieldSerdes[1] = FloatArraySerializerDeserializer.INSTANCE;        // Field 1: centroid
-            fieldSerdes[2] = IntegerSerializerDeserializer.INSTANCE;           // Field 2: metadata_pointer
+            fieldSerdes[0] = IntegerSerializerDeserializer.INSTANCE; // Field 0: cid
+            fieldSerdes[1] = FloatArraySerializerDeserializer.INSTANCE; // Field 1: centroid
+            fieldSerdes[2] = IntegerSerializerDeserializer.INSTANCE; // Field 2: metadata_pointer
 
             // Deserialize the tuple using the proper TupleUtils method
             Object[] fieldValues = TupleUtils.deserializeTuple(tuple, fieldSerdes);
@@ -483,13 +483,14 @@ public class VectorClusteringSearchCursor implements IIndexCursor {
             // Convert from float[] to double[]
             double[] doubleCentroid = new double[floatCentroid.length];
             for (int i = 0; i < floatCentroid.length; i++) {
-                doubleCentroid[i] =  floatCentroid[i];
+                doubleCentroid[i] = floatCentroid[i];
             }
 
             return doubleCentroid;
 
         } catch (Exception e) {
-            throw new RuntimeException("Failed to extract centroid from interior tuple using TupleUtils.deserializeTuple()", e);
+            throw new RuntimeException(
+                    "Failed to extract centroid from interior tuple using TupleUtils.deserializeTuple()", e);
         }
     }
 
@@ -501,9 +502,9 @@ public class VectorClusteringSearchCursor implements IIndexCursor {
         try {
             // Create field serializers array - specify only the centroid field we need
             ISerializerDeserializer[] fieldSerdes = new ISerializerDeserializer[3];
-            fieldSerdes[0] = IntegerSerializerDeserializer.INSTANCE;           // Field 0: cid
-            fieldSerdes[1] = FloatArraySerializerDeserializer.INSTANCE;        // Field 1: centroid
-            fieldSerdes[2] = IntegerSerializerDeserializer.INSTANCE;           // Field 2: metadata_pointer
+            fieldSerdes[0] = IntegerSerializerDeserializer.INSTANCE; // Field 0: cid
+            fieldSerdes[1] = FloatArraySerializerDeserializer.INSTANCE; // Field 1: centroid
+            fieldSerdes[2] = IntegerSerializerDeserializer.INSTANCE; // Field 2: metadata_pointer
 
             // Deserialize the tuple using the proper TupleUtils method
             Object[] fieldValues = TupleUtils.deserializeTuple(tuple, fieldSerdes);
@@ -514,13 +515,14 @@ public class VectorClusteringSearchCursor implements IIndexCursor {
             // Convert from float[] to double[]
             double[] doubleCentroid = new double[floatCentroid.length];
             for (int i = 0; i < floatCentroid.length; i++) {
-                doubleCentroid[i] =  floatCentroid[i];
+                doubleCentroid[i] = floatCentroid[i];
             }
 
             return doubleCentroid;
 
         } catch (Exception e) {
-            throw new RuntimeException("Failed to extract centroid from interior tuple using TupleUtils.deserializeTuple()", e);
+            throw new RuntimeException(
+                    "Failed to extract centroid from interior tuple using TupleUtils.deserializeTuple()", e);
         }
     }
 

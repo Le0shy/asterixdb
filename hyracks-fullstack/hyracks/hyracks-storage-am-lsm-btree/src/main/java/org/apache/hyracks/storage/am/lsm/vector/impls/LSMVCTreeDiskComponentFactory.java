@@ -53,11 +53,9 @@ public class LSMVCTreeDiskComponentFactory implements ILSMDiskComponentFactory {
                 filterHelper == null ? null : filterHelper.createFilter());
     }
 
-
-    public LSMVCTreeDiskComponent createComponent(LSMVCTreeMemoryComponent flushingComponent,
-            AbstractLSMIndex lsmIndex) throws HyracksDataException {
-        return new LSMVCTreeDiskComponent(lsmIndex,
-                flushingComponent.getIndex(),
+    public LSMVCTreeDiskComponent createComponent(LSMVCTreeMemoryComponent flushingComponent, AbstractLSMIndex lsmIndex)
+            throws HyracksDataException {
+        return new LSMVCTreeDiskComponent(lsmIndex, flushingComponent.getIndex(),
                 filterHelper == null ? null : filterHelper.createFilter());
     }
 }
