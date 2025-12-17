@@ -132,8 +132,7 @@ public class OptimizedHybridHashJoin {
 
     public void initBuild() throws HyracksDataException {
         IDeallocatableFramePool framePool =
-                new DeallocatableFramePool(jobletCtx, (long) memSizeInFrames
-                        * (long) jobletCtx.getInitialFrameSize());
+                new DeallocatableFramePool(jobletCtx, (long) memSizeInFrames * (long) jobletCtx.getInitialFrameSize());
         bufferManagerForHashTable = new FramePoolBackedFrameBufferManager(framePool);
         bufferManager = new VPartitionTupleBufferManager(
                 PreferToSpillFullyOccupiedFramePolicy.createAtMostOneFrameForSpilledPartitionConstrain(spilledStatus),

@@ -204,40 +204,41 @@ public class DefaultJobQueue implements IJobQueue {
 
     @Override
     public List<JobRun> pull() {
-            List<JobRun> jobRuns = new ArrayList<>();
-            long now = getCurrentTime();
+        List<JobRun> jobRuns = new ArrayList<>();
+        long now = getCurrentTime();
 
-            while (true) {
-                MPLQueue nextJobQueue = null;
-                double maxSlowDown = -1;
+        while (true) {
+            MPLQueue nextJobQueue = null;
+            double maxSlowDown = -1;
 
-                // Find the queue with the most slowdown
-                for (int i = queueHasAnyJob.nextSetBit(0); i >= 0 && i < queueHasAnyJob.size(); i = queueHasAnyJob.nextSetBit(i + 1)) {
-                    MPLQueue queue = queues.get(i);
-                    calculateSlowDown(queue, now);
-                    if (queue.topQuerySlowDown > maxSlowDown) {
-                        maxSlowDown = queue.topQuerySlowDown;
-                        nextJobQueue = queue;
-                    }
-                }
-
-                // No more queues with jobs
-                if (nextJobQueue == null) break;
-
-                JobRun nextToRun = nextJobQueue.getFirst();
-
-                if (checkAndAdd(nextToRun, jobRuns)) {
-                    LOGGER.log(Level.DEBUG, "JobID:{} is pulled from DefaultJobQueue: Queue #{}",
-                            nextToRun.getJobId(), nextJobQueue.getQueueId());
-                } else {
-                    // Stop if no more capacity
-                    break;
+            // Find the queue with the most slowdown
+            for (int i = queueHasAnyJob.nextSetBit(0); i >= 0 && i < queueHasAnyJob.size(); i =
+                    queueHasAnyJob.nextSetBit(i + 1)) {
+                MPLQueue queue = queues.get(i);
+                calculateSlowDown(queue, now);
+                if (queue.topQuerySlowDown > maxSlowDown) {
+                    maxSlowDown = queue.topQuerySlowDown;
+                    nextJobQueue = queue;
                 }
             }
 
-            return jobRuns;
-    }
+            // No more queues with jobs
+            if (nextJobQueue == null)
+                break;
 
+            JobRun nextToRun = nextJobQueue.getFirst();
+
+            if (checkAndAdd(nextToRun, jobRuns)) {
+                LOGGER.log(Level.DEBUG, "JobID:{} is pulled from DefaultJobQueue: Queue #{}", nextToRun.getJobId(),
+                        nextJobQueue.getQueueId());
+            } else {
+                // Stop if no more capacity
+                break;
+            }
+        }
+
+        return jobRuns;
+    }
 
     @Override
     public Collection<JobRun> jobs() {

@@ -1994,7 +1994,6 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
             if (configStateEntity == null) {
                 configStateEntity = createSchedulerStateEntity(schedulerConfigName);
                 MetadataManager.INSTANCE.addSchedulerConfig(mdTxnCtx, configStateEntity);
-                MetadataManager.INSTANCE.commitTransaction(mdTxnCtx);
             }
             /* if the config has not already been enabled */
             else if (!configStateEntity.getEnabled().equals(schedulerConfigName)) {

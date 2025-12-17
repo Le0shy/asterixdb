@@ -153,7 +153,7 @@ public class VariableFramePool implements IFramePool {
             if (!used.get(i)) {
                 mergedSize += deAllocateFrame(i);
                 if (mergedSize >= frameSize) {
-                    return createNewFrame((int)mergedSize);
+                    return createNewFrame((int) mergedSize);
                 }
             }
         }

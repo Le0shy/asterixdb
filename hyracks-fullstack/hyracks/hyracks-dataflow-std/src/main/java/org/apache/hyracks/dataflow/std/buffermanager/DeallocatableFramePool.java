@@ -71,7 +71,7 @@ public class DeallocatableFramePool implements IDeallocatableFramePool {
             ctx.deallocateFrames(buffer.capacity());
             allocated -= buffer.capacity();
             if (mergedSize >= frameSize) {
-                return createNewFrame((int)mergedSize);
+                return createNewFrame((int) mergedSize);
             }
         }
         return null;

@@ -40,7 +40,7 @@ public class JobTypeManager implements IJobTypeManager {
     public void setJobType(JobRun jobRun) {
         JobSpecification job = jobRun.getJobSpecification();
         String groupName = job.getGroupName();
-        if(groupName == null) {
+        if (groupName == null) {
             jobRun.setSchedulingType(JobSchedulingType.DEFAULT);
         } else if (queryGroupToPriority.containsKey(groupName)) {
             jobRun.setSchedulingType(JobSchedulingType.NORMAL);

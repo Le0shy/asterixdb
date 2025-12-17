@@ -163,7 +163,7 @@ public class PriorityBasedQueue implements IJobQueue {
             }
             if (!jobRuns.isEmpty()) {
                 isPrioritizedGroupQueuePicked = false;
-                LOGGER.log(Level.DEBUG, "cache for priority {} has been released",candidatePrioritizedGroupPriority);
+                LOGGER.log(Level.DEBUG, "cache for priority {} has been released", candidatePrioritizedGroupPriority);
             }
             return jobRuns;
         }
@@ -208,7 +208,7 @@ public class PriorityBasedQueue implements IJobQueue {
             jobRuns = defaultJobQueue.pull();
             if (jobRuns.isEmpty()) {
                 isDefaultQueuePicked = true;
-                LOGGER.log(Level.DEBUG, "default queue has been cached" );
+                LOGGER.log(Level.DEBUG, "default queue has been cached");
             }
             return jobRuns;
         } else {

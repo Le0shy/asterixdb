@@ -121,17 +121,30 @@ public class CapacityControllerGuard {
 
         if (isShort) {
             long maxMemShort = getMaximumMemoryByteSizeShort();
-            memoryAvailableShort = Math.min(memoryAvailableShort + reqMemory, maxMemShort);
-            CPUQuotaAvailableShort = Math.min(CPUQuotaAvailableShort + reqCores, CPUQuotaShort);
-            /* common/short job's resource limit has been increased, transfer the surplus to the other one. */
-            memoryAvailableCommon += Math.max(0, reqMemory - maxMemShort);
-            CPUQuotaAvailableCommon += Math.max(0, reqCores - CPUQuotaShort);
+            // Calculate how much memory can actually be added to short pool
+            long memoryToShort = Math.min(reqMemory, maxMemShort - memoryAvailableShort);
+            memoryAvailableShort += memoryToShort;
+            // Add the remainder to common pool
+            memoryAvailableCommon += (reqMemory - memoryToShort);
+
+            // Calculate how many cores can actually be added to short pool
+            int coresToShort = Math.min(reqCores, CPUQuotaShort - CPUQuotaAvailableShort);
+            CPUQuotaAvailableShort += coresToShort;
+            // Add the remainder to common pool
+            CPUQuotaAvailableCommon += (reqCores - coresToShort);
         } else {
             long maxMemCommon = getMaximumMemoryByteSizeCommon();
-            memoryAvailableCommon = Math.min(memoryAvailableCommon + reqMemory, maxMemCommon);
-            CPUQuotaAvailableCommon = Math.min(CPUQuotaAvailableCommon + reqCores, CPUQuotaCommon);
-            memoryAvailableShort += Math.max(0, reqMemory - maxMemCommon);
-            CPUQuotaAvailableShort += Math.max(0, reqCores - CPUQuotaCommon);
+            // Calculate how much memory can actually be added to common pool
+            long memoryToCommon = Math.min(reqMemory, maxMemCommon - memoryAvailableCommon);
+            memoryAvailableCommon += memoryToCommon;
+            // Add the remainder to short pool
+            memoryAvailableShort += (reqMemory - memoryToCommon);
+
+            // Calculate how many cores can actually be added to common pool
+            int coresToCommon = Math.min(reqCores, CPUQuotaCommon - CPUQuotaAvailableCommon);
+            CPUQuotaAvailableCommon += coresToCommon;
+            // Add the remainder to short pool
+            CPUQuotaAvailableShort += (reqCores - coresToCommon);
         }
         jobCapacityController.release(jobRun.getJobSpecification());
     }
@@ -208,7 +221,7 @@ public class CapacityControllerGuard {
     }
 
     public void setMemoryPercentAllocatedToShort(double newShortMemoryPercent) {
-        long diffMemoryBytesLimit = (long) ((newShortMemoryPercent - memoryPercentAllocatedToShort / 100.0)
+        long diffMemoryBytesLimit = (long) (((newShortMemoryPercent - memoryPercentAllocatedToShort) / 100.0)
                 * maximumAggregatedMemoryByteSize);
 
         if (diffMemoryBytesLimit < 0) {
