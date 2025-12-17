@@ -19,14 +19,17 @@
 
 package org.apache.asterix.runtime.evaluators.functions;
 
-import org.apache.asterix.om.pointables.PointableAllocator;
-import org.apache.asterix.om.pointables.base.DefaultOpenFieldType;
-import org.apache.asterix.om.pointables.base.IVisitablePointable;
-import org.apache.asterix.om.pointables.cast.ACastVisitor;
+import org.apache.asterix.om.pointables.AFlatValueCastingPointable;
+import org.apache.asterix.om.pointables.AListCastingPointable;
+import org.apache.asterix.om.pointables.ARecordCastingPointable;
+import org.apache.asterix.om.pointables.base.ICastingPointable;
+import org.apache.asterix.om.pointables.cast.ACastingPointableVisitor;
+import org.apache.asterix.om.pointables.cast.CastResult;
 import org.apache.asterix.om.types.ATypeTag;
 import org.apache.asterix.om.types.BuiltinType;
+import org.apache.asterix.om.types.EnumDeserializer;
 import org.apache.asterix.om.types.IAType;
-import org.apache.hyracks.algebricks.common.utils.Triple;
+import org.apache.asterix.om.types.TypeTagUtil;
 import org.apache.hyracks.algebricks.runtime.base.IScalarEvaluator;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
 import org.apache.hyracks.api.exceptions.SourceLocation;
@@ -36,95 +39,83 @@ import org.apache.hyracks.dataflow.common.data.accessors.IFrameTupleReference;
 
 public class CastTypeEvaluator implements IScalarEvaluator {
 
-    private IScalarEvaluator argEvaluator;
-    protected final SourceLocation sourceLoc;
     private final IPointable argPointable = new VoidPointable();
-    private final PointableAllocator allocator = new PointableAllocator();
-    private IVisitablePointable inputPointable;
-    private IVisitablePointable resultPointable;
-    private final ACastVisitor castVisitor = createCastVisitor();
-    private final Triple<IVisitablePointable, IAType, Boolean> arg = new Triple<>(null, null, null);
-
-    public CastTypeEvaluator() {
-        this(null);
-        // reset() should be called after using this constructor before calling any method
-    }
-
-    public CastTypeEvaluator(SourceLocation sourceLoc) {
-        this.sourceLoc = sourceLoc;
-        // reset() should be called after using this constructor before calling any method
-    }
-
-    public CastTypeEvaluator(IAType reqType, IAType inputType, IScalarEvaluator argEvaluator) {
-        this(reqType, inputType, argEvaluator, null);
-    }
+    private final IScalarEvaluator argEvaluator;
+    protected final SourceLocation sourceLoc;
+    private ICastingPointable inputPointable;
+    private ICastingPointable record;
+    private ICastingPointable list;
+    private ICastingPointable flat;
+    private final ACastingPointableVisitor castVisitor = createCastVisitor();
+    private final CastResult castResult = new CastResult(new VoidPointable(), null);
+    private final boolean inputTypeIsAny;
 
     public CastTypeEvaluator(IAType reqType, IAType inputType, IScalarEvaluator argEvaluator,
             SourceLocation sourceLoc) {
         this.sourceLoc = sourceLoc;
-        resetAndAllocate(reqType, inputType, argEvaluator);
-    }
-
-    public void resetAndAllocate(IAType reqType, IAType inputType, IScalarEvaluator argEvaluator) {
         this.argEvaluator = argEvaluator;
-        this.inputPointable = allocatePointable(inputType, reqType);
-        this.resultPointable = allocatePointable(reqType, inputType);
-        this.arg.first = resultPointable;
-        this.arg.second = reqType;
-        this.arg.third = Boolean.FALSE;
+        this.castResult.setOutType(reqType);
+        if (!inputType.equals(BuiltinType.ANY)) {
+            this.inputPointable = createPointable(inputType);
+            this.inputTypeIsAny = false;
+        } else {
+            this.inputTypeIsAny = true;
+        }
     }
 
-    protected ACastVisitor createCastVisitor() {
-        return new ACastVisitor(sourceLoc);
+    protected ACastingPointableVisitor createCastVisitor() {
+        return ACastingPointableVisitor.strictCasting(sourceLoc);
     }
 
     @Override
     public void evaluate(IFrameTupleReference tuple, IPointable result) throws HyracksDataException {
         argEvaluator.evaluate(tuple, argPointable);
-
         if (PointableHelper.checkAndSetMissingOrNull(result, argPointable)) {
             return;
         }
-
-        inputPointable.set(argPointable);
-        cast(result);
-    }
-
-    protected void cast(IPointable result) throws HyracksDataException {
-        inputPointable.accept(castVisitor, arg);
-        result.set(resultPointable);
-    }
-
-    // TODO: refactor in a better way
-    protected void cast(IPointable argPointable, IPointable result) throws HyracksDataException {
-        inputPointable.set(argPointable);
-        cast(result);
-    }
-
-    // Allocates the result pointable.
-    private IVisitablePointable allocatePointable(IAType typeForPointable, IAType typeForOtherSide) {
-        if (!typeForPointable.equals(BuiltinType.ANY)) {
-            return allocator.allocateFieldValue(typeForPointable);
+        if (inputTypeIsAny) {
+            inputPointable = getPointable(argPointable);
         }
-        return allocatePointableForAny(typeForOtherSide);
+        inputPointable.set(argPointable);
+        castInto(result);
     }
 
-    // Allocates an input or result pointable if the input or required type is ANY.
-    private IVisitablePointable allocatePointableForAny(IAType type) {
-        ATypeTag tag = type.getTypeTag();
+    protected void castInto(IPointable result) throws HyracksDataException {
+        inputPointable.accept(castVisitor, castResult);
+        result.set(castResult.getOutPointable());
+    }
+
+    private static ICastingPointable createPointable(IAType type) {
+        switch (type.getTypeTag()) {
+            case OBJECT:
+                return ARecordCastingPointable.FACTORY.create(type);
+            case ARRAY:
+            case MULTISET:
+                return AListCastingPointable.FACTORY.create(type);
+            default:
+                return AFlatValueCastingPointable.FACTORY.create(type);
+        }
+    }
+
+    private ICastingPointable getPointable(IPointable arg) throws HyracksDataException {
+        ATypeTag tag = EnumDeserializer.ATYPETAGDESERIALIZER.deserialize(arg.getByteArray()[arg.getStartOffset()]);
         switch (tag) {
             case OBJECT:
-                return allocator.allocateFieldValue(DefaultOpenFieldType.NESTED_OPEN_RECORD_TYPE);
+                if (record == null) {
+                    record = ARecordCastingPointable.FACTORY.create(TypeTagUtil.getBuiltinTypeByTag(tag));
+                }
+                return record;
             case ARRAY:
-                return allocator.allocateFieldValue(DefaultOpenFieldType.NESTED_OPEN_AORDERED_LIST_TYPE);
             case MULTISET:
-                return allocator.allocateFieldValue(DefaultOpenFieldType.NESTED_OPEN_AUNORDERED_LIST_TYPE);
+                if (list == null) {
+                    list = AListCastingPointable.FACTORY.create(TypeTagUtil.getBuiltinTypeByTag(tag));
+                }
+                return list;
             default:
-                return allocator.allocateFieldValue(null);
+                if (flat == null) {
+                    flat = AFlatValueCastingPointable.FACTORY.create(null);
+                }
+                return flat;
         }
-    }
-
-    public void deallocatePointables() {
-        allocator.reset();
     }
 }

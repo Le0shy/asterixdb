@@ -18,12 +18,14 @@
  */
 package org.apache.asterix.external.util;
 
+import java.util.EnumSet;
+import java.util.List;
 import java.util.Set;
-import java.util.TimeZone;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 import java.util.regex.Pattern;
 
+import org.apache.asterix.external.input.record.reader.hdfs.avro.AvroFileInputFormat;
 import org.apache.asterix.om.types.ATypeTag;
 import org.apache.hyracks.util.StorageUtil;
 
@@ -39,6 +41,7 @@ public class ExternalDataConstants {
     // used to specify the stream factory for an adapter that has a stream data source
     public static final String KEY_STREAM = "stream";
     //TODO(DB): check adapter configuration
+    public static final String KEY_DATASET = "dataset";
     public static final String KEY_DATASET_DATABASE = "dataset-database";
     // used to specify the dataverse of the adapter
     public static final String KEY_DATASET_DATAVERSE = "dataset-dataverse";
@@ -70,10 +73,8 @@ public class ExternalDataConstants {
     //Base64 encoded function call information
     public static final String KEY_HADOOP_ASTERIX_FUNCTION_CALL_INFORMATION = "org.apache.asterix.function.info";
     public static final String KEY_SOURCE_DATATYPE = "type-name";
-    public static final String KEY_DELIMITER = "delimiter";
     public static final String KEY_PARSER_FACTORY = "parser-factory";
     public static final String KEY_DATA_PARSER = "parser";
-    public static final String KEY_HEADER = "header";
     public static final String KEY_READER = "reader";
     public static final String KEY_READER_STREAM = "stream";
     public static final String KEY_TYPE_NAME = "type-name";
@@ -82,10 +83,13 @@ public class ExternalDataConstants {
     public static final String KEY_EXPRESSION = "expression";
     public static final String KEY_LOCAL_SOCKET_PATH = "local-socket-path";
     public static final String KEY_FORMAT = "format";
+    public static final String KEY_SCHEMA = "schema";
+    public static final String KEY_PARQUET_ROW_GROUP_SIZE = "row-group-size";
+    public static final String PARQUET_DEFAULT_ROW_GROUP_SIZE = "10MB";
+    public static final String KEY_PARQUET_PAGE_SIZE = "page-size";
+    public static final String PARQUET_DEFAULT_PAGE_SIZE = "8KB";
     public static final String KEY_INCLUDE = "include";
     public static final String KEY_EXCLUDE = "exclude";
-    public static final String KEY_QUOTE = "quote";
-    public static final String KEY_ESCAPE = "escape";
     public static final String KEY_PARSER = "parser";
     public static final String KEY_DATASET_RECORD = "dataset-record";
     public static final String KEY_RSS_URL = "url";
@@ -95,6 +99,7 @@ public class ExternalDataConstants {
     public static final String KEY_WAIT_FOR_DATA = "wait-for-data";
     public static final String KEY_FEED_NAME = "feed";
     // a string representing external bucket name
+    public static final String KEY_ENTITY_ID = "entity-id";
     public static final String KEY_EXTERNAL_SOURCE_TYPE = "type";
     // a comma delimited list of nodes
     public static final String KEY_NODES = "nodes";
@@ -119,7 +124,7 @@ public class ExternalDataConstants {
     // a string representing the format of the record (for adapters which produces records with additional information like pk or metadata)
     public static final String KEY_RECORD_FORMAT = "record-format";
     public static final String TABLE_FORMAT = "table-format";
-    public static final String ICEBERG_METADATA_LOCATION = "metadata-path";
+    public static final String TABLE_METADATA_LOCATION = "metadata-path";
     public static final int SUPPORTED_ICEBERG_FORMAT_VERSION = 1;
     public static final String KEY_META_TYPE_NAME = "meta-type-name";
     public static final String KEY_ADAPTER_NAME = "adapter-name";
@@ -128,8 +133,6 @@ public class ExternalDataConstants {
     public static final String KEY_HTTP_PROXY_PORT = "http-proxy-port";
     public static final String KEY_HTTP_PROXY_USER = "http-proxy-user";
     public static final String KEY_HTTP_PROXY_PASSWORD = "http-proxy-password";
-    // a string representing the NULL value
-    public static final String KEY_NULL_STR = "null";
     public static final String KEY_REDACT_WARNINGS = "redact-warnings";
     public static final String KEY_REQUESTED_FIELDS = "requested-fields";
     public static final String KEY_EXTERNAL_SCAN_BUFFER_SIZE = "external-scan-buffer-size";
@@ -152,6 +155,13 @@ public class ExternalDataConstants {
     public static final String KEY_ADAPTER_NAME_AZURE_BLOB = "AZUREBLOB";
     public static final String KEY_ADAPTER_NAME_AZURE_DATA_LAKE = "AZUREDATALAKE";
     public static final String KEY_ADAPTER_NAME_GCS = "GCS";
+    public static final String KEY_ADAPTER_NAME_HDFS = "HDFS";
+
+    public static final Set<String> EXTERNAL_READ_ADAPTERS = Set.of(KEY_ADAPTER_NAME_TWITTER_PUSH,
+            KEY_ADAPTER_NAME_PUSH_TWITTER, KEY_ADAPTER_NAME_TWITTER_PULL, KEY_ADAPTER_NAME_PULL_TWITTER,
+            KEY_ADAPTER_NAME_TWITTER_USER_STREAM, KEY_ADAPTER_NAME_LOCALFS, KEY_ADAPTER_NAME_SOCKET,
+            KEY_ADAPTER_NAME_HTTP, KEY_ADAPTER_NAME_AWS_S3, KEY_ADAPTER_NAME_AZURE_BLOB,
+            KEY_ADAPTER_NAME_AZURE_DATA_LAKE, KEY_ADAPTER_NAME_GCS, KEY_ADAPTER_NAME_HDFS);
 
     /**
      * HDFS class names
@@ -160,13 +170,44 @@ public class ExternalDataConstants {
     public static final String CLASS_NAME_SEQUENCE_INPUT_FORMAT = "org.apache.hadoop.mapred.SequenceFileInputFormat";
     public static final String CLASS_NAME_PARQUET_INPUT_FORMAT =
             "org.apache.asterix.external.input.record.reader.hdfs.parquet.MapredParquetInputFormat";
+    public static final String CLASS_NAME_AVRO_INPUT_FORMAT = AvroFileInputFormat.class.getName();
     public static final String CLASS_NAME_HDFS_FILESYSTEM = "org.apache.hadoop.hdfs.DistributedFileSystem";
+    public static final String S3A_CHANGE_DETECTION_REQUIRED = "requireVersionChangeDetection";
+    public static final String S3A_CHANGE_DETECTION_REQUIRED_CONFIG_KEY = "fs.s3a.change.detection.version.required";
+    public static final String HDFS_IO_COMPRESSION_CODECS_KEY = "io.compression.codecs";
+    public static final String HDFS_AVRO_IGNORE_INPUTS_WITHOUT_EXTENSION =
+            "avro.mapred.ignore.inputs.without.extension";
+
     /**
      * input formats aliases
      */
     public static final String INPUT_FORMAT_TEXT = "text-input-format";
     public static final String INPUT_FORMAT_SEQUENCE = "sequence-input-format";
     public static final String INPUT_FORMAT_PARQUET = "parquet-input-format";
+    public static final String INPUT_FORMAT_AVRO = "avro-input-format";
+
+    public static final String HDFS_BLOCKSIZE = "blocksize";
+    public static final String HDFS_REPLICATION = "replication";
+    public static final String HADOOP_AUTHENTICATION = "authentication";
+    public static final String KERBEROS_PROTOCOL = "kerberos";
+    public static final String KERBEROS_REALM = "realm";
+    public static final String KERBEROS_KDC = "kdc";
+    public static final String HDFS_USE_DATANODE_HOSTNAME = "use-datanode-hostname";
+    public static final String KERBEROS_PRINCIPAL = "principal";
+    public static final String KERBEROS_PASSWORD = "password";
+
+    public static final String KEY_HDFS_BLOCKSIZE = "dfs.blocksize";
+    public static final String KEY_HDFS_REPLICATION = "dfs.replication";
+    public static final String KEY_HADOOP_AUTHENTICATION = "hadoop.security.authentication";
+    public static final String KEY_KERBEROS_CONF = "java.security.krb5.conf";
+    public static final String KEY_NAMENODE_PRINCIPAL_PATTERN = "dfs.namenode.kerberos.principal.pattern";
+    public static final String KEY_HDFS_USE_DATANODE_HOSTNAME = "dfs.client.use.datanode.hostname";
+    public static final String KERBEROS_LOGIN_MODULE = "com.sun.security.auth.module.Krb5LoginModule";
+    public static final String KERBEROS_CONFIG_REFRESH = "refreshKrb5Config";
+    public static final String KERBEROS_CONFIG_FILE_CONTENT =
+            "[libdefaults]\n\tdefault_realm = %1$s\n\n[realms]\n\t%1$s = {\n\t\tkdc = %2$s\n\t}";
+    public static final String[] KERBEROS_CONFIG_FILE_PATTERN = { "krb5", ".conf" };
+
     /**
      * Builtin streams
      */
@@ -181,6 +222,8 @@ public class ExternalDataConstants {
     public static final String HAS_HEADER = "has.header";
     public static final String TIME_TRACKING = "time.tracking";
     public static final String DEFAULT_QUOTE = "\"";
+    public static final String DEFAULT_SINGLE_QUOTE = "'";
+    public static final String NONE = "none";
     public static final String NODE_RESOLVER_FACTORY_PROPERTY = "node.Resolver";
     public static final String DEFAULT_DELIMITER = ",";
     public static final String EXTERNAL_LIBRARY_SEPARATOR = "#";
@@ -192,6 +235,7 @@ public class ExternalDataConstants {
     public static final String FORMAT_ADM = "adm";
     public static final String FORMAT_AVRO = "avro";
     public static final String FORMAT_JSON_LOWER_CASE = "json";
+    public static final String FORMAT_CSV_LOWER_CASE = "csv";
     public static final String FORMAT_JSON_UPPER_CASE = "JSON";
     public static final String FORMAT_DELIMITED_TEXT = "delimited-text";
     public static final String FORMAT_TWEET = "twitter-status";
@@ -204,7 +248,15 @@ public class ExternalDataConstants {
     public static final String FORMAT_CSV = "csv";
     public static final String FORMAT_TSV = "tsv";
     public static final String FORMAT_PARQUET = "parquet";
+    public static final String PARQUET_SCHEMA_KEY = "parquet-schema";
+    public static final String PARQUET_WRITER_VERSION_KEY = "version";
+    public static final String PARQUET_WRITER_VERSION_VALUE_1 = "1";
+    public static final String PARQUET_WRITER_VERSION_VALUE_2 = "2";
+    public static final String DUMMY_DATABASE_NAME = "dbname";
+    public static final String DUMMY_TYPE_NAME = "typeName";
+    public static final String DUMMY_DATAVERSE_NAME = "a.b.c";
     public static final String FORMAT_APACHE_ICEBERG = "apache-iceberg";
+    public static final String FORMAT_DELTA = "delta";
     public static final Set<String> ALL_FORMATS;
     public static final Set<String> TEXTUAL_FORMATS;
 
@@ -246,6 +298,8 @@ public class ExternalDataConstants {
      * Constant characters
      */
     public static final char ESCAPE = '\\';
+
+    public static final char CSV_ESCAPE = '\"';
     public static final char QUOTE = '"';
     public static final char SPACE = ' ';
     public static final char TAB = '\t';
@@ -304,6 +358,8 @@ public class ExternalDataConstants {
      * Compression constants
      */
     public static final String KEY_COMPRESSION_GZIP = "gzip";
+    public static final String KEY_COMPRESSION_SNAPPY = "snappy";
+    public static final String KEY_COMPRESSION_ZSTD = "zstd";
     public static final String KEY_COMPRESSION_GZIP_COMPRESSION_LEVEL = "gzipCompressionLevel";
 
     /**
@@ -316,13 +372,56 @@ public class ExternalDataConstants {
     public static final int WRITER_MAX_RESULT_MINIMUM = 1000;
     public static final Set<String> WRITER_SUPPORTED_FORMATS;
     public static final Set<String> WRITER_SUPPORTED_ADAPTERS;
-    public static final Set<String> WRITER_SUPPORTED_COMPRESSION;
+    public static final Set<String> TEXTUAL_WRITER_SUPPORTED_COMPRESSION;
+    public static final Set<String> PARQUET_WRITER_SUPPORTED_COMPRESSION;
+    public static final Set<String> PARQUET_WRITER_SUPPORTED_VERSION;
+    public static final int PARQUET_DICTIONARY_PAGE_SIZE = 1048576;
+    public static final List<String> WRITER_SUPPORTED_QUOTES;
+    public static final EnumSet<ATypeTag> CSV_WRITER_SUPPORTED_DATA_TYPES =
+            EnumSet.of(ATypeTag.TINYINT, ATypeTag.SMALLINT, ATypeTag.INTEGER, ATypeTag.BIGINT, ATypeTag.UINT8,
+                    ATypeTag.UINT16, ATypeTag.UINT64, ATypeTag.FLOAT, ATypeTag.DOUBLE, ATypeTag.STRING,
+                    ATypeTag.BOOLEAN, ATypeTag.DATETIME, ATypeTag.UINT32, ATypeTag.DATE, ATypeTag.TIME);
+    public static final String PARQUET_MAX_SCHEMAS_KEY = "max-schemas";
+    public static final int PARQUET_MAX_SCHEMAS_DEFAULT_VALUE = 5;
+    public static final int PARQUET_MAX_SCHEMAS_MAX_VALUE = 10;
 
     static {
-        WRITER_SUPPORTED_FORMATS = Set.of(FORMAT_JSON_LOWER_CASE);
+        WRITER_SUPPORTED_FORMATS = Set.of(FORMAT_JSON_LOWER_CASE, FORMAT_PARQUET, FORMAT_CSV_LOWER_CASE);
         WRITER_SUPPORTED_ADAPTERS = Set.of(ALIAS_LOCALFS_ADAPTER.toLowerCase(), KEY_ADAPTER_NAME_AWS_S3.toLowerCase(),
-                KEY_ADAPTER_NAME_GCS.toLowerCase());
-        WRITER_SUPPORTED_COMPRESSION = Set.of(KEY_COMPRESSION_GZIP);
+                KEY_ADAPTER_NAME_GCS.toLowerCase(), KEY_ADAPTER_NAME_HDFS.toLowerCase(),
+                KEY_ADAPTER_NAME_AZURE_BLOB.toLowerCase());
+        TEXTUAL_WRITER_SUPPORTED_COMPRESSION = Set.of(KEY_COMPRESSION_GZIP);
+        PARQUET_WRITER_SUPPORTED_COMPRESSION =
+                Set.of(KEY_COMPRESSION_GZIP, KEY_COMPRESSION_SNAPPY, KEY_COMPRESSION_ZSTD);
+        PARQUET_WRITER_SUPPORTED_VERSION = Set.of(PARQUET_WRITER_VERSION_VALUE_1, PARQUET_WRITER_VERSION_VALUE_2);
+        WRITER_SUPPORTED_QUOTES = List.of(DEFAULT_QUOTE, DEFAULT_SINGLE_QUOTE, NONE);
+    }
+
+    public static class AvroOptions {
+        private AvroOptions() {
+        }
+
+        // - DECIMAL_TO_DOUBLE: Convert decimal to double (default: false)
+        // - UUID_AS_STRING: Convert UUID to string (default: true)
+        // - DATE_AS_INT: Convert date to integer (default: true)
+        // - TIME_AS_LONG: Convert time to long (default: true)
+        // - TIMESTAMP_AS_LONG: Convert timestamp to long (default: true)
+        public static final String DECIMAL_TO_DOUBLE = "decimal-to-double";
+        public static final String UUID_AS_STRING = "uuid-to-string";
+        public static final String DATE_AS_INT = "date-to-int";
+        public static final String TIMEZONE = "timezone";
+        public static final String TIME_AS_LONG = "time-to-long";
+        public static final String TIMESTAMP_AS_LONG = "timestamp-to-long";
+    }
+
+    public static class DeltaOptions {
+        private DeltaOptions() {
+        }
+
+        public static final String DECIMAL_TO_DOUBLE = "decimal-to-double";
+        public static final String TIMESTAMP_AS_LONG = "timestamp-to-long";
+        public static final String DATE_AS_INT = "date-to-int";
+        public static final String TIMEZONE = "timezone";
     }
 
     public static class ParquetOptions {
@@ -354,10 +453,5 @@ public class ExternalDataConstants {
          */
         public static final String TIMEZONE = "timezone";
         public static final String HADOOP_TIMEZONE = ASTERIX_HADOOP_PREFIX + TIMEZONE;
-
-        /**
-         * Valid time zones that are supported by Java
-         */
-        public static final Set<String> VALID_TIME_ZONES = Set.of(TimeZone.getAvailableIDs());
     }
 }

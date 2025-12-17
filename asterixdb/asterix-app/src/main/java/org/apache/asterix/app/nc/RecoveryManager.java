@@ -131,7 +131,7 @@ public class RecoveryManager implements IRecoveryManager, ILifeCycleComponent {
      * not supported, yet.
      */
     @Override
-    public SystemState getSystemState() throws ACIDException {
+    public SystemState getSystemState() throws ACIDException, HyracksDataException {
         //read checkpoint file
         Checkpoint checkpointObject = checkpointManager.getLatest();
         if (checkpointObject == null) {
@@ -158,9 +158,13 @@ public class RecoveryManager implements IRecoveryManager, ILifeCycleComponent {
     public void startLocalRecovery(Set<Integer> partitions) throws IOException, ACIDException {
         state = SystemState.RECOVERING;
         LOGGER.info("starting recovery for partitions {}", partitions);
+        Checkpoint systemCheckpoint = checkpointManager.getLatest();
+        if (systemCheckpoint == null) {
+            LOGGER.warn("no system checkpoint found; skipping txn log recovery");
+            return;
+        }
         long readableSmallestLSN = logMgr.getReadableSmallestLSN();
-        Checkpoint checkpointObject = checkpointManager.getLatest();
-        long lowWaterMarkLSN = checkpointObject.getMinMCTFirstLsn();
+        long lowWaterMarkLSN = systemCheckpoint.getMinMCTFirstLsn();
         if (lowWaterMarkLSN < readableSmallestLSN) {
             lowWaterMarkLSN = readableSmallestLSN;
         }
@@ -637,9 +641,6 @@ public class RecoveryManager implements IRecoveryManager, ILifeCycleComponent {
         boolean infoEnabled = LOGGER.isInfoEnabled();
         // check if the transaction actually wrote some logs.
         if (firstLSN == TransactionManagementConstants.LogManagerConstants.TERMINAL_LSN || firstLSN > lastLSN) {
-            if (infoEnabled) {
-                LOGGER.info("no need to rollback as there were no operations by " + txnContext.getTxnId());
-            }
             return;
         }
         if (infoEnabled) {
@@ -898,6 +899,16 @@ public class RecoveryManager implements IRecoveryManager, ILifeCycleComponent {
             throw e;
         }
         return maxDiskLastLsn;
+    }
+
+    @Override
+    public boolean isLazyRecoveryEnabled() {
+        return false;
+    }
+
+    @Override
+    public void recoverIndexes(List<ILSMIndex> datasetPartitionIndexes) throws HyracksDataException {
+        // do-nothing
     }
 
     private class JobEntityCommits {

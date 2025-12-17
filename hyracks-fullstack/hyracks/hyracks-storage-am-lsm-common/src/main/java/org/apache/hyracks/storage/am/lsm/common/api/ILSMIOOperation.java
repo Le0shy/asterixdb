@@ -38,7 +38,8 @@ public interface ILSMIOOperation extends Callable<LSMIOOperationStatus>, IPageWr
         MERGE,
         LOAD,
         NOOP,
-        REPLICATE
+        REPLICATE,
+        CLEANUP
     }
 
     /**
@@ -73,7 +74,7 @@ public interface ILSMIOOperation extends Callable<LSMIOOperationStatus>, IPageWr
     /**
      * @return the operation type
      */
-    LSMIOOperationType getIOOpertionType();
+    LSMIOOperationType getIOOperationType();
 
     @Override
     LSMIOOperationStatus call() throws HyracksDataException;
@@ -91,8 +92,7 @@ public interface ILSMIOOperation extends Callable<LSMIOOperationStatus>, IPageWr
     /**
      * clean up left over files in case of an exception during execution
      *
-     * @param bufferCache
-     *            a buffercache that manages the files
+     * @param bufferCache a buffer cache that manages the files
      */
     void cleanup(IBufferCache bufferCache);
 
@@ -156,7 +156,6 @@ public interface ILSMIOOperation extends Callable<LSMIOOperationStatus>, IPageWr
     Map<String, Object> getParameters();
 
     /**
-     *
      * @return the estimated number of disk pages remaining for this IO operation
      */
     long getRemainingPages();
@@ -172,7 +171,6 @@ public interface ILSMIOOperation extends Callable<LSMIOOperationStatus>, IPageWr
     void pause();
 
     /**
-     *
      * @return whether this IO operation is currently active (i.e., not paused)
      */
     boolean isActive();

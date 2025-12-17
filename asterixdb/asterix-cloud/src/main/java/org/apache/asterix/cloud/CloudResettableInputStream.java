@@ -24,20 +24,25 @@ import java.nio.ByteBuffer;
 
 import org.apache.asterix.cloud.clients.ICloudBufferedWriter;
 import org.apache.asterix.cloud.clients.ICloudWriter;
+import org.apache.hyracks.api.exceptions.ErrorCode;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
+import org.apache.hyracks.cloud.io.request.ICloudBeforeRetryRequest;
+import org.apache.hyracks.cloud.io.request.ICloudRequest;
+import org.apache.hyracks.cloud.util.CloudRetryableRequestUtil;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 public class CloudResettableInputStream extends InputStream implements ICloudWriter {
     private static final Logger LOGGER = LogManager.getLogger();
     private final IWriteBufferProvider bufferProvider;
-    private ByteBuffer writeBuffer;
-
     private final ICloudBufferedWriter bufferedWriter;
+    private ByteBuffer writeBuffer;
+    private long writtenBytes;
 
     public CloudResettableInputStream(ICloudBufferedWriter bufferedWriter, IWriteBufferProvider bufferProvider) {
         this.bufferedWriter = bufferedWriter;
         this.bufferProvider = bufferProvider;
+        writtenBytes = 0;
     }
 
     /* ************************************************************
@@ -66,14 +71,9 @@ public class CloudResettableInputStream extends InputStream implements ICloudWri
      */
 
     @Override
-    public int write(ByteBuffer header, ByteBuffer page) throws HyracksDataException {
-        return write(header) + write(page);
-    }
-
-    @Override
     public int write(ByteBuffer page) throws HyracksDataException {
         open();
-        return write(page.array(), 0, page.limit());
+        return write(page.array(), page.position(), page.remaining());
     }
 
     @Override
@@ -82,6 +82,7 @@ public class CloudResettableInputStream extends InputStream implements ICloudWri
             uploadAndWait();
         }
         writeBuffer.put((byte) b);
+        writtenBytes += 1;
     }
 
     @Override
@@ -100,7 +101,7 @@ public class CloudResettableInputStream extends InputStream implements ICloudWri
             // enough to write all
             if (writeBuffer.remaining() > pageRemaining) {
                 writeBuffer.put(b, offset, pageRemaining);
-                return len;
+                break;
             }
 
             int remaining = writeBuffer.remaining();
@@ -110,7 +111,13 @@ public class CloudResettableInputStream extends InputStream implements ICloudWri
             uploadAndWait();
         }
 
+        writtenBytes += len;
         return len;
+    }
+
+    @Override
+    public long position() {
+        return writtenBytes;
     }
 
     @Override
@@ -140,7 +147,15 @@ public class CloudResettableInputStream extends InputStream implements ICloudWri
                  * OR
                  * (2) nothing was written to the file at all to ensure writing empty file
                  */
-                uploadAndWait();
+                writeBuffer.flip();
+                try {
+                    ICloudRequest request = () -> bufferedWriter.uploadLast(this, writeBuffer);
+                    ICloudBeforeRetryRequest retry = () -> writeBuffer.position(0);
+                    CloudRetryableRequestUtil.runWithNoRetryOnInterruption(request, retry);
+                } catch (Exception e) {
+                    LOGGER.error(e);
+                    throw HyracksDataException.create(ErrorCode.FAILED_IO_OPERATION, e);
+                }
             }
             bufferedWriter.finish();
         } finally {
@@ -163,6 +178,7 @@ public class CloudResettableInputStream extends InputStream implements ICloudWri
         if (writeBuffer == null) {
             writeBuffer = bufferProvider.getBuffer();
             writeBuffer.clear();
+            writtenBytes = 0;
         }
     }
 
@@ -170,17 +186,20 @@ public class CloudResettableInputStream extends InputStream implements ICloudWri
         try {
             close();
         } catch (IOException e) {
-            throw HyracksDataException.create(e);
+            throw HyracksDataException.create(ErrorCode.FAILED_IO_OPERATION, e);
         }
     }
 
     private void uploadAndWait() throws HyracksDataException {
         writeBuffer.flip();
         try {
-            bufferedWriter.upload(this, writeBuffer.limit());
+            ICloudRequest request = () -> bufferedWriter.upload(this, writeBuffer.limit());
+            ICloudBeforeRetryRequest retry = () -> writeBuffer.position(0);
+            // This will be interrupted and the interruption will be followed by a halt
+            CloudRetryableRequestUtil.runWithNoRetryOnInterruption(request, retry);
         } catch (Exception e) {
             LOGGER.error(e);
-            throw HyracksDataException.create(e);
+            throw HyracksDataException.create(ErrorCode.FAILED_IO_OPERATION, e);
         }
 
         writeBuffer.clear();

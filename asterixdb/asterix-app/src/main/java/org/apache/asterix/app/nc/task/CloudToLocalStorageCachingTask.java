@@ -29,6 +29,7 @@ import org.apache.asterix.transaction.management.resource.PersistentLocalResourc
 import org.apache.hyracks.api.control.CcId;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
 import org.apache.hyracks.api.service.IControllerService;
+import org.apache.hyracks.storage.common.disk.IDiskCacheMonitoringService;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -40,14 +41,12 @@ public class CloudToLocalStorageCachingTask implements INCLifecycleTask {
     private final Set<Integer> storagePartitions;
     private final boolean metadataNode;
     private final int metadataPartitionId;
-    private final boolean cleanup;
 
-    public CloudToLocalStorageCachingTask(Set<Integer> storagePartitions, boolean metadataNode, int metadataPartitionId,
-            boolean cleanup) {
+    public CloudToLocalStorageCachingTask(Set<Integer> storagePartitions, boolean metadataNode,
+            int metadataPartitionId) {
         this.storagePartitions = storagePartitions;
         this.metadataNode = metadataNode;
         this.metadataPartitionId = metadataPartitionId;
-        this.cleanup = cleanup;
     }
 
     @Override
@@ -55,16 +54,26 @@ public class CloudToLocalStorageCachingTask implements INCLifecycleTask {
         INcApplicationContext applicationContext = (INcApplicationContext) cs.getApplicationContext();
         PersistentLocalResourceRepository lrs =
                 (PersistentLocalResourceRepository) applicationContext.getLocalResourceRepository();
+        IDiskCacheMonitoringService diskService = applicationContext.getDiskCacheService();
 
-        String nodeId = applicationContext.getServiceContext().getNodeId();
-        LOGGER.info("Initializing Node {} with storage partitions: {}", nodeId, storagePartitions);
+        // Pause all disk caching activities
+        diskService.pause();
+        try {
+            String nodeId = applicationContext.getServiceContext().getNodeId();
+            LOGGER.info("Initializing Node {} with storage partitions: {}", nodeId, storagePartitions);
 
-        Checkpoint latestCheckpoint = applicationContext.getTransactionSubsystem().getCheckpointManager().getLatest();
-        IPartitionBootstrapper bootstrapper = applicationContext.getPartitionBootstrapper();
-        bootstrapper.bootstrap(storagePartitions, lrs.getOnDiskPartitions(), metadataNode, metadataPartitionId, cleanup,
-                latestCheckpoint == null);
-        // Report all local resources
-        applicationContext.getDiskCacheService().reportLocalResources(lrs.loadAndGetAllResources());
+            Checkpoint latestCheckpoint =
+                    applicationContext.getTransactionSubsystem().getCheckpointManager().getLatest();
+            IPartitionBootstrapper bootstrapper = applicationContext.getPartitionBootstrapper();
+            bootstrapper.bootstrap(storagePartitions, lrs.getOnDiskPartitions(), metadataNode, metadataPartitionId,
+                    latestCheckpoint == null);
+
+            // Report all local resources
+            diskService.reportLocalResources(lrs.loadAndGetAllResources());
+        } finally {
+            // Resume all disk caching activities
+            diskService.resume();
+        }
     }
 
     @Override

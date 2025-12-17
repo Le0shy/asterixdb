@@ -25,8 +25,11 @@ import org.apache.hyracks.util.annotations.ThreadSafe;
 @ThreadSafe
 public class ThreadStats implements IThreadStats {
 
-    private AtomicLong pinnedPagesCount = new AtomicLong();
-    private AtomicLong coldReadCount = new AtomicLong();
+    private final AtomicLong pinnedPagesCount = new AtomicLong();
+    private final AtomicLong coldReadCount = new AtomicLong();
+    private final AtomicLong cloudReadRequestCount = new AtomicLong();
+    private final AtomicLong cloudReadPageCount = new AtomicLong();
+    private final AtomicLong cloudPersistPageCount = new AtomicLong();
 
     @Override
     public void pagePinned() {
@@ -46,5 +49,35 @@ public class ThreadStats implements IThreadStats {
     @Override
     public void coldRead() {
         coldReadCount.incrementAndGet();
+    }
+
+    @Override
+    public void cloudReadRequest() {
+        cloudReadRequestCount.incrementAndGet();
+    }
+
+    @Override
+    public long getCloudReadRequestCount() {
+        return cloudReadRequestCount.get();
+    }
+
+    @Override
+    public void cloudPageRead() {
+        cloudReadPageCount.incrementAndGet();
+    }
+
+    @Override
+    public long getCloudPageReadCount() {
+        return cloudReadPageCount.get();
+    }
+
+    @Override
+    public void cloudPagePersist() {
+        cloudPersistPageCount.incrementAndGet();
+    }
+
+    @Override
+    public long getCloudPagePersistCount() {
+        return cloudPersistPageCount.get();
     }
 }

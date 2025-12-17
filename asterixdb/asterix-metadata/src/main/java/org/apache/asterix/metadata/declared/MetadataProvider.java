@@ -26,6 +26,7 @@ import static org.apache.asterix.metadata.entities.SchedulerConfigMetadataEntity
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -33,6 +34,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 import org.apache.asterix.common.api.INamespaceResolver;
@@ -89,7 +91,6 @@ import org.apache.asterix.om.functions.IFunctionManager;
 import org.apache.asterix.om.types.ARecordType;
 import org.apache.asterix.om.types.ATypeTag;
 import org.apache.asterix.om.types.IAType;
-import org.apache.asterix.om.utils.ConstantExpressionUtil;
 import org.apache.asterix.om.utils.NonTaggedFormatUtil;
 import org.apache.asterix.runtime.base.AsterixTupleFilterFactory;
 import org.apache.asterix.runtime.formats.FormatUtils;
@@ -99,9 +100,6 @@ import org.apache.asterix.runtime.operators.LSMPrimaryInsertOperatorDescriptor;
 import org.apache.asterix.runtime.operators.LSMSecondaryInsertDeleteWithNestedPlanOperatorDescriptor;
 import org.apache.asterix.runtime.operators.LSMSecondaryUpsertOperatorDescriptor;
 import org.apache.asterix.runtime.operators.LSMSecondaryUpsertWithNestedPlanOperatorDescriptor;
-import org.apache.asterix.runtime.writer.ExternalFileWriterFactory;
-import org.apache.asterix.runtime.writer.IExternalFileWriterFactory;
-import org.apache.asterix.runtime.writer.IExternalPrinterFactory;
 import org.apache.hyracks.algebricks.common.constraints.AlgebricksAbsolutePartitionConstraint;
 import org.apache.hyracks.algebricks.common.constraints.AlgebricksPartitionConstraint;
 import org.apache.hyracks.algebricks.common.exceptions.AlgebricksException;
@@ -122,6 +120,7 @@ import org.apache.hyracks.algebricks.core.algebra.metadata.IMetadataProvider;
 import org.apache.hyracks.algebricks.core.algebra.metadata.IProjectionFiltrationInfo;
 import org.apache.hyracks.algebricks.core.algebra.metadata.IWriteDataSink;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.IOperatorSchema;
+import org.apache.hyracks.algebricks.core.algebra.properties.DefaultNodeGroupDomain;
 import org.apache.hyracks.algebricks.core.algebra.properties.INodeDomain;
 import org.apache.hyracks.algebricks.core.jobgen.impl.JobGenContext;
 import org.apache.hyracks.algebricks.core.jobgen.impl.JobGenHelper;
@@ -132,7 +131,6 @@ import org.apache.hyracks.algebricks.data.ISerializerDeserializerProvider;
 import org.apache.hyracks.algebricks.runtime.base.AlgebricksPipeline;
 import org.apache.hyracks.algebricks.runtime.base.IPushRuntimeFactory;
 import org.apache.hyracks.algebricks.runtime.base.IScalarEvaluatorFactory;
-import org.apache.hyracks.algebricks.runtime.operators.writer.SinkExternalWriterRuntimeFactory;
 import org.apache.hyracks.api.dataflow.IOperatorDescriptor;
 import org.apache.hyracks.api.dataflow.value.IBinaryComparatorFactory;
 import org.apache.hyracks.api.dataflow.value.IBinaryHashFunctionFactory;
@@ -146,7 +144,6 @@ import org.apache.hyracks.api.dataflow.value.RecordDescriptor;
 import org.apache.hyracks.api.exceptions.IWarningCollector;
 import org.apache.hyracks.api.exceptions.SourceLocation;
 import org.apache.hyracks.api.io.FileSplit;
-import org.apache.hyracks.api.job.IOperatorDescriptorRegistry;
 import org.apache.hyracks.api.job.JobSpecification;
 import org.apache.hyracks.api.result.IResultMetadata;
 import org.apache.hyracks.api.result.ResultSetId;
@@ -154,6 +151,7 @@ import org.apache.hyracks.data.std.primitive.ShortPointable;
 import org.apache.hyracks.dataflow.common.data.marshalling.ShortSerializerDeserializer;
 import org.apache.hyracks.dataflow.common.data.partition.FieldHashPartitionerFactory;
 import org.apache.hyracks.dataflow.std.result.ResultWriterOperatorDescriptor;
+import org.apache.hyracks.storage.am.btree.dataflow.BTreePartitionSearchOperatorDescriptor;
 import org.apache.hyracks.storage.am.btree.dataflow.BTreeSearchOperatorDescriptor;
 import org.apache.hyracks.storage.am.common.api.IModificationOperationCallbackFactory;
 import org.apache.hyracks.storage.am.common.api.ISearchOperationCallbackFactory;
@@ -596,6 +594,15 @@ public class MetadataProvider implements IMetadataProvider<DataSourceId, String>
         return new Triple<>(feedIngestor, partitionConstraint, adapterFactory);
     }
 
+    public Pair<IOperatorDescriptor, AlgebricksPartitionConstraint> getBtreePartitionSearchRuntime(
+            JobSpecification jobSpec, IOperatorSchema opSchema, IVariableTypeEnvironment typeEnv, JobGenContext context,
+            Dataset dataset, ITupleFilterFactory tupleFilterFactory, ITupleProjectorFactory tupleProjectorFactory,
+            long outputLimit, int partitionNum) throws AlgebricksException {
+        return getBtreeSearchRuntime(jobSpec, opSchema, typeEnv, context, true, false, null, dataset,
+                dataset.getDatasetName(), null, null, true, true, false, null, null, null, tupleFilterFactory,
+                outputLimit, false, false, tupleProjectorFactory, false, partitionNum);
+    }
+
     public Pair<IOperatorDescriptor, AlgebricksPartitionConstraint> getBtreeSearchRuntime(JobSpecification jobSpec,
             IOperatorSchema opSchema, IVariableTypeEnvironment typeEnv, JobGenContext context, boolean retainInput,
             boolean retainMissing, IMissingWriterFactory nonMatchWriterFactory, Dataset dataset, String indexName,
@@ -604,6 +611,21 @@ public class MetadataProvider implements IMetadataProvider<DataSourceId, String>
             int[] maxFilterFieldIndexes, ITupleFilterFactory tupleFilterFactory, long outputLimit,
             boolean isIndexOnlyPlan, boolean isPrimaryIndexPointSearch, ITupleProjectorFactory tupleProjectorFactory,
             boolean partitionInputTuples) throws AlgebricksException {
+        return getBtreeSearchRuntime(jobSpec, opSchema, typeEnv, context, retainInput, retainMissing,
+                nonMatchWriterFactory, dataset, indexName, lowKeyFields, highKeyFields, lowKeyInclusive,
+                highKeyInclusive, propagateFilter, nonFilterWriterFactory, minFilterFieldIndexes, maxFilterFieldIndexes,
+                tupleFilterFactory, outputLimit, isIndexOnlyPlan, isPrimaryIndexPointSearch, tupleProjectorFactory,
+                partitionInputTuples, -1);
+    }
+
+    private Pair<IOperatorDescriptor, AlgebricksPartitionConstraint> getBtreeSearchRuntime(JobSpecification jobSpec,
+            IOperatorSchema opSchema, IVariableTypeEnvironment typeEnv, JobGenContext context, boolean retainInput,
+            boolean retainMissing, IMissingWriterFactory nonMatchWriterFactory, Dataset dataset, String indexName,
+            int[] lowKeyFields, int[] highKeyFields, boolean lowKeyInclusive, boolean highKeyInclusive,
+            boolean propagateFilter, IMissingWriterFactory nonFilterWriterFactory, int[] minFilterFieldIndexes,
+            int[] maxFilterFieldIndexes, ITupleFilterFactory tupleFilterFactory, long outputLimit,
+            boolean isIndexOnlyPlan, boolean isPrimaryIndexPointSearch, ITupleProjectorFactory tupleProjectorFactory,
+            boolean partitionInputTuples, int targetPartition) throws AlgebricksException {
         boolean isSecondary = true;
         Index primaryIndex = MetadataManager.INSTANCE.getIndex(mdTxnCtx, dataset.getDatabaseName(),
                 dataset.getDataverseName(), dataset.getDatasetName(), dataset.getDatasetName());
@@ -678,12 +700,19 @@ public class MetadataProvider implements IMetadataProvider<DataSourceId, String>
                             retainMissing, nonMatchWriterFactory, searchCallbackFactory, minFilterFieldIndexes,
                             maxFilterFieldIndexes, tupleFilterFactory, outputLimit, tupleProjectorFactory,
                             tuplePartitionerFactory, partitionsMap)
-                    : new BTreeSearchOperatorDescriptor(jobSpec, outputRecDesc, lowKeyFields, highKeyFields,
-                            lowKeyInclusive, highKeyInclusive, indexHelperFactory, retainInput, retainMissing,
-                            nonMatchWriterFactory, searchCallbackFactory, minFilterFieldIndexes, maxFilterFieldIndexes,
-                            propagateFilter, nonFilterWriterFactory, tupleFilterFactory, outputLimit,
-                            proceedIndexOnlyPlan, failValueForIndexOnlyPlan, successValueForIndexOnlyPlan,
-                            tupleProjectorFactory, tuplePartitionerFactory, partitionsMap);
+                    : targetPartition < 0 ? new BTreeSearchOperatorDescriptor(jobSpec, outputRecDesc, lowKeyFields,
+                            highKeyFields, lowKeyInclusive, highKeyInclusive, indexHelperFactory, retainInput,
+                            retainMissing, nonMatchWriterFactory, searchCallbackFactory, minFilterFieldIndexes,
+                            maxFilterFieldIndexes, propagateFilter, nonFilterWriterFactory, tupleFilterFactory,
+                            outputLimit, proceedIndexOnlyPlan, failValueForIndexOnlyPlan, successValueForIndexOnlyPlan,
+                            tupleProjectorFactory, tuplePartitionerFactory, partitionsMap)
+                            : new BTreePartitionSearchOperatorDescriptor(jobSpec, outputRecDesc, lowKeyFields,
+                                    highKeyFields, lowKeyInclusive, highKeyInclusive, indexHelperFactory, retainInput,
+                                    retainMissing, nonMatchWriterFactory, searchCallbackFactory, minFilterFieldIndexes,
+                                    maxFilterFieldIndexes, propagateFilter, nonFilterWriterFactory, tupleFilterFactory,
+                                    outputLimit, proceedIndexOnlyPlan, failValueForIndexOnlyPlan,
+                                    successValueForIndexOnlyPlan, tupleProjectorFactory, tuplePartitionerFactory,
+                                    partitionsMap, targetPartition);
         } else {
             btreeSearchOp = null;
         }
@@ -761,24 +790,16 @@ public class MetadataProvider implements IMetadataProvider<DataSourceId, String>
             IScalarEvaluatorFactory dynamicPathEvalFactory, ILogicalExpression staticPathExpr,
             SourceLocation pathSourceLocation, IWriteDataSink sink, RecordDescriptor inputDesc, Object sourceType)
             throws AlgebricksException {
-        String staticPath = staticPathExpr != null ? ConstantExpressionUtil.getStringConstant(staticPathExpr) : null;
-        IExternalFileWriterFactory fileWriterFactory =
-                ExternalWriterProvider.createWriterFactory(appCtx, sink, staticPath, pathSourceLocation);
-        fileWriterFactory.validate();
-        String fileExtension = ExternalWriterProvider.getFileExtension(sink);
-        int maxResult = ExternalWriterProvider.getMaxResult(sink);
-        IExternalPrinterFactory printerFactory = ExternalWriterProvider.createPrinter(appCtx, sink, sourceType);
-        ExternalFileWriterFactory writerFactory = new ExternalFileWriterFactory(fileWriterFactory, printerFactory,
-                fileExtension, maxResult, dynamicPathEvalFactory, staticPath, pathSourceLocation);
-        SinkExternalWriterRuntimeFactory runtime = new SinkExternalWriterRuntimeFactory(sourceColumn, partitionColumns,
-                partitionComparatorFactories, inputDesc, writerFactory);
+        IPushRuntimeFactory runtime = ExternalWriterProvider.getWriteFileRuntime(appCtx, sink, sourceType,
+                staticPathExpr, pathSourceLocation, dynamicPathEvalFactory, inputDesc, sourceColumn, partitionColumns,
+                partitionComparatorFactories);
         return new Pair<>(runtime, null);
     }
 
     @Override
     public Pair<IPushRuntimeFactory, AlgebricksPartitionConstraint> getWriteDatabaseWithKeyRuntime(int sourceColumn,
             IScalarEvaluatorFactory[] keyEvaluatorFactories, IWriteDataSink sink, RecordDescriptor inputDesc,
-            Object sourceType) throws AlgebricksException {
+            Object sourceType, IWarningCollector warningCollector) throws AlgebricksException {
         throw new UnsupportedOperationException();
     }
 
@@ -974,14 +995,25 @@ public class MetadataProvider implements IMetadataProvider<DataSourceId, String>
             Map<String, String> configuration, ARecordType itemType, IWarningCollector warningCollector,
             IExternalFilterEvaluatorFactory filterEvaluatorFactory) throws AlgebricksException {
         try {
+            configuration.put(ExternalDataConstants.KEY_DATASET, dataset.getDatasetName());
             configuration.put(ExternalDataConstants.KEY_DATASET_DATABASE, dataset.getDatabaseName());
             configuration.put(ExternalDataConstants.KEY_DATASET_DATAVERSE,
                     dataset.getDataverseName().getCanonicalForm());
+            setExternalEntityId(configuration);
+            setSourceType(configuration, adapterName);
             return AdapterFactoryProvider.getAdapterFactory(getApplicationContext().getServiceContext(), adapterName,
                     configuration, itemType, null, warningCollector, filterEvaluatorFactory);
         } catch (Exception e) {
             throw new AlgebricksException("Unable to create adapter", e);
         }
+    }
+
+    protected void setSourceType(Map<String, String> configuration, String adapterName) {
+        configuration.putIfAbsent(ExternalDataConstants.KEY_EXTERNAL_SOURCE_TYPE, adapterName);
+    }
+
+    public void setExternalEntityId(Map<String, String> configuration) throws AlgebricksException {
+        configuration.put(ExternalDataConstants.KEY_ENTITY_ID, UUID.randomUUID().toString());
     }
 
     public TxnId getTxnId() {
@@ -1023,8 +1055,7 @@ public class MetadataProvider implements IMetadataProvider<DataSourceId, String>
     }
 
     public AlgebricksAbsolutePartitionConstraint getClusterLocations() {
-        //TODO(partitioning): should this be removed and getSortedClusterLocations() is used instead?
-        return appCtx.getClusterStateManager().getClusterLocations();
+        return dataPartitioningProvider.getClusterLocations();
     }
 
     public DataPartitioningProvider getDataPartitioningProvider() {
@@ -1137,28 +1168,28 @@ public class MetadataProvider implements IMetadataProvider<DataSourceId, String>
                     BulkLoadUsage.LOAD, dataset.getDatasetId(), null, partitionerFactory,
                     partitioningProperties.getComputeStorageMap());
         } else {
-            if (indexOp == IndexOperation.INSERT) {
-                ISearchOperationCallbackFactory searchCallbackFactory = dataset
-                        .getSearchCallbackFactory(storageComponentProvider, primaryIndex, indexOp, primaryKeyFields);
+            ISearchOperationCallbackFactory searchCallbackFactory =
+                    dataset.getSearchCallbackFactory(storageComponentProvider, primaryIndex, indexOp, primaryKeyFields);
 
-                Optional<Index> primaryKeyIndex = MetadataManager.INSTANCE.getDatasetIndexes(mdTxnCtx,
-                        dataset.getDatabaseName(), dataset.getDataverseName(), dataset.getDatasetName()).stream()
-                        .filter(Index::isPrimaryKeyIndex).findFirst();
-                IIndexDataflowHelperFactory pkidfh = null;
-                if (primaryKeyIndex.isPresent()) {
-                    PartitioningProperties idxPartitioningProperties =
-                            getPartitioningProperties(dataset, primaryKeyIndex.get().getIndexName());
-                    pkidfh = new IndexDataflowHelperFactory(storageComponentProvider.getStorageManager(),
-                            idxPartitioningProperties.getSplitsProvider());
-                }
+            Optional<Index> primaryKeyIndex = MetadataManager.INSTANCE.getDatasetIndexes(mdTxnCtx,
+                    dataset.getDatabaseName(), dataset.getDataverseName(), dataset.getDatasetName()).stream()
+                    .filter(Index::isPrimaryKeyIndex).findFirst();
+            IIndexDataflowHelperFactory pkidfh = null;
+            if (primaryKeyIndex.isPresent()) {
+                PartitioningProperties idxPartitioningProperties =
+                        getPartitioningProperties(dataset, primaryKeyIndex.get().getIndexName());
+                pkidfh = new IndexDataflowHelperFactory(storageComponentProvider.getStorageManager(),
+                        idxPartitioningProperties.getSplitsProvider());
+            }
+            if (indexOp == IndexOperation.INSERT) {
                 op = createLSMPrimaryInsertOperatorDescriptor(spec, inputRecordDesc, fieldPermutation, idfh, pkidfh,
                         modificationCallbackFactory, searchCallbackFactory, numKeys, filterFields, partitionerFactory,
-                        partitioningProperties.getComputeStorageMap());
+                        partitioningProperties.getComputeStorageMap(), IndexOperation.UPSERT);
 
             } else {
-                op = createLSMTreeInsertDeleteOperatorDescriptor(spec, inputRecordDesc, fieldPermutation, indexOp, idfh,
-                        null, true, modificationCallbackFactory, partitionerFactory,
-                        partitioningProperties.getComputeStorageMap());
+                op = createLSMPrimaryInsertOperatorDescriptor(spec, inputRecordDesc, fieldPermutation, idfh, pkidfh,
+                        modificationCallbackFactory, searchCallbackFactory, numKeys, filterFields, partitionerFactory,
+                        partitioningProperties.getComputeStorageMap(), IndexOperation.DELETE);
             }
         }
         return new Pair<>(op, partitioningProperties.getConstraints());
@@ -1168,20 +1199,11 @@ public class MetadataProvider implements IMetadataProvider<DataSourceId, String>
             RecordDescriptor inputRecordDesc, int[] fieldPermutation, IIndexDataflowHelperFactory idfh,
             IIndexDataflowHelperFactory pkidfh, IModificationOperationCallbackFactory modificationCallbackFactory,
             ISearchOperationCallbackFactory searchCallbackFactory, int numKeys, int[] filterFields,
-            ITuplePartitionerFactory tuplePartitionerFactory, int[][] partitionsMap) {
+            ITuplePartitionerFactory tuplePartitionerFactory, int[][] partitionsMap, IndexOperation op) {
         // this can be used by extensions to pick up their own operators
         return new LSMPrimaryInsertOperatorDescriptor(spec, inputRecordDesc, fieldPermutation, idfh, pkidfh,
                 modificationCallbackFactory, searchCallbackFactory, numKeys, filterFields, tuplePartitionerFactory,
-                partitionsMap);
-    }
-
-    protected LSMTreeInsertDeleteOperatorDescriptor createLSMTreeInsertDeleteOperatorDescriptor(
-            IOperatorDescriptorRegistry spec, RecordDescriptor outRecDesc, int[] fieldPermutation, IndexOperation op,
-            IIndexDataflowHelperFactory indexHelperFactory, ITupleFilterFactory tupleFilterFactory, boolean isPrimary,
-            IModificationOperationCallbackFactory modCallbackFactory, ITuplePartitionerFactory tuplePartitionerFactory,
-            int[][] partitionsMap) {
-        return new LSMTreeInsertDeleteOperatorDescriptor(spec, outRecDesc, fieldPermutation, op, indexHelperFactory,
-                tupleFilterFactory, isPrimary, modCallbackFactory, tuplePartitionerFactory, partitionsMap);
+                partitionsMap, op);
     }
 
     private Pair<IOperatorDescriptor, AlgebricksPartitionConstraint> getIndexModificationRuntime(IndexOperation indexOp,
@@ -1852,6 +1874,20 @@ public class MetadataProvider implements IMetadataProvider<DataSourceId, String>
         return new AsterixTupleFilterFactory(filterEvalFactory, context.getBinaryBooleanInspectorFactory());
     }
 
+    @Override
+    public int[][] getPartitionsMap(INodeDomain nodeDomain) {
+        if (!(nodeDomain instanceof DefaultNodeGroupDomain inputDomain)) {
+            return null;
+        }
+        String[] inputLocations = inputDomain.getSortedNodes();
+        AlgebricksAbsolutePartitionConstraint locations = dataPartitioningProvider.getClusterLocations();
+        String[] clusterLocations = locations.getLocations();
+        if (!Arrays.equals(inputLocations, clusterLocations)) {
+            return null;
+        }
+        return dataPartitioningProvider.getPartitionsMap();
+    }
+
     private void validateRecordType(IAType itemType) throws AlgebricksException {
         if (itemType.getTypeTag() != ATypeTag.OBJECT) {
             throw new AlgebricksException("Only record types can be indexed.");
@@ -1995,5 +2031,9 @@ public class MetadataProvider implements IMetadataProvider<DataSourceId, String>
             }
             off += Character.charCount(codePointChar);
         }
+    }
+
+    public List<Dataset> getAllDatasets() throws AlgebricksException {
+        return MetadataManager.INSTANCE.getAllDatasets(mdTxnCtx);
     }
 }

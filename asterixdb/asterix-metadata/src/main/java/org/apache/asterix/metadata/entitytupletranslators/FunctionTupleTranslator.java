@@ -61,6 +61,7 @@ import org.apache.asterix.metadata.MetadataNode;
 import org.apache.asterix.metadata.bootstrap.FunctionEntity;
 import org.apache.asterix.metadata.bootstrap.MetadataRecordTypes;
 import org.apache.asterix.metadata.entities.Function;
+import org.apache.asterix.metadata.utils.Creator;
 import org.apache.asterix.om.base.ABoolean;
 import org.apache.asterix.om.base.ANull;
 import org.apache.asterix.om.base.AOrderedList;
@@ -203,10 +204,16 @@ public class FunctionTupleTranslator extends AbstractDatatypeTupleTranslator<Fun
         }
 
         FunctionSignature signature = new FunctionSignature(databaseName, dataverseName, functionName, arity);
+        Creator creator = Creator.createOrDefault(functionRecord);
 
+        int isTransformIndex = functionRecord.getType().getFieldIndex(MetadataRecordTypes.FIELD_NAME_IS_TRANSFORM);
+        boolean transform = false;
+        if (isTransformIndex >= 0) {
+            transform = ((ABoolean) functionRecord.getValueByPos(isTransformIndex)).getBoolean();
+        }
         return new Function(signature, paramNames, paramTypes, returnType, definition, functionKind, language,
                 libraryDatabaseName, libraryDataverseName, libraryName, externalIdentifier, nullCall, deterministic,
-                resources, dependencies);
+                resources, dependencies, creator, transform);
     }
 
     private List<TypeSignature> getParamTypes(ARecord functionRecord, String functionDatabaseName,
@@ -432,6 +439,8 @@ public class FunctionTupleTranslator extends AbstractDatatypeTupleTranslator<Fun
         writeLibrary(function);
         writeNullCall(function);
         writeDeterministic(function);
+        writeFunctionCreator(function);
+        writeIsTransform(function);
     }
 
     protected void writeResources(Function function) throws HyracksDataException {
@@ -686,6 +695,48 @@ public class FunctionTupleTranslator extends AbstractDatatypeTupleTranslator<Fun
 
             default:
                 throw new AsterixException(ErrorCode.METADATA_ERROR, language);
+        }
+    }
+
+    private void writeFunctionCreator(Function function) throws HyracksDataException {
+        if (functionEntity.databaseNameIndex() >= 0) {
+            Creator creatorInfo = function.getCreator();
+            RecordBuilder creatorObject = new RecordBuilder();
+            creatorObject.reset(DefaultOpenFieldType.NESTED_OPEN_RECORD_TYPE);
+
+            fieldName.reset();
+            aString.setValue(MetadataRecordTypes.FIELD_NAME_CREATOR_NAME);
+            stringSerde.serialize(aString, fieldName.getDataOutput());
+            fieldValue.reset();
+            aString.setValue(creatorInfo.getName());
+            stringSerde.serialize(aString, fieldValue.getDataOutput());
+            creatorObject.addField(fieldName, fieldValue);
+
+            fieldName.reset();
+            aString.setValue(MetadataRecordTypes.FIELD_NAME_CREATOR_UUID);
+            stringSerde.serialize(aString, fieldName.getDataOutput());
+            fieldValue.reset();
+            aString.setValue(creatorInfo.getUuid());
+            stringSerde.serialize(aString, fieldValue.getDataOutput());
+            creatorObject.addField(fieldName, fieldValue);
+
+            fieldName.reset();
+            aString.setValue(MetadataRecordTypes.CREATOR_ARECORD_FIELD_NAME);
+            stringSerde.serialize(aString, fieldName.getDataOutput());
+            fieldValue.reset();
+            creatorObject.write(fieldValue.getDataOutput(), true);
+            recordBuilder.addField(fieldName, fieldValue);
+        }
+    }
+
+    private void writeIsTransform(Function function) throws HyracksDataException {
+        if (function.isTransform()) {
+            fieldName.reset();
+            aString.setValue(MetadataRecordTypes.FIELD_NAME_IS_TRANSFORM);
+            stringSerde.serialize(aString, fieldName.getDataOutput());
+            fieldValue.reset();
+            booleanSerde.serialize(ABoolean.TRUE, fieldValue.getDataOutput());
+            recordBuilder.addField(fieldName, fieldValue);
         }
     }
 }

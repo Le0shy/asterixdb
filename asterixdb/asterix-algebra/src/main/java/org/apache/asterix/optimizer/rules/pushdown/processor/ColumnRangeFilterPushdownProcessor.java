@@ -83,7 +83,7 @@ public class ColumnRangeFilterPushdownProcessor extends ColumnFilterPushdownProc
     }
 
     @Override
-    protected boolean handleCompare(AbstractFunctionCallExpression expression) throws AlgebricksException {
+    protected boolean handleCompare(AbstractFunctionCallExpression expression, int depth) throws AlgebricksException {
         List<Mutable<ILogicalExpression>> args = expression.getArguments();
 
         Mutable<ILogicalExpression> leftRef = args.get(0);
@@ -102,16 +102,19 @@ public class ColumnRangeFilterPushdownProcessor extends ColumnFilterPushdownProc
     }
 
     @Override
-    protected boolean handlePath(AbstractFunctionCallExpression expression) throws AlgebricksException {
+    protected boolean handlePath(AbstractFunctionCallExpression expression, IExpectedSchemaNode node)
+            throws AlgebricksException {
         // This means we got something like WHERE $r.getField("isVerified") -- where isVerified is a boolean field.
-        AnyExpectedSchemaNode node = getNode(expression);
+        if (node.getType() != ExpectedSchemaNodeType.ANY) {
+            return false;
+        }
         IAObject constantValue = ABoolean.TRUE;
         String functionName = expression.getFunctionIdentifier().getName();
         SourceLocation sourceLocation = expression.getSourceLocation();
         FunctionCallInformation functionCallInfo = new FunctionCallInformation(functionName, sourceLocation,
                 ProjectionFiltrationWarningFactoryProvider.getIncomparableTypesFactory(false));
-        ARecordType path =
-                pathBuilderVisitor.buildPath(node, constantValue.getType(), sourceInformationMap, functionCallInfo);
+        ARecordType path = pathBuilderVisitor.buildPath((AnyExpectedSchemaNode) node, constantValue.getType(),
+                sourceInformationMap, functionCallInfo);
         paths.put(expression, path);
         return true;
     }

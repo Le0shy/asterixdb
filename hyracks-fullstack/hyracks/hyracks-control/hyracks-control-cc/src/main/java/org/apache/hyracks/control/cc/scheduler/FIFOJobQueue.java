@@ -50,6 +50,7 @@ import org.apache.logging.log4j.Logger;
 public class FIFOJobQueue implements IJobQueue {
 
     private static final Logger LOGGER = LogManager.getLogger();
+
     private final Map<JobId, JobRun> jobListMap = new LinkedHashMap<>();
     private final IJobManager jobManager;
     private final IJobCapacityController jobCapacityController;
@@ -81,7 +82,7 @@ public class FIFOJobQueue implements IJobQueue {
     }
 
     @Override
-    public List<JobRun> pull() {
+    public synchronized List<JobRun> pull() {
         List<JobRun> jobRuns = new ArrayList<>();
         Iterator<JobRun> runIterator = jobListMap.values().iterator();
         List<Pair<JobRun, List<Exception>>> failingJobs = null;
@@ -102,8 +103,8 @@ public class FIFOJobQueue implements IJobQueue {
                 if (failingJobs == null) {
                     failingJobs = new ArrayList<>();
                 }
-                // The required capacity exceeds maximum capacity.
-                List<Exception> exceptions = new ArrayList<>();
+                // The required capacity exceeds maximum capacity or the job cannot be run at this time.
+                List<Exception> exceptions = new ArrayList<>(1);
                 exceptions.add(exception);
                 failingJobs.add(Pair.of(run, exceptions));
                 runIterator.remove(); // Removes the job from the queue.
@@ -136,6 +137,7 @@ public class FIFOJobQueue implements IJobQueue {
     public int size() {
         return jobListMap.size();
     }
+
 
     @Override
     public void notifyJobFinished(JobRun run) {

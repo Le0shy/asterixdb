@@ -22,16 +22,27 @@ import java.io.PrintStream;
 
 import org.apache.hyracks.algebricks.data.IPrinter;
 import org.apache.hyracks.algebricks.data.IPrinterFactory;
+import org.apache.hyracks.api.context.IEvaluatorContext;
 
 public class ANullPrinterFactory implements IPrinterFactory {
-
     private static final long serialVersionUID = 1L;
-    public static final ANullPrinterFactory INSTANCE = new ANullPrinterFactory();
+    private static final String DEFAULT_NULL_STRING = "";
+    private final String nullString;
 
-    public static final IPrinter PRINTER = (byte[] b, int s, int l, PrintStream ps) -> ps.print("null");
+    private ANullPrinterFactory(String nullString) {
+        this.nullString = nullString != null ? nullString : DEFAULT_NULL_STRING;
+    }
+
+    public static ANullPrinterFactory createInstance(String nullString) {
+        return new ANullPrinterFactory(nullString);
+    }
 
     @Override
-    public IPrinter createPrinter() {
-        return PRINTER;
+    public IPrinter createPrinter(IEvaluatorContext context) {
+        return this::printNull;
+    }
+
+    private void printNull(byte[] b, int s, int l, PrintStream ps) {
+        CSVUtils.printNull(ps, nullString);
     }
 }

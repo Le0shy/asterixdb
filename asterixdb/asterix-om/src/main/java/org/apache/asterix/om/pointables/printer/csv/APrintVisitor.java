@@ -20,22 +20,41 @@
 package org.apache.asterix.om.pointables.printer.csv;
 
 import java.io.PrintStream;
+import java.util.Map;
 
 import org.apache.asterix.dataflow.data.nontagged.printers.csv.AObjectPrinterFactory;
+import org.apache.asterix.dataflow.data.nontagged.printers.csv.CSVUtils;
 import org.apache.asterix.om.pointables.AListVisitablePointable;
 import org.apache.asterix.om.pointables.ARecordVisitablePointable;
 import org.apache.asterix.om.pointables.printer.AListPrinter;
 import org.apache.asterix.om.pointables.printer.ARecordPrinter;
 import org.apache.asterix.om.pointables.printer.AbstractPrintVisitor;
+import org.apache.asterix.om.types.ARecordType;
 import org.apache.asterix.om.types.ATypeTag;
+import org.apache.hyracks.api.context.IEvaluatorContext;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
 
 /**
- * This class is a IVisitablePointableVisitor implementation which recursively
- * visit a given record, list or flat value of a given type, and print it to a
+ * This class is an IVisitablePointableVisitor implementation which recursively
+ * visits a given record, list or flat value of a given type, and prints it to a
  * PrintStream in CSV format.
  */
 public class APrintVisitor extends AbstractPrintVisitor {
+    private final IEvaluatorContext context;
+    private final ARecordType itemType;
+    private final Map<String, String> formatConfigs;
+    private final Map<String, String> configuration;
+    private AObjectPrinterFactory objectPrinterFactory;
+
+    public APrintVisitor(IEvaluatorContext context, ARecordType itemType, Map<String, String> formatConfigs,
+            Map<String, String> configuration) {
+        super();
+        this.context = context;
+        this.itemType = itemType;
+        this.formatConfigs = formatConfigs;
+        this.configuration = configuration;
+    }
+
     @Override
     protected AListPrinter createListPrinter(AListVisitablePointable accessor) throws HyracksDataException {
         throw new HyracksDataException("'List' type unsupported for CSV output");
@@ -43,12 +62,18 @@ public class APrintVisitor extends AbstractPrintVisitor {
 
     @Override
     protected ARecordPrinter createRecordPrinter(ARecordVisitablePointable accessor) {
-        return new ARecordPrinter("", "", ",", null);
+        boolean header = CSVUtils.getHeader(configuration);
+        String fieldSeparator = CSVUtils.getDelimiter(configuration);
+        String recordDelimiter = CSVUtils.getRecordDelimiter(configuration, itemType != null);
+        return new ACSVRecordPrinter(context.getWarningCollector(), header, fieldSeparator, recordDelimiter, itemType);
     }
 
     @Override
     protected boolean printFlatValue(ATypeTag typeTag, byte[] b, int s, int l, PrintStream ps)
             throws HyracksDataException {
-        return AObjectPrinterFactory.printFlatValue(typeTag, b, s, l, ps);
+        if (objectPrinterFactory == null) {
+            objectPrinterFactory = AObjectPrinterFactory.createInstance(itemType, formatConfigs, configuration);
+        }
+        return objectPrinterFactory.printFlatValue(typeTag, b, s, l, ps);
     }
 }

@@ -32,9 +32,9 @@ import org.apache.asterix.om.types.ATypeTag;
 import org.apache.asterix.om.types.AbstractCollectionType;
 import org.apache.asterix.om.types.IAType;
 import org.apache.asterix.runtime.evaluators.common.ListAccessor;
-import org.apache.hyracks.algebricks.runtime.base.IEvaluatorContext;
 import org.apache.hyracks.algebricks.runtime.base.IScalarEvaluator;
 import org.apache.hyracks.algebricks.runtime.base.IScalarEvaluatorFactory;
+import org.apache.hyracks.api.context.IEvaluatorContext;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
 import org.apache.hyracks.data.std.api.IPointable;
 import org.apache.hyracks.data.std.primitive.VoidPointable;
@@ -52,7 +52,7 @@ public abstract class AbstractArrayAddRemoveEval implements IScalarEvaluator {
     private final IPointable[] valuesArgs;
     private final IScalarEvaluator listArgEval;
     private final IScalarEvaluator[] valuesEval;
-    private final CastTypeEvaluator caster;
+    private final TypeCaster caster;
     private final ListAccessor listAccessor;
     private final int listOffset;
     private final int valuesOffset;
@@ -71,7 +71,7 @@ public abstract class AbstractArrayAddRemoveEval implements IScalarEvaluator {
         orderedListBuilder = null;
         unorderedListBuilder = null;
         listAccessor = new ListAccessor();
-        caster = new CastTypeEvaluator();
+        caster = new TypeCaster(null);
         storage = new ArrayBackedValueStorage();
         listArg = new VoidPointable();
         tempList = new VoidPointable();
@@ -130,8 +130,10 @@ public abstract class AbstractArrayAddRemoveEval implements IScalarEvaluator {
                 // cast val to open if needed. don't cast if function will return null anyway, e.g. list arg not list
                 defaultOpenType = DefaultOpenFieldType.getDefaultOpenFieldType(argTypes[i + valuesOffset].getTypeTag());
                 if (defaultOpenType != null && !returnNull && makeOpen) {
-                    caster.resetAndAllocate(defaultOpenType, argTypes[i + valuesOffset], valuesEval[i]);
-                    caster.evaluate(tuple, valuesArgs[i]);
+                    valuesEval[i].evaluate(tuple, tempItem);
+                    if (!PointableHelper.checkAndSetMissingOrNull(valuesArgs[i], tempItem)) {
+                        caster.allocateAndCast(tempItem, argTypes[i + valuesOffset], valuesArgs[i], defaultOpenType);
+                    }
                 } else {
                     valuesEval[i].evaluate(tuple, valuesArgs[i]);
                 }
@@ -162,8 +164,7 @@ public abstract class AbstractArrayAddRemoveEval implements IScalarEvaluator {
                 if (makeOpen || argTypes[listOffset].getTypeTag() != ATypeTag.ARRAY) {
                     listType = DefaultOpenFieldType.NESTED_OPEN_AORDERED_LIST_TYPE;
                     // TODO(ali): maybe casting isn't needed if compile-time type=ANY if guaranteed input list is open
-                    caster.resetAndAllocate(listType, argTypes[listOffset], listArgEval);
-                    caster.cast(tempList, listArg);
+                    caster.allocateAndCast(tempList, argTypes[listOffset], listArg, listType);
                 } else {
                     listType = (AbstractCollectionType) argTypes[listOffset];
                     listArg.set(tempList);
@@ -175,8 +176,7 @@ public abstract class AbstractArrayAddRemoveEval implements IScalarEvaluator {
                 listBuilder = unorderedListBuilder;
                 if (makeOpen || argTypes[listOffset].getTypeTag() != ATypeTag.MULTISET) {
                     listType = DefaultOpenFieldType.NESTED_OPEN_AUNORDERED_LIST_TYPE;
-                    caster.resetAndAllocate(listType, argTypes[listOffset], listArgEval);
-                    caster.cast(tempList, listArg);
+                    caster.allocateAndCast(tempList, argTypes[listOffset], listArg, listType);
                 } else {
                     listType = (AbstractCollectionType) argTypes[listOffset];
                     listArg.set(tempList);

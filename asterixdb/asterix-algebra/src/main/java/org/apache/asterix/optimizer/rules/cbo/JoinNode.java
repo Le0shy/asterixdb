@@ -19,6 +19,8 @@
 
 package org.apache.asterix.optimizer.rules.cbo;
 
+import java.text.DecimalFormat;
+import java.text.NumberFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -92,6 +94,7 @@ public class JoinNode {
     protected double origCardinality; // without any selections
     protected double cardinality;
     protected double size; // avg size of whole document; available from the sample
+    protected double unnestFactor;
     protected double diskProjectionSize; // what is coming out of the disk; in case of row format, it is the entire document
                                          // in case of columnar we need to add sizes of individual fields.
     protected double projectionSizeAfterScan; // excludes fields only used for selections
@@ -115,6 +118,9 @@ public class JoinNode {
     private double sizeVarsFromDisk = -1.0;
     private double sizeVarsAfterScan = -1.0;
     private boolean columnar = true; // default
+    private boolean fake = false; // default; Fake will be set to true when we introduce fake leafInputs for unnesting arrays.
+    private int leafInputNumber = -1; // this field and the next are used for Array Unnest ops.
+    private int arrayRef = -1;
 
     private JoinNode(int i) {
         this.jnArrayIndex = i;
@@ -166,6 +172,10 @@ public class JoinNode {
 
     public double getAvgDocSize() {
         return size;
+    }
+
+    public double getUnnestFactor() {
+        return unnestFactor;
     }
 
     public void setLimitVal(int val) {
@@ -244,36 +254,68 @@ public class JoinNode {
         return columnar;
     }
 
-    public void setCardsAndSizes(Index.SampleIndexDetails idxDetails, ILogicalOperator leafInput)
+    public void setFake() {
+        fake = true;
+    }
+
+    public boolean getFake() {
+        return fake;
+    }
+
+    public void setLeafInputNumber(int inputNumber) {
+        leafInputNumber = inputNumber;
+    }
+
+    public int getLeafInputNumber() {
+        return leafInputNumber;
+    }
+
+    public void setArrayRef(int arrayRef) {
+        this.arrayRef = arrayRef;
+    }
+
+    public int getArrayRef() {
+        return arrayRef;
+    }
+
+    protected void setCardsAndSizesForFakeJn(int leafInputNumber, int arrayRef, double unnestFactor) {
+        joinEnum.jnArray[leafInputNumber + arrayRef].setOrigCardinality(unnestFactor, false);
+        joinEnum.jnArray[leafInputNumber + arrayRef].setCardinality(unnestFactor, false);
+        joinEnum.jnArray[leafInputNumber + arrayRef].setSizeVarsFromDisk(4);
+        joinEnum.jnArray[leafInputNumber + arrayRef].setSizeVarsAfterScan(4);
+        joinEnum.jnArray[leafInputNumber + arrayRef].setAvgDocSize(4);
+        joinEnum.jnArray[leafInputNumber + arrayRef].setLeafInputNumber(leafInputNumber);
+        joinEnum.jnArray[leafInputNumber + arrayRef].setArrayRef(arrayRef);
+    }
+
+    public void setCardsAndSizes(Index.SampleIndexDetails idxDetails, ILogicalOperator leafInput, int leafInputNumber)
             throws AlgebricksException {
 
-        double origDatasetCard, finalDatasetCard;
-        finalDatasetCard = origDatasetCard = idxDetails.getSourceCardinality();
+        //double origDatasetCard, finalDatasetCard, sampleCard1, sampleCard2;
+        double origDatasetCard, finalDatasetCard, sampleCard;
+        unnestFactor = 1.0;
+
+        int numArrayRefs = 0;
+        if (joinEnum.unnestOpsInfo.size() > 0) {
+            numArrayRefs = joinEnum.unnestOpsInfo.get(leafInputNumber - 1).size();
+        }
 
         DataSourceScanOperator scanOp = joinEnum.findDataSourceScanOperator(leafInput);
         if (scanOp == null) {
             return; // what happens to the cards and sizes then? this may happen in case of in lists
         }
 
-        double sampleCard = Math.min(idxDetails.getSampleCardinalityTarget(), origDatasetCard);
-        if (sampleCard == 0) { // should not happen unless the original dataset is empty
-            sampleCard = 1; // we may have to make some adjustments to costs when the sample returns very rows.
-
-            IWarningCollector warningCollector = joinEnum.optCtx.getWarningCollector();
-            if (warningCollector.shouldWarn()) {
-                warningCollector.warn(Warning.of(scanOp.getSourceLocation(),
-                        org.apache.asterix.common.exceptions.ErrorCode.SAMPLE_HAS_ZERO_ROWS));
-            }
-        }
-
         List<List<IAObject>> result;
-        SelectOperator selop = (SelectOperator) joinEnum.findASelectOp(leafInput);
-        if (selop == null) { // add a SelectOperator with TRUE condition. The code below becomes simpler with a select operator.
-            selop = new SelectOperator(new MutableObject<>(ConstantExpression.TRUE));
-            ILogicalOperator op = selop;
+        SelectOperator selOp = (SelectOperator) joinEnum.findASelectOp(leafInput);
+
+        if (selOp == null) { // this should not happen. So check later why this happening.
+            // add a SelectOperator with TRUE condition. The code below becomes simpler with a select operator.
+            selOp = new SelectOperator(new MutableObject<>(ConstantExpression.TRUE));
+            ILogicalOperator op = selOp;
             op.getInputs().add(new MutableObject<>(leafInput));
             leafInput = op;
         }
+
         ILogicalOperator parent = joinEnum.findDataSourceScanOperatorParent(leafInput);
         Mutable<ILogicalOperator> ref = new MutableObject<>(leafInput);
 
@@ -300,11 +342,36 @@ public class JoinNode {
         } else {
             primaryKey = deepCopyofScan.getVariables().get(0);
         }
+
         // if there is only one conjunct, I do not have to call the sampling query during index selection!
         // insert this in place of the scandatasourceOp.
         parent.getInputs().get(0).setValue(deepCopyofScan);
+        finalDatasetCard = origDatasetCard = idxDetails.getSourceCardinality();
+        sampleCard = Math.min(idxDetails.getSampleCardinalityTarget(), origDatasetCard);
+        for (int i = 1; i <= numArrayRefs; i++) {
+            sampleCard = Math.min(idxDetails.getSampleCardinalityTarget(), origDatasetCard);
+            ILogicalExpression saveExpr = selOp.getCondition().getValue();
+            double unnestSampleCard =
+                    joinEnum.stats.computeUnnestedOriginalCardinality(leafInput, leafInputNumber, numArrayRefs, i);
+            selOp.getCondition().setValue(saveExpr); // restore the expression
+            unnestFactor = unnestSampleCard / sampleCard;
+            setCardsAndSizesForFakeJn(leafInputNumber, i, unnestFactor);
+            finalDatasetCard = origDatasetCard;
+            removeUnnestOp(leafInput); // remove the unnest op that was added in computeUnnestedOriginalCardinality
+        }
+        if (sampleCard == 0) { // should not happen unless the original dataset is empty
+            sampleCard = 1; // we may have to make some adjustments to costs when the sample returns very rows.
+
+            IWarningCollector warningCollector = joinEnum.optCtx.getWarningCollector();
+            if (warningCollector.shouldWarn()) {
+                warningCollector.warn(Warning.of(scanOp.getSourceLocation(),
+                        org.apache.asterix.common.exceptions.ErrorCode.SAMPLE_HAS_ZERO_ROWS));
+            }
+        }
+
         // There are predicates here. So skip the predicates and get the original dataset card.
         // Now apply all the predicates and get the card after all predicates are applied.
+        // We call the sampling query even if a selectivity hint was provided because we have to get the lengths of the variables.
         result = joinEnum.getStatsHandle().runSamplingQueryProjection(joinEnum.optCtx, leafInput, jnArrayIndex,
                 primaryKey);
         double predicateCardinalityFromSample = joinEnum.getStatsHandle().findPredicateCardinality(result, true);
@@ -316,8 +383,8 @@ public class JoinNode {
             sizeVarsFromDisk = joinEnum.getStatsHandle().findSizeVarsFromDisk(result, getNumVarsFromDisk());
             sizeVarsAfterScan = joinEnum.getStatsHandle().findSizeVarsAfterScan(result, getNumVarsFromDisk());
         } else { // in case we did not get any tuples from the sample, get the size by setting the predicate to true.
-            ILogicalExpression saveExpr = selop.getCondition().getValue();
-            selop.getCondition().setValue(ConstantExpression.TRUE);
+            ILogicalExpression saveExpr = selOp.getCondition().getValue();
+            selOp.getCondition().setValue(ConstantExpression.TRUE);
             result = joinEnum.getStatsHandle().runSamplingQueryProjection(joinEnum.optCtx, leafInput, jnArrayIndex,
                     primaryKey);
             double x = joinEnum.getStatsHandle().findPredicateCardinality(result, true);
@@ -329,7 +396,7 @@ public class JoinNode {
                 sizeVarsFromDisk = joinEnum.getStatsHandle().findSizeVarsFromDisk(result, getNumVarsFromDisk());
                 sizeVarsAfterScan = joinEnum.getStatsHandle().findSizeVarsAfterScan(result, getNumVarsFromDisk());
             }
-            selop.getCondition().setValue(saveExpr); // restore the expression
+            selOp.getCondition().setValue(saveExpr); // restore the expression
         }
 
         // Adjust for zero predicate cardinality from the sample.
@@ -350,10 +417,20 @@ public class JoinNode {
             // is small), no need to assign any artificial min. cardinality as the sample is accurate.
             setCardinality(finalDatasetCard, scaleUp);
         }
+        setOrigCardinality(origDatasetCard, false);
 
         setSizeVarsFromDisk(sizeVarsFromDisk);
         setSizeVarsAfterScan(sizeVarsAfterScan);
         setAvgDocSize(idxDetails.getSourceAvgItemSize());
+    }
+
+    private void removeUnnestOp(ILogicalOperator op) { // There will be only one UnnestOp for now at the top, so a while is strictly not necessary
+        ILogicalOperator parent = op;
+        op = op.getInputs().get(0).getValue(); // skip the select on the top
+        while (op.getOperatorTag() == LogicalOperatorTag.UNNEST) {
+            op = op.getInputs().get(0).getValue();
+        }
+        parent.getInputs().get(0).setValue(op);
     }
 
     /** one is a subset of two */
@@ -429,17 +506,28 @@ public class JoinNode {
         if (this.applicableJoinConditions.size() >= 3) {
             redundantSel = removeRedundantPred(this.applicableJoinConditions);
         }
-
+        // mark all conditions back to non deleted state
+        for (JoinCondition jc : joinConditions) {
+            jc.deleted = false;
+        }
         // By dividing by redundantSel, we are undoing the earlier multiplication of all the selectivities.
         return joinCard / redundantSel;
     }
 
     private static double adjustSelectivities(JoinCondition jc1, JoinCondition jc2, JoinCondition jc3) {
         double sel;
+
         if (jc1.comparisonType == JoinCondition.comparisonOp.OP_EQ
                 && jc2.comparisonType == JoinCondition.comparisonOp.OP_EQ
                 && jc3.comparisonType == JoinCondition.comparisonOp.OP_EQ) {
-            sel = findRedundantSel(jc1.selectivity, jc2.selectivity, jc3.selectivity);
+            if (!jc1.partOfComposite)
+                return jc1.selectivity;
+            if (!jc2.partOfComposite)
+                return jc2.selectivity;
+            if (!jc3.partOfComposite)
+                return jc3.selectivity;
+            // one of the above must be true.
+            sel = findRedundantSel(jc1, jc2, jc3);
         } else {
             // at least one of the predicates in not an equality predicate
             //this can get messy here, as 1, or 2 or all 3 can be non equality
@@ -455,6 +543,35 @@ public class JoinNode {
         return sel;
     }
 
+    private static double findRedundantSel(JoinCondition jc1, JoinCondition jc2, JoinCondition jc3) {
+        // find middle selectivity
+        if (jc2.selectivity <= jc1.selectivity && jc1.selectivity <= jc3.selectivity) {
+            jc1.deleted = true;
+            return jc1.selectivity;
+        }
+        if (jc3.selectivity <= jc1.selectivity && jc1.selectivity <= jc2.selectivity) {
+            jc1.deleted = true;
+            return jc1.selectivity;
+        }
+        if (jc1.selectivity <= jc2.selectivity && jc2.selectivity <= jc3.selectivity) {
+            jc2.deleted = true;
+            return jc2.selectivity;
+        }
+        if (jc3.selectivity <= jc2.selectivity && jc2.selectivity <= jc1.selectivity) {
+            jc2.deleted = true;
+            return jc2.selectivity;
+        }
+        if (jc1.selectivity <= jc3.selectivity && jc3.selectivity <= jc2.selectivity) {
+            jc3.deleted = true;
+            return jc3.selectivity;
+        }
+        if (jc2.selectivity <= jc3.selectivity && jc3.selectivity <= jc1.selectivity) {
+            jc3.deleted = true;
+            return jc3.selectivity;
+        }
+        return 1.0; // keep compiler happy
+    }
+
     // if a redundant edge is found, we need to eliminate one of the edges.
     // If two triangles share an edge, removing the common edge will suffice
     // Each edge has two vertices. So we can only handle predicate with exactly two tables such as R.a = S.a
@@ -464,51 +581,42 @@ public class JoinNode {
         double redundantSel = 1.0;
         List<JoinCondition> joinConditions = joinEnum.getJoinConditions();
         JoinCondition jc1, jc2, jc3;
-        int[] vertices = new int[6];
-        int[] verticesCopy = new int[6];
+        String[] vars = new String[6];
+        String[] varsCopy = new String[6];
         for (int i = 0; i <= applicablePredicatesInCurrentJn.size() - 3; i++) {
             jc1 = joinConditions.get(applicablePredicatesInCurrentJn.get(i));
-            if (jc1.partOfComposite) {
+            if (jc1.deleted || jc1.usedVars == null) {
                 continue; // must ignore these or the same triangles will be found more than once.
             }
-            vertices[0] = jc1.leftSideBits;
-            vertices[1] = jc1.rightSideBits;
+            vars[0] = jc1.usedVars.get(0).toString();
+            vars[1] = jc1.usedVars.get(1).toString();
             for (int j = i + 1; j <= applicablePredicatesInCurrentJn.size() - 2; j++) {
                 jc2 = joinConditions.get(applicablePredicatesInCurrentJn.get(j));
-                if (jc2.partOfComposite) {
+                if (jc2.deleted || jc2.usedVars == null) {
                     continue;
                 }
-                vertices[2] = jc2.leftSideBits;
-                vertices[3] = jc2.rightSideBits;
+                vars[2] = jc2.usedVars.get(0).toString();
+                vars[3] = jc2.usedVars.get(1).toString();
                 for (int k = j + 1; k <= applicablePredicatesInCurrentJn.size() - 1; k++) {
                     jc3 = joinConditions.get(applicablePredicatesInCurrentJn.get(k));
-                    if (jc3.partOfComposite) {
+                    if (jc3.deleted || jc3.usedVars == null) {
                         continue;
                     }
-                    vertices[4] = jc3.leftSideBits;
-                    vertices[5] = jc3.rightSideBits;
+                    vars[4] = jc3.usedVars.get(0).toString();
+                    vars[5] = jc3.usedVars.get(1).toString();
 
-                    System.arraycopy(vertices, 0, verticesCopy, 0, 6);
-                    Arrays.sort(verticesCopy);
-                    if (verticesCopy[0] == verticesCopy[1] && verticesCopy[2] == verticesCopy[3]
-                            && verticesCopy[4] == verticesCopy[5]) {
+                    System.arraycopy(vars, 0, varsCopy, 0, 6);
+                    Arrays.sort(varsCopy);
+                    if (varsCopy[0] == varsCopy[1] && varsCopy[2] == varsCopy[3] && varsCopy[4] == varsCopy[5]) {
                         // redundant edge found
-                        redundantSel *= adjustSelectivities(jc1, jc2, jc3);
+                        if (!(jc1.deleted || jc2.deleted)) {
+                            redundantSel *= adjustSelectivities(jc1, jc2, jc3);
+                        }
                     }
                 }
             }
         }
         return redundantSel;
-    }
-
-    private static double findRedundantSel(double sel1, double sel2, double sel3) {
-        double[] sels = new double[3];
-        sels[0] = sel1;
-        sels[1] = sel2;
-        sels[2] = sel3;
-
-        Arrays.sort(sels); // we are sorting to make this deterministic
-        return sels[1]; // the middle one is closest to one of the extremes
     }
 
     protected int addSingleDatasetPlans() {
@@ -596,14 +704,14 @@ public class JoinNode {
                 if (selectivityAnnotation != null) {
                     sel = selectivityAnnotation.getSelectivity();
                 } else {
-                    if (leafInput.getOperatorTag().equals(LogicalOperatorTag.SELECT)) {
-                        selOp = (SelectOperator) joinEnum.getStatsHandle().findSelectOpWithExpr(leafInput, afce);
-                        if (selOp == null) {
+                    selOp = (SelectOperator) joinEnum.getStatsHandle().findSelectOpWithExpr(leafInput, afce);
+                    if (selOp == null) {
+                        if (leafInput.getOperatorTag().equals(LogicalOperatorTag.SELECT)) {
                             selOp = (SelectOperator) leafInput;
+                        } else {
+                            selOp = new SelectOperator(new MutableObject<>(afce));
+                            selOp.getInputs().add(new MutableObject<>(leafInput));
                         }
-                    } else {
-                        selOp = new SelectOperator(new MutableObject<>(afce));
-                        selOp.getInputs().add(new MutableObject<>(leafInput));
                     }
                     sel = joinEnum.getStatsHandle().findSelectivityForThisPredicate(selOp, afce,
                             chosenIndex.getIndexType().equals(DatasetConfig.IndexType.ARRAY)
@@ -626,12 +734,18 @@ public class JoinNode {
         List<Triple<Index, Double, AbstractFunctionCallExpression>> mandatoryIndexesInfo = new ArrayList<>();
         List<Triple<Index, Double, AbstractFunctionCallExpression>> optionalIndexesInfo = new ArrayList<>();
         double sel = 1.0;
+        boolean mandatoryArrayIndexUsed = false;
+        boolean optionalArrayIndexUsed = false;
         opCost = this.joinEnum.getCostHandle().zeroCost();
         for (int i = 0; i < IndexCostInfo.size(); i++) {
             if (joinEnum.findUseIndexHint(IndexCostInfo.get(i).third)) {
                 mandatoryIndexesInfo.add(IndexCostInfo.get(i));
+                mandatoryArrayIndexUsed = mandatoryArrayIndexUsed
+                        || (mandatoryIndexesInfo.get(i).first.getIndexType() == DatasetConfig.IndexType.ARRAY);
             } else {
                 optionalIndexesInfo.add(IndexCostInfo.get(i));
+                optionalArrayIndexUsed = optionalArrayIndexUsed
+                        || (optionalIndexesInfo.get(i).first.getIndexType() == DatasetConfig.IndexType.ARRAY);
             }
         }
 
@@ -652,11 +766,13 @@ public class JoinNode {
             // Now add the data Scan cost.
             ICost dataScanCost = joinEnum.getCostMethodsHandle().costIndexDataScan(this, sel);
             opCost = opCost.costAdd(dataScanCost); // opCost now has the total cost of all the mandatory indexes + data costs.
-
+            if (mandatoryArrayIndexUsed) {
+                opCost = opCost.costAdd(opCost);
+            }
         }
 
         ICost mandatoryIndexesCost = opCost; // This will be added at the end to the total cost irrespective of optimality.
-
+        //opCost = this.joinEnum.getCostHandle().zeroCost(); // compute cost for optional indexes and store in opCost.
         // Now lets deal with the optional indexes. These are the ones without any hints on them.
         List<ICost> dataCosts = new ArrayList<>(); // these are the costs associated with accessing the data records
         indexCosts.clear();
@@ -672,7 +788,11 @@ public class JoinNode {
                 // dataCost (0) will contain the dataScan cost with the first index
                 //dataCost (1) will contain the dataScan cost with the first index and the 2nd index and so on.
                 sel *= optionalIndexesInfo.get(i).second; // assuming selectivities are independent for now
-                dataCosts.add(joinEnum.getCostMethodsHandle().costIndexDataScan(this, sel)); // D0; D01; D012; ...
+                if (optionalIndexesInfo.get(i).first.isPrimaryIndex()) {
+                    dataCosts.add(joinEnum.getCostHandle().zeroCost());
+                } else {
+                    dataCosts.add(joinEnum.getCostMethodsHandle().costIndexDataScan(this, sel)); // D0; D01; D012; ...
+                }
             }
 
             // At the of of the above loop, I0, I1, I2 ... have been computed
@@ -700,6 +820,9 @@ public class JoinNode {
                     break; // can't get any cheaper.
                 }
             }
+            if (optionalArrayIndexUsed) {
+                opCost = opCost.costAdd(opCost);
+            }
         }
 
         // opCost is now the total cost of the indexes chosen along with the associated data scan cost.
@@ -710,6 +833,8 @@ public class JoinNode {
         }
 
         totalCost = opCost.costAdd(mandatoryIndexesCost); // cost of all the indexes chosen
+        // Now check if any of the indexes were array indexes. If so double the cost
+
         boolean forceEnum = mandatoryIndexesInfo.size() > 0 || level <= joinEnum.cboFullEnumLevel;
         if (opCost.costLT(this.cheapestPlanCost) || forceEnum) {
             pn = new PlanNode(allPlans.size(), joinEnum, this, datasetNames.get(0), leafInput);
@@ -897,13 +1022,13 @@ public class JoinNode {
             return false; // This should not happen. So debug to find out why this happened.
         }
 
-        if (innerLeafInput == joinLeafInput0) {
-            joinEnum.localJoinOp.getInputs().get(0).setValue(joinLeafInput1);
+        if (innerLeafInput == joinLeafInput0) { // skip the Select Operator with condition(TRUE) on top
+            joinEnum.localJoinOp.getInputs().get(0).setValue(joinLeafInput1.getInputs().get(0).getValue());
         } else {
-            joinEnum.localJoinOp.getInputs().get(0).setValue(joinLeafInput0);
+            joinEnum.localJoinOp.getInputs().get(0).setValue(joinLeafInput0.getInputs().get(0).getValue());
         }
 
-        joinEnum.localJoinOp.getInputs().get(1).setValue(innerLeafInput);
+        joinEnum.localJoinOp.getInputs().get(1).setValue(innerLeafInput.getInputs().get(0).getValue());
 
         // We will always use the first join Op to provide the joinOp input for invoking rewritePre
         AbstractBinaryJoinOperator joinOp = (AbstractBinaryJoinOperator) joinEnum.localJoinOp;
@@ -920,6 +1045,10 @@ public class JoinNode {
     private boolean NLJoinApplicable(JoinNode leftJn, JoinNode rightJn, boolean outerJoin,
             ILogicalExpression nestedLoopJoinExpr, List<Pair<IAccessMethod, Index>> chosenIndexes,
             Map<IAccessMethod, AccessMethodAnalysisContext> analyzedAMs) throws AlgebricksException {
+
+        if (leftJn.fake || rightJn.fake) {
+            return false;
+        }
         if (nullExtendingSide(leftJn.datasetBits, outerJoin)) {
             return false;
         }
@@ -938,6 +1067,11 @@ public class JoinNode {
     }
 
     private boolean CPJoinApplicable(JoinNode leftJn, boolean outerJoin) {
+
+        if (leftJn.fake || rightJn.fake) {
+            return false;
+        }
+
         if (!joinEnum.cboCPEnumMode) {
             return false;
         }
@@ -999,6 +1133,10 @@ public class JoinNode {
         this.leftJn = leftJn;
         this.rightJn = rightJn;
 
+        //if (leftJn.fake || rightJn.fake) { // uncomment if broadcast hash joins are not applicable
+        //return PlanNode.NO_PLAN;
+        //}
+
         if (!hashJoinApplicable(leftJn, outerJoin, hashJoinExpr)) {
             return PlanNode.NO_PLAN;
         }
@@ -1041,6 +1179,10 @@ public class JoinNode {
 
         this.leftJn = leftJn;
         this.rightJn = rightJn;
+
+        if (leftJn.fake || rightJn.fake) {
+            return PlanNode.NO_PLAN;
+        }
 
         List<Pair<IAccessMethod, Index>> chosenIndexes = new ArrayList<>();
         Map<IAccessMethod, AccessMethodAnalysisContext> analyzedAMs = new TreeMap<>();
@@ -1098,6 +1240,10 @@ public class JoinNode {
             ILogicalExpression nestedLoopJoinExpr, boolean outerJoin) {
         JoinNode leftJn = leftPlan.getJoinNode();
         JoinNode rightJn = rightPlan.getJoinNode();
+
+        if (leftJn.fake || rightJn.fake) {
+            return PlanNode.NO_PLAN;
+        }
 
         // Now build a cartesian product nested loops plan
         List<PlanNode> allPlans = joinEnum.allPlans;
@@ -1160,6 +1306,7 @@ public class JoinNode {
             }
             leftPlan = joinEnum.allPlans.get(leftJn.cheapestPlanIndex);
             rightPlan = joinEnum.allPlans.get(rightJn.cheapestPlanIndex);
+
             addMultiDatasetPlans(leftPlan, rightPlan);
         } else {
             // FOR JOIN NODE LEVELS LESS THAN OR EQUAL TO THE LEVEL SPECIFIED FOR FULL ENUMERATION,
@@ -1196,13 +1343,14 @@ public class JoinNode {
         List<Integer> newJoinConditions = this.getNewJoinConditionsOnly(); // these will be a subset of applicable join conditions.
         if ((newJoinConditions.size() == 0) && joinEnum.connectedJoinGraph) {
             // at least one plan must be there at each level as the graph is fully connected.
-            if (leftJn.cardinality * rightJn.cardinality > 10000.0 && level > joinEnum.cboFullEnumLevel) {
+            if (leftJn.cardinality * rightJn.cardinality > 10000.0 && level > joinEnum.cboFullEnumLevel
+                    && !joinEnum.outerJoin) { // when outer joins are present, moving joins around is restricted
                 return;
             }
         }
-        ILogicalExpression hashJoinExpr = joinEnum.getHashJoinExpr(newJoinConditions);
-        ILogicalExpression nestedLoopJoinExpr = joinEnum.getNestedLoopJoinExpr(newJoinConditions);
         boolean outerJoin = joinEnum.lookForOuterJoins(newJoinConditions);
+        ILogicalExpression hashJoinExpr = joinEnum.getHashJoinExpr(newJoinConditions, outerJoin);
+        ILogicalExpression nestedLoopJoinExpr = joinEnum.getNestedLoopJoinExpr(newJoinConditions);
 
         double current_card = this.cardinality;
         if (current_card >= Cost.MAX_CARD) {
@@ -1454,10 +1602,13 @@ public class JoinNode {
 
     @Override
     public String toString() {
+        NumberFormat scientificFormat = new DecimalFormat("0.###E0");
+        DecimalFormat formatter = new DecimalFormat("#,###.00");
         List<PlanNode> allPlans = joinEnum.getAllPlans();
         StringBuilder sb = new StringBuilder(128);
         if (IsBaseLevelJoinNode()) {
             sb.append("Printing Scan Node ");
+            sb.append("Fake " + getFake() + " ");
         } else {
             sb.append("Printing Join Node ");
         }
@@ -1477,9 +1628,16 @@ public class JoinNode {
         sb.append("level ").append(level).append('\n');
         sb.append("highestDatasetId ").append(highestDatasetId).append('\n');
         if (IsBaseLevelJoinNode()) {
-            sb.append("orig cardinality ").append(dumpDouble(origCardinality));
+            //sb.append("orig cardinality ").append(dumpDouble(origCardinality));
+            //sb.append("orig cardinality ").append(dumpDouble(Double.parseDouble(scientificFormat.format(origCardinality))));
+            sb.append("orig cardinality2 ")
+                    .append(formatter.format(Double.parseDouble(String.valueOf(origCardinality))));
+            sb.append("\n    cardinality \n").append(formatter.format(Double.parseDouble(String.valueOf(cardinality))));
+        } else {
+            //sb.append("cardinality ").append(dumpDouble(cardinality));
+            //sb.append("cardinality ").append(dumpDouble(Double.parseDouble(scientificFormat.format(cardinality))));
+            sb.append("cardinality \n").append(formatter.format(Double.parseDouble(String.valueOf(cardinality))));
         }
-        sb.append("cardinality ").append(dumpDouble(cardinality));
         sb.append("size ").append(dumpDouble(size));
         sb.append("outputSize(sizeVarsAfterScan) ").append(dumpDouble(sizeVarsAfterScan));
         if (planIndexesArray.size() == 0) {
@@ -1571,7 +1729,7 @@ public class JoinNode {
                 lowestCostPlanIndex = planIndex;
             }
         }
-        sb.append("Cheapest Plan is ").append(lowestCostPlanIndex).append(", Cost is ")
+        sb.append("END Cheapest Plan is ").append(lowestCostPlanIndex).append(", Cost is ")
                 .append(dumpDouble(minCost.computeTotalCost()));
     }
 }

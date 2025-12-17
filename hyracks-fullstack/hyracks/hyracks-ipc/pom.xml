@@ -36,6 +36,15 @@
     </license>
   </licenses>
 
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+      </plugin>
+    </plugins>
+  </build>
+
   <properties>
     <root.dir>${basedir}/../..</root.dir>
   </properties>
@@ -66,6 +75,10 @@
     <dependency>
       <groupId>org.apache.httpcomponents</groupId>
       <artifactId>httpclient</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.netty</groupId>
+      <artifactId>netty-handler</artifactId>
     </dependency>
   </dependencies>
 </project>

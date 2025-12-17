@@ -39,7 +39,7 @@ public final class PrimitiveColumnValuesReader extends AbstractColumnValuesReade
      */
     private final boolean primaryKey;
 
-    public PrimitiveColumnValuesReader(AbstractValueReader reader, int columnIndex, int maxLevel, boolean primaryKey) {
+    PrimitiveColumnValuesReader(AbstractValueReader reader, int columnIndex, int maxLevel, boolean primaryKey) {
         super(reader, columnIndex, maxLevel, primaryKey);
         this.primaryKey = primaryKey;
     }
@@ -100,7 +100,7 @@ public final class PrimitiveColumnValuesReader extends AbstractColumnValuesReade
             throw e;
         }
 
-        writer.writeLevel(level);
+        writeLevel(writer);
         if (primaryKey || isValue()) {
             try {
                 writer.writeValue(this);
@@ -117,8 +117,8 @@ public final class PrimitiveColumnValuesReader extends AbstractColumnValuesReade
 
     @Override
     public int reset(int startIndex, int skipCount) throws HyracksDataException {
-        ((IColumnKeyValueReader) valueReader).reset(startIndex, skipCount);
         // first item
+        ((IColumnKeyValueReader) valueReader).reset(startIndex, skipCount);
         nextLevel();
         int numberOfAntiMatters = level < maxLevel ? 1 : 0;
         for (int i = 0; i < skipCount; i++) {

@@ -65,6 +65,7 @@ import org.apache.hyracks.api.client.IHyracksClientConnection;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
 import org.apache.hyracks.api.job.JobId;
 import org.apache.hyracks.api.job.JobStatus;
+import org.apache.hyracks.api.util.ExceptionUtils;
 import org.apache.hyracks.api.util.InvokeUtil;
 import org.apache.hyracks.util.ExitUtil;
 import org.apache.hyracks.util.Span;
@@ -105,6 +106,7 @@ public abstract class ActiveEntityEventsListener implements IActiveEntityControl
     protected int numDeRegistered;
     protected volatile RecoveryTask rt;
     protected volatile boolean suspended = false;
+    private long suspendCount;
     // failures
     protected Exception jobFailure;
     protected Exception resumeFailure;
@@ -263,6 +265,10 @@ public abstract class ActiveEntityEventsListener implements IActiveEntityControl
 
     public JobId getJobId() {
         return jobId;
+    }
+
+    public long getSuspendCount() {
+        return suspendCount;
     }
 
     @Override
@@ -449,7 +455,8 @@ public abstract class ActiveEntityEventsListener implements IActiveEntityControl
             metadataProvider.getApplicationContext().getHcc().cancelJob(jobId);
         } catch (Throwable th) {
             LOGGER.warn("Failed to cancel active job {}", jobId, th);
-            e.addSuppressed(th);
+            // use ExceptionUtils.suppress() here to ensure we don't lose an interrupt
+            ExceptionUtils.suppress(e, th);
         }
     }
 
@@ -501,9 +508,7 @@ public abstract class ActiveEntityEventsListener implements IActiveEntityControl
         ICCMessageBroker messageBroker = (ICCMessageBroker) applicationCtx.getServiceContext().getMessageBroker();
         AlgebricksAbsolutePartitionConstraint runtimeLocations = getLocations();
         int partition = 0;
-        if (LOGGER.isInfoEnabled()) {
-            LOGGER.log(Level.INFO, "Sending stop messages to " + runtimeLocations);
-        }
+        LOGGER.log(Level.INFO, "sending stop messages to {}", runtimeLocations);
         for (String location : runtimeLocations.getLocations()) {
             ActiveRuntimeId runtimeId = getActiveRuntimeId(partition++);
             messageBroker.sendApplicationMessageToNC(new ActiveManagerMessage(ActiveManagerMessage.Kind.STOP_ACTIVITY,
@@ -566,14 +571,11 @@ public abstract class ActiveEntityEventsListener implements IActiveEntityControl
         WaitForStateSubscriber subscriber;
         Future<Void> suspendTask;
         synchronized (this) {
-            if (LOGGER.isEnabled(level)) {
-                LOGGER.log(level, "suspending entity " + entityId);
-                LOGGER.log(level, "Waiting for ongoing activities");
-            }
+            LOGGER.log(level, "{} suspending entity {}", jobId, entityId);
+            LOGGER.log(level, "{} waiting for ongoing activities", jobId);
             waitForNonTransitionState();
-            if (LOGGER.isEnabled(level)) {
-                LOGGER.log(level, "Proceeding with suspension. Current state is " + state);
-            }
+            LOGGER.log(level, "{} proceeding with suspension. current state is {}", jobId, state);
+            suspendCount++;
             if (state == ActivityState.STOPPED) {
                 suspended = true;
                 return;
@@ -594,12 +596,12 @@ public abstract class ActiveEntityEventsListener implements IActiveEntityControl
                         doSuspend(metadataProvider);
                         return null;
                     });
-            LOGGER.log(level, "Suspension task has been submitted");
+            LOGGER.log(level, "{} suspension task has been submitted", jobId);
         }
         try {
-            LOGGER.log(level, "Waiting for suspension task to complete");
+            LOGGER.log(level, "{} waiting for suspension task to complete", jobId);
             suspendTask.get();
-            LOGGER.log(level, "waiting for state to become SUSPENDED or TEMPORARILY_FAILED");
+            LOGGER.log(level, "{} waiting for state to become SUSPENDED or TEMPORARILY_FAILED", jobId);
             subscriber.sync();
             suspended = true;
         } catch (Exception e) {

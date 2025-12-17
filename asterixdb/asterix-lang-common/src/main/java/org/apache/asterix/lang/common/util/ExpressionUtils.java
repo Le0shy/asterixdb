@@ -263,12 +263,17 @@ public class ExpressionUtils {
                             Triple<DatasetFullyQualifiedName, Boolean, DatasetFullyQualifiedName> dsArgs =
                                     FunctionUtil.parseDatasetFunctionArguments(functionCall);
                             DatasetFullyQualifiedName datasetFullyQualifiedName = dsArgs.first;
-                            EntityDetails.EntityType entityType =
-                                    dsArgs.second ? EntityDetails.EntityType.VIEW : EntityDetails.EntityType.DATASET;
-                            metadataProvider
-                                    .addAccessedEntity(new EntityDetails(datasetFullyQualifiedName.getDatabaseName(),
-                                            datasetFullyQualifiedName.getDataverseName(),
-                                            datasetFullyQualifiedName.getDatasetName(), entityType));
+                            if (dsArgs.second) {
+                                metadataProvider.addAccessedEntity(
+                                        EntityDetails.newView(datasetFullyQualifiedName.getDatabaseName(),
+                                                datasetFullyQualifiedName.getDataverseName(),
+                                                datasetFullyQualifiedName.getDatasetName()));
+                            } else {
+                                metadataProvider.addAccessedEntity(
+                                        EntityDetails.newDataset(datasetFullyQualifiedName.getDatabaseName(),
+                                                datasetFullyQualifiedName.getDataverseName(),
+                                                datasetFullyQualifiedName.getDatasetName()));
+                            }
                             DatasetFullyQualifiedName synonymReference = dsArgs.third;
                             if (synonymReference != null) {
                                 // resolved via synonym -> store synonym name as a dependency
@@ -286,16 +291,17 @@ public class ExpressionUtils {
                                             datasetReference.getDatasetName(), null));
                                 }
                             }
+                        } else {
+                            addFunctionAccessedEntity(metadataProvider, signature);
                         }
                     } else {
                         if (seenFunctions.add(signature)) {
-                            String functionName = signature.getName() + "(" + signature.getArity() + ")";
-                            metadataProvider.addAccessedEntity(new EntityDetails(signature.getDatabaseName(),
-                                    signature.getDataverseName(), functionName, EntityDetails.EntityType.FUNCTION));
+                            addFunctionAccessedEntity(metadataProvider, signature);
                             outFunctionDependencies.add(new DependencyFullyQualifiedName(signature.getDatabaseName(),
                                     signature.getDataverseName(), signature.getName(),
                                     Integer.toString(signature.getArity())));
                         }
+
                     }
                     break;
                 case WINDOW_EXPRESSION:
@@ -306,6 +312,10 @@ public class ExpressionUtils {
                             functionCall.getSourceLocation(), functionCall.getFunctionSignature().toString(false));
             }
         }
+    }
+
+    private static void addFunctionAccessedEntity(MetadataProvider metadataProvider, FunctionSignature signature) {
+        metadataProvider.addAccessedEntity(EntityDetails.newFunction(signature));
     }
 
     public static boolean hasFunctionOrViewRecursion(Map<FunctionSignature, FunctionDecl> functionDeclMap,

@@ -52,5 +52,10 @@ id: int,
 compType: t1
 };
 
+create type t3 AS {
+id: int
+};
+
 create  dataset TweetMessages(TweetMessageType) primary key tweetid hints (`CARDINALITY`=`100`);
 create dataset d1(t2) primary key id;
+create dataset d3(t3) primary key id;

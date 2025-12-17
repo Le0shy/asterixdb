@@ -27,10 +27,13 @@ import org.apache.asterix.app.function.FeedRewriter;
 import org.apache.asterix.app.function.JobSummariesRewriter;
 import org.apache.asterix.app.function.PingRewriter;
 import org.apache.asterix.app.function.QueryIndexRewriter;
+import org.apache.asterix.app.function.QueryPartitionRewriter;
 import org.apache.asterix.app.function.StorageComponentsRewriter;
 import org.apache.asterix.app.function.TPCDSAllTablesDataGeneratorRewriter;
 import org.apache.asterix.app.function.TPCDSSingleTableDataGeneratorRewriter;
+import org.apache.asterix.app.function.collectionsize.StorageSizeRewriter;
 import org.apache.asterix.om.functions.BuiltinFunctions;
+import org.apache.asterix.om.typecomputer.impl.AInt64TypeComputer;
 import org.apache.asterix.om.utils.RecordUtil;
 
 public class MetadataBuiltinFunctions {
@@ -100,6 +103,15 @@ public class MetadataBuiltinFunctions {
         BuiltinFunctions.addFunction(QueryIndexRewriter.QUERY_INDEX, QueryIndexRewriter.INSTANCE, true);
         BuiltinFunctions.addUnnestFun(QueryIndexRewriter.QUERY_INDEX, false);
         BuiltinFunctions.addDatasourceFunction(QueryIndexRewriter.QUERY_INDEX, QueryIndexRewriter.INSTANCE);
+        // Query index partition function
+        BuiltinFunctions.addPrivateFunction(QueryPartitionRewriter.QUERY_PARTITION, QueryPartitionRewriter.INSTANCE,
+                true);
+        BuiltinFunctions.addUnnestFun(QueryPartitionRewriter.QUERY_PARTITION, false);
+        BuiltinFunctions.addDatasourceFunction(QueryPartitionRewriter.QUERY_PARTITION, QueryPartitionRewriter.INSTANCE);
+        // storage size
+        BuiltinFunctions.addFunction(StorageSizeRewriter.STORAGE_SIZE, AInt64TypeComputer.INSTANCE, true);
+        BuiltinFunctions.addUnnestFun(StorageSizeRewriter.STORAGE_SIZE, true);
+        BuiltinFunctions.addDatasourceFunction(StorageSizeRewriter.STORAGE_SIZE, StorageSizeRewriter.INSTANCE);
     }
 
     private MetadataBuiltinFunctions() {

@@ -22,6 +22,7 @@ import static org.apache.asterix.test.external_dataset.ExternalDatasetTestUtils.
 import static org.apache.asterix.test.external_dataset.ExternalDatasetTestUtils.createAvroFilesRecursively;
 import static org.apache.asterix.test.external_dataset.ExternalDatasetTestUtils.createBinaryFiles;
 import static org.apache.asterix.test.external_dataset.ExternalDatasetTestUtils.createBinaryFilesRecursively;
+import static org.apache.asterix.test.external_dataset.ExternalDatasetTestUtils.createDeltaTable;
 import static org.apache.asterix.test.external_dataset.ExternalDatasetTestUtils.setDataPaths;
 import static org.apache.asterix.test.external_dataset.ExternalDatasetTestUtils.setUploaders;
 import static org.apache.asterix.test.external_dataset.parquet.BinaryFileConverterUtil.DEFAULT_PARQUET_SRC_PATH;
@@ -199,6 +200,7 @@ public class AwsS3ExternalDatasetTest {
         createBinaryFilesRecursively(EXTERNAL_FILTER_DATA_PATH);
         createAvroFiles(DEFAULT_PARQUET_SRC_PATH);
         createAvroFilesRecursively(EXTERNAL_FILTER_DATA_PATH);
+        createDeltaTable();
         setNcEndpoints(testExecutor);
         startAwsS3MockServer();
     }
@@ -478,13 +480,16 @@ public class AwsS3ExternalDatasetTest {
                 String statement, boolean isDmlRecoveryTest, ProcessBuilder pb, TestCase.CompilationUnit cUnit,
                 MutableInt queryCount, List<TestFileContext> expectedResultFileCtxs, File testFile, String actualPath)
                 throws Exception {
+            statement = applyExternalDatasetSubstitution(statement, cUnit.getPlaceholder());
             String[] lines;
+            String lastLine;
+            String[] command;
             switch (ctx.getType()) {
                 case "container":
                     // <bucket> <def> <sub-path:new_fname:src_file1,sub-path:new_fname:src_file2,sub-path:src_file3>
                     lines = TestExecutor.stripAllComments(statement).trim().split("\n");
-                    String lastLine = lines[lines.length - 1];
-                    String[] command = lastLine.trim().split(" ");
+                    lastLine = lines[lines.length - 1];
+                    command = lastLine.trim().split(" ");
                     int length = command.length;
                     if (length == 1) {
                         createBucket(command[0]);

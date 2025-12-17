@@ -19,18 +19,24 @@
 package org.apache.asterix.external.input.stream;
 
 import java.io.IOException;
+import java.security.PrivilegedExceptionAction;
 import java.util.Map;
 
 import org.apache.asterix.common.exceptions.AsterixException;
 import org.apache.asterix.external.api.AsterixInputStream;
+import org.apache.asterix.external.api.IExternalDataRuntimeContext;
+import org.apache.asterix.external.input.filter.embedder.IExternalFilterValueEmbedder;
 import org.apache.asterix.external.input.record.reader.hdfs.EmptyRecordReader;
 import org.apache.asterix.external.util.ExternalDataConstants;
 import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapred.FileSplit;
 import org.apache.hadoop.mapred.InputFormat;
 import org.apache.hadoop.mapred.InputSplit;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.RecordReader;
 import org.apache.hadoop.mapred.Reporter;
+import org.apache.hadoop.security.UserGroupInformation;
+import org.apache.hyracks.api.exceptions.HyracksDataException;
 
 public class HDFSInputStream extends AsterixInputStream {
 
@@ -45,10 +51,15 @@ public class HDFSInputStream extends AsterixInputStream {
     private String nodeName;
     private JobConf conf;
     private int pos = 0;
+    private UserGroupInformation ugi;
+    private IExternalFilterValueEmbedder valueEmbedder;
 
     @SuppressWarnings("unchecked")
     public HDFSInputStream(boolean read[], InputSplit[] inputSplits, String[] readSchedule, String nodeName,
-            JobConf conf, Map<String, String> configuration) throws IOException, AsterixException {
+            JobConf conf, Map<String, String> configuration, UserGroupInformation ugi,
+            IExternalDataRuntimeContext context) throws IOException, AsterixException {
+        this.ugi = ugi;
+        this.valueEmbedder = context.getValueEmbedder();
         this.read = read;
         this.inputSplits = inputSplits;
         this.readSchedule = readSchedule;
@@ -162,13 +173,32 @@ public class HDFSInputStream extends AsterixInputStream {
         return false;
     }
 
-    @SuppressWarnings("unchecked")
     private RecordReader<Object, Text> getRecordReader(int splitIndex) throws IOException {
-        reader = (RecordReader<Object, Text>) inputFormat.getRecordReader(inputSplits[splitIndex], conf, Reporter.NULL);
+        valueEmbedder.setPath(getPath(inputSplits[splitIndex]));
+        try {
+            reader = ugi == null ? getReader(splitIndex)
+                    : ugi.doAs((PrivilegedExceptionAction<RecordReader<Object, Text>>) () -> getReader(splitIndex));
+        } catch (InterruptedException ex) {
+            throw HyracksDataException.create(ex);
+        }
+
         if (key == null) {
             key = reader.createKey();
             value = reader.createValue();
         }
         return reader;
+    }
+
+    @SuppressWarnings("unchecked")
+    private RecordReader<Object, Text> getReader(int splitIndex) throws IOException {
+        return (RecordReader<Object, Text>) inputFormat.getRecordReader(inputSplits[splitIndex], conf, Reporter.NULL);
+    }
+
+    private String getPath(InputSplit split) {
+        if (split instanceof FileSplit) {
+            return ((FileSplit) split).getPath().toString();
+        } else {
+            return split.toString();
+        }
     }
 }

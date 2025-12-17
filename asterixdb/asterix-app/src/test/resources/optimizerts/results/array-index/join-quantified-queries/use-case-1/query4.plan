@@ -1,65 +1,118 @@
+distribute result [$$71]
 -- DISTRIBUTE_RESULT  |UNPARTITIONED|
+  exchange
   -- ONE_TO_ONE_EXCHANGE  |UNPARTITIONED|
-    -- STREAM_PROJECT  |UNPARTITIONED|
-      -- ASSIGN  |UNPARTITIONED|
-        -- AGGREGATE  |UNPARTITIONED|
-          -- RANDOM_MERGE_EXCHANGE  |PARTITIONED|
-            -- AGGREGATE  |PARTITIONED|
-              -- STREAM_SELECT  |PARTITIONED|
-                -- STREAM_PROJECT  |PARTITIONED|
-                  -- SUBPLAN  |PARTITIONED|
-                          {
-                            -- AGGREGATE  |LOCAL|
-                              -- STREAM_SELECT  |LOCAL|
-                                -- UNNEST  |LOCAL|
+    assign [$$71] <- [{"$1": $$75}] project: [$$71]
+    -- ASSIGN  |UNPARTITIONED|
+      aggregate [$$75] <- [agg-sql-sum($$80)]
+      -- AGGREGATE  |UNPARTITIONED|
+        exchange
+        -- RANDOM_MERGE_EXCHANGE  |PARTITIONED|
+          aggregate [$$80] <- [agg-sql-count(1)]
+          -- AGGREGATE  |PARTITIONED|
+            select ($$63)
+            -- STREAM_SELECT  |PARTITIONED|
+              project ([$$63])
+              -- STREAM_PROJECT  |PARTITIONED|
+                subplan {
+                          aggregate [$$63] <- [non-empty-stream()]
+                          -- AGGREGATE  |LOCAL|
+                            select (eq($$77, $#5))
+                            -- STREAM_SELECT  |LOCAL|
+                              unnest $#5 <- scan-collection($$78) project: [$$77, $#5]
+                              -- UNNEST  |LOCAL|
+                                project ([$$77, $$78])
+                                -- STREAM_PROJECT  |LOCAL|
+                                  nested tuple source
                                   -- NESTED_TUPLE_SOURCE  |LOCAL|
-                          }
+                       }
+                -- SUBPLAN  |PARTITIONED|
+                  assign [$$78] <- [$$B.getField(2)] project: [$$77, $$78]
+                  -- ASSIGN  |PARTITIONED|
+                    project ([$$77, $$B])
                     -- STREAM_PROJECT  |PARTITIONED|
-                      -- ASSIGN  |PARTITIONED|
-                        -- STREAM_PROJECT  |PARTITIONED|
+                      exchange
+                      -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
+                        unnest-map [$$74, $$B] <- index-search("YelpCheckinB", 0, "Default", "TestYelp", "YelpCheckinB", true, false, 1, $$84, 1, $$84, true, true, true)
+                        -- BTREE_SEARCH  |PARTITIONED|
+                          exchange
                           -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-                            -- BTREE_SEARCH (TestYelp.YelpCheckinB.YelpCheckinB)  |PARTITIONED|
+                            project ([$$84, $$77])
+                            -- STREAM_PROJECT  |PARTITIONED|
+                              exchange
                               -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-                                -- STREAM_PROJECT  |PARTITIONED|
+                                distinct ([$$84, $$85])
+                                -- PRE_SORTED_DISTINCT_BY  |PARTITIONED|
+                                  exchange
                                   -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-                                    -- PRE_SORTED_DISTINCT_BY  |PARTITIONED|
+                                    order (ASC, $$84) (ASC, $$85)
+                                    -- STABLE_SORT [$$84(ASC), $$85(ASC)]  |PARTITIONED|
+                                      exchange
                                       -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-                                        -- STABLE_SORT [$$80(ASC), $$81(ASC)]  |PARTITIONED|
+                                        project ([$$77, $$85, $$84])
+                                        -- STREAM_PROJECT  |PARTITIONED|
+                                          exchange
                                           -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-                                            -- STREAM_PROJECT  |PARTITIONED|
-                                              -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-                                                -- BTREE_SEARCH (TestYelp.YelpCheckinB.IdxYelpCheckinBDates)  |PARTITIONED|
-                                                  -- BROADCAST_EXCHANGE  |PARTITIONED|
-                                                    -- RUNNING_AGGREGATE  |PARTITIONED|
-                                                      -- STREAM_PROJECT  |PARTITIONED|
-                                                        -- STREAM_SELECT  |PARTITIONED|
+                                            unnest-map [$$83, $$84] <- index-search("IdxYelpCheckinBDates", 0, "Default", "TestYelp", "YelpCheckinB", true, true, 1, $$77, 1, $$77, true, true, true)
+                                            -- BTREE_SEARCH  |PARTITIONED|
+                                              exchange
+                                              -- BROADCAST_EXCHANGE  |PARTITIONED|
+                                                running-aggregate [$$85] <- [create-query-uid()]
+                                                -- RUNNING_AGGREGATE  |PARTITIONED|
+                                                  select ($$59) project: [$$77]
+                                                  -- STREAM_SELECT  |PARTITIONED|
+                                                    project ([$$77, $$59])
+                                                    -- STREAM_PROJECT  |PARTITIONED|
+                                                      subplan {
+                                                                aggregate [$$59] <- [non-empty-stream()]
+                                                                -- AGGREGATE  |LOCAL|
+                                                                  select (eq($$77, $#4))
+                                                                  -- STREAM_SELECT  |LOCAL|
+                                                                    unnest $#4 <- scan-collection($$76) project: [$$77, $#4]
+                                                                    -- UNNEST  |LOCAL|
+                                                                      project ([$$77, $$76])
+                                                                      -- STREAM_PROJECT  |LOCAL|
+                                                                        nested tuple source
+                                                                        -- NESTED_TUPLE_SOURCE  |LOCAL|
+                                                             }
+                                                      -- SUBPLAN  |PARTITIONED|
+                                                        assign [$$76] <- [$$A.getField(2)] project: [$$77, $$76]
+                                                        -- ASSIGN  |PARTITIONED|
+                                                          project ([$$77, $$A])
                                                           -- STREAM_PROJECT  |PARTITIONED|
-                                                            -- SUBPLAN  |PARTITIONED|
-                                                                    {
-                                                                      -- AGGREGATE  |LOCAL|
-                                                                        -- STREAM_SELECT  |LOCAL|
-                                                                          -- UNNEST  |LOCAL|
-                                                                            -- NESTED_TUPLE_SOURCE  |LOCAL|
-                                                                    }
-                                                              -- STREAM_PROJECT  |PARTITIONED|
-                                                                -- ASSIGN  |PARTITIONED|
+                                                            exchange
+                                                            -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
+                                                              unnest-map [$$73, $$A] <- index-search("YelpCheckinA", 0, "Default", "TestYelp", "YelpCheckinA", true, false, 1, $$82, 1, $$82, true, true, true)
+                                                              -- BTREE_SEARCH  |PARTITIONED|
+                                                                exchange
+                                                                -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
+                                                                  project ([$$82, $$77])
                                                                   -- STREAM_PROJECT  |PARTITIONED|
+                                                                    exchange
                                                                     -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-                                                                      -- BTREE_SEARCH (TestYelp.YelpCheckinA.YelpCheckinA)  |PARTITIONED|
+                                                                      distinct ([$$82, $$72])
+                                                                      -- PRE_SORTED_DISTINCT_BY  |PARTITIONED|
+                                                                        exchange
                                                                         -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-                                                                          -- STREAM_PROJECT  |PARTITIONED|
+                                                                          order (ASC, $$82) (ASC, $$72)
+                                                                          -- STABLE_SORT [$$82(ASC), $$72(ASC)]  |PARTITIONED|
+                                                                            exchange
                                                                             -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-                                                                              -- PRE_SORTED_DISTINCT_BY  |PARTITIONED|
+                                                                              project ([$$72, $$77, $$82])
+                                                                              -- STREAM_PROJECT  |PARTITIONED|
+                                                                                exchange
                                                                                 -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-                                                                                  -- STABLE_SORT [$$78(ASC), $$68(ASC)]  |PARTITIONED|
-                                                                                    -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-                                                                                      -- STREAM_PROJECT  |PARTITIONED|
+                                                                                  unnest-map [$$81, $$82] <- index-search("IdxYelpCheckinADates", 0, "Default", "TestYelp", "YelpCheckinA", true, true, 1, $$77, 1, $$77, true, true, true)
+                                                                                  -- BTREE_SEARCH  |PARTITIONED|
+                                                                                    exchange
+                                                                                    -- BROADCAST_EXCHANGE  |PARTITIONED|
+                                                                                      assign [$$77] <- [$$M.getField(2)] project: [$$72, $$77]
+                                                                                      -- ASSIGN  |PARTITIONED|
+                                                                                        exchange
                                                                                         -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-                                                                                          -- BTREE_SEARCH (TestYelp.YelpCheckinA.IdxYelpCheckinADates)  |PARTITIONED|
-                                                                                            -- BROADCAST_EXCHANGE  |PARTITIONED|
-                                                                                              -- STREAM_PROJECT  |PARTITIONED|
-                                                                                                -- ASSIGN  |PARTITIONED|
-                                                                                                  -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-                                                                                                    -- DATASOURCE_SCAN (TestYelp.YelpCheckinDateMarkers)  |PARTITIONED|
-                                                                                                      -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-                                                                                                        -- EMPTY_TUPLE_SOURCE  |PARTITIONED|
+                                                                                          data-scan []<-[$$72, $$M] <- TestYelp.YelpCheckinDateMarkers
+                                                                                          -- DATASOURCE_SCAN  |PARTITIONED|
+                                                                                            exchange
+                                                                                            -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
+                                                                                              empty-tuple-source
+                                                                                              -- EMPTY_TUPLE_SOURCE  |PARTITIONED|

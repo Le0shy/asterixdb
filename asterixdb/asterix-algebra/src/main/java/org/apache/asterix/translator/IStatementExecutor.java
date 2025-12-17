@@ -140,6 +140,9 @@ public interface IStatementExecutor {
         private long compileTime;
         private double bufferCacheHitRatio;
         private long bufferCachePageReadCount;
+        private long cloudReadRequestsCount;
+        private long cloudPagesReadCount;
+        private long cloudPagesPersistedCount;
         private long addedToQueueTime;
         private long addedToTheMemoryQueueTime;
         private long executionStartTime;
@@ -225,6 +228,30 @@ public interface IStatementExecutor {
 
         public long getBufferCachePageReadCount() {
             return bufferCachePageReadCount;
+        }
+
+        public void setCloudReadRequestsCount(long cloudReadRequestsCount) {
+            this.cloudReadRequestsCount = cloudReadRequestsCount;
+        }
+
+        public long getCloudReadRequestsCount() {
+            return cloudReadRequestsCount;
+        }
+
+        public void setCloudPagesReadCount(long cloudPagesReadCount) {
+            this.cloudPagesReadCount = cloudPagesReadCount;
+        }
+
+        public long getCloudPagesReadCount() {
+            return cloudPagesReadCount;
+        }
+
+        public void setCloudPagesPersistedCount(long cloudPagesPersistedCount) {
+            this.cloudPagesPersistedCount = cloudPagesPersistedCount;
+        }
+
+        public long getCloudPagesPersistedCount() {
+            return cloudPagesPersistedCount;
         }
 
         public long getAddedToTheMemoryQueueTime() {

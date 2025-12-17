@@ -68,12 +68,14 @@ import java.util.Map;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
+import org.apache.asterix.common.api.IApplicationContext;
 import org.apache.asterix.common.api.IDatasetLifecycleManager;
 import org.apache.asterix.common.api.INcApplicationContext;
 import org.apache.asterix.common.config.DatasetConfig.DatasetType;
 import org.apache.asterix.common.dataflow.LSMIndexUtil;
 import org.apache.asterix.common.exceptions.AsterixException;
 import org.apache.asterix.common.exceptions.MetadataException;
+import org.apache.asterix.common.exceptions.NoOpWarningCollector;
 import org.apache.asterix.common.functions.FunctionSignature;
 import org.apache.asterix.common.metadata.DataverseName;
 import org.apache.asterix.common.metadata.DependencyFullyQualifiedName;
@@ -132,6 +134,8 @@ import org.apache.asterix.transaction.management.service.transaction.DatasetIdFa
 import org.apache.hyracks.algebricks.common.exceptions.AlgebricksException;
 import org.apache.hyracks.algebricks.data.IPrinter;
 import org.apache.hyracks.algebricks.data.IPrinterFactory;
+import org.apache.hyracks.algebricks.runtime.evaluators.EvaluatorContext;
+import org.apache.hyracks.api.context.IEvaluatorContext;
 import org.apache.hyracks.api.dataflow.value.IBinaryComparator;
 import org.apache.hyracks.api.dataflow.value.IBinaryComparatorFactory;
 import org.apache.hyracks.api.dataflow.value.ISerializerDeserializer;
@@ -169,6 +173,7 @@ public class MetadataNode implements IMetadataNode {
     private static final long serialVersionUID = 1L;
     private static final Logger LOGGER = LogManager.getLogger();
     // shared between core and extension
+    private transient IApplicationContext appCtx;
     private transient IDatasetLifecycleManager datasetLifecycleManager;
     private transient ITransactionSubsystem transactionSubsystem;
     private int metadataStoragePartition;
@@ -192,6 +197,7 @@ public class MetadataNode implements IMetadataNode {
             int partitionId) {
         this.mdIndexesProvider = metadataIndexesProvider;
         this.tupleTranslatorProvider = tupleTranslatorProvider;
+        this.appCtx = runtimeContext;
         this.transactionSubsystem = runtimeContext.getTransactionSubsystem();
         this.datasetLifecycleManager = runtimeContext.getDatasetLifecycleManager();
         this.metadataStoragePartition = partitionId;
@@ -417,7 +423,7 @@ public class MetadataNode implements IMetadataNode {
                 InternalDatasetDetails id = (InternalDatasetDetails) dataset.getDatasetDetails();
                 Index primaryIndex = Index.createPrimaryIndex(dataset.getDatabaseName(), dataset.getDataverseName(),
                         dataset.getDatasetName(), id.getPrimaryKey(), id.getKeySourceIndicator(),
-                        id.getPrimaryKeyType(), dataset.getPendingOp());
+                        id.getPrimaryKeyType(), dataset.getPendingOp(), dataset.getCreator());
 
                 addIndex(txnId, primaryIndex);
             }
@@ -3121,7 +3127,7 @@ public class MetadataNode implements IMetadataNode {
 
     private ArrayNode getJsonNodes(TxnId txnId, IMetadataIndex mdIndex, int payloadPosition)
             throws AlgebricksException, HyracksDataException {
-        IValueExtractor<JsonNode> valueExtractor = createValueExtractor(mdIndex, payloadPosition);
+        IValueExtractor<JsonNode> valueExtractor = createValueExtractor(appCtx, mdIndex, payloadPosition);
         List<JsonNode> results = new ArrayList<>();
         searchIndex(txnId, mdIndex, null, valueExtractor, results);
         ArrayNode array = JSONUtil.createArray();
@@ -3129,13 +3135,16 @@ public class MetadataNode implements IMetadataNode {
         return array;
     }
 
-    private static IValueExtractor<JsonNode> createValueExtractor(IMetadataIndex mdIndex, int payloadFieldIndex) {
+    private static IValueExtractor<JsonNode> createValueExtractor(IApplicationContext appCtx, IMetadataIndex mdIndex,
+            int payloadFieldIndex) {
         return new IValueExtractor<>() {
 
             final ARecordType payloadRecordType = mdIndex.getPayloadRecordType();
             final IPrinterFactory printerFactory =
                     CleanJSONPrinterFactoryProvider.INSTANCE.getPrinterFactory(payloadRecordType);
-            final IPrinter printer = printerFactory.createPrinter();
+            IEvaluatorContext evaluatorContext =
+                    new EvaluatorContext(appCtx.getServiceContext(), NoOpWarningCollector.INSTANCE);
+            final IPrinter printer = printerFactory.createPrinter(evaluatorContext);
             final ByteArrayAccessibleOutputStream outputStream = new ByteArrayAccessibleOutputStream();
             final PrintStream printStream = new PrintStream(outputStream);
 

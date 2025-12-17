@@ -19,7 +19,12 @@
 
 package org.apache.asterix.optimizer.rules.cbo;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import org.apache.hyracks.algebricks.core.algebra.base.ILogicalExpression;
+import org.apache.hyracks.algebricks.core.algebra.base.LogicalVariable;
+import org.apache.hyracks.algebricks.core.algebra.operators.logical.SelectOperator;
 
 public class JoinCondition {
 
@@ -27,17 +32,24 @@ public class JoinCondition {
 
     protected ILogicalExpression joinCondition;
     protected boolean outerJoin;
-    private boolean derived = false;
+    protected boolean derived = false;
     protected boolean partOfComposite = false;
+    protected boolean deleted = false;
     protected int numberOfVars = 0; // how many variables
     protected int componentNumber = 0; // for identifying if join graph is connected
     protected int datasetBits;
     // used for triangle detection; we strictly do not mean left and right here.
     // first and second sides would be more appropriate
+    protected int leftSide;
+    protected int rightSide;
     protected int leftSideBits;
     protected int rightSideBits;
-    protected double selectivity;
+    protected int numLeafInputs;
+    protected double selectivity = -1.0; // This must be changed obviously
     protected comparisonOp comparisonType;
+    protected JoinOperator joinOp = null;
+    protected List<LogicalVariable> usedVars = null;
+    protected List<SelectOperator> derivedSelOps = new ArrayList<>(); // only one of them will be regarded as original
 
     protected enum comparisonOp {
         OP_EQ,

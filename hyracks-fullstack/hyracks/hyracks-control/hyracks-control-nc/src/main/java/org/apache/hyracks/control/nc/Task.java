@@ -64,6 +64,7 @@ import org.apache.hyracks.api.partitions.PartitionId;
 import org.apache.hyracks.api.resources.IDeallocatable;
 import org.apache.hyracks.api.result.IResultPartitionManager;
 import org.apache.hyracks.api.util.ExceptionUtils;
+import org.apache.hyracks.api.util.InvokeUtil;
 import org.apache.hyracks.api.util.JavaSerializationUtils;
 import org.apache.hyracks.control.common.job.PartitionState;
 import org.apache.hyracks.control.common.job.profiling.StatsCollector;
@@ -406,6 +407,7 @@ public class Task implements IHyracksTaskContext, ICounterContext, Runnable {
         if (aborted) {
             return;
         }
+        Throwable originalEx = null;
         try {
             collector.open();
             try {
@@ -418,35 +420,35 @@ public class Task implements IHyracksTaskContext, ICounterContext, Runnable {
                 IFrameReader reader = collector.getReader();
                 reader.open();
                 try {
-                    try {
-                        writer.open();
-                        VSizeFrame frame = new VSizeFrame(this);
-                        while (reader.nextFrame(frame)) {
-                            if (aborted) {
-                                return;
-                            }
-                            ByteBuffer buffer = frame.getBuffer();
-                            writer.nextFrame(buffer);
-                            buffer.compact();
+                    writer.open();
+                    VSizeFrame frame = new VSizeFrame(this);
+                    while (reader.nextFrame(frame)) {
+                        if (aborted) {
+                            return;
                         }
-                    } catch (Exception e) {
-                        try {
-                            writer.fail();
-                        } catch (HyracksDataException e1) {
-                            e.addSuppressed(e1);
-                        }
-                        throw e;
-                    } finally {
-                        writer.close();
+                        ByteBuffer buffer = frame.getBuffer();
+                        writer.nextFrame(buffer);
+                        buffer.compact();
                     }
+                } catch (Exception e) {
+                    originalEx = e;
                 } finally {
-                    reader.close();
+                    if (originalEx != null) {
+                        InvokeUtil.tryUninterruptibleWithCleanups(writer::fail, writer::close, reader::close);
+                    } else {
+                        InvokeUtil.tryUninterruptibleWithCleanups(writer::close, reader::close);
+                    }
                 }
+            } catch (Exception e) {
+                originalEx = ExceptionUtils.suppress(originalEx, e);
             } finally {
-                collector.close();
+                InvokeUtil.runUninterruptible(collector::close);
             }
         } catch (Exception e) {
-            throw HyracksDataException.create(e);
+            originalEx = ExceptionUtils.suppress(originalEx, e);
+        }
+        if (originalEx != null) {
+            throw HyracksDataException.create(originalEx);
         }
     }
 

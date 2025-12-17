@@ -22,6 +22,7 @@ import java.io.IOException;
 
 import org.apache.asterix.builders.IARecordBuilder;
 import org.apache.asterix.external.input.filter.embedder.IExternalFilterValueEmbedder;
+import org.apache.asterix.external.input.record.reader.hdfs.parquet.converter.AbstractComplexConverter;
 import org.apache.asterix.external.input.record.reader.hdfs.parquet.converter.IFieldValue;
 import org.apache.asterix.external.input.record.reader.hdfs.parquet.converter.ParquetConverterContext;
 import org.apache.asterix.external.input.record.reader.hdfs.parquet.converter.primitve.PrimitiveConverterProvider;
@@ -34,7 +35,7 @@ import org.apache.parquet.io.api.PrimitiveConverter;
 import org.apache.parquet.schema.GroupType;
 import org.apache.parquet.schema.PrimitiveType;
 
-class ObjectConverter extends AbstractComplexConverter {
+public class ObjectConverter extends AbstractComplexConverter {
     private IARecordBuilder builder;
     /**
      * {@link IExternalFilterValueEmbedder} decides whether the object should be ignored entirely
@@ -66,6 +67,7 @@ class ObjectConverter extends AbstractComplexConverter {
 
     @Override
     public void end() {
+        closeDirectRepeatedChildren();
         if (!ignore) {
             writeToParent();
             context.getValueEmbedder().exitObject();

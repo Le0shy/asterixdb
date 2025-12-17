@@ -24,6 +24,7 @@ import static org.apache.hyracks.control.common.config.OptionTypes.LONG_BYTE_UNI
 import static org.apache.hyracks.control.common.config.OptionTypes.NONNEGATIVE_INTEGER;
 import static org.apache.hyracks.control.common.config.OptionTypes.POSITIVE_INTEGER;
 import static org.apache.hyracks.control.common.config.OptionTypes.STRING;
+import static org.apache.hyracks.control.common.config.OptionTypes.getRangedIntegerType;
 import static org.apache.hyracks.util.StorageUtil.StorageUnit.GIGABYTE;
 
 import java.util.concurrent.TimeUnit;
@@ -52,11 +53,24 @@ public class CloudProperties extends AbstractProperties {
         CLOUD_STORAGE_ALLOCATION_PERCENTAGE(DOUBLE, 0.8d),
         // 90% of the allocated space for storage (i.e., 90% of the 80% of the total disk space)
         CLOUD_STORAGE_SWEEP_THRESHOLD_PERCENTAGE(DOUBLE, 0.9d),
-        CLOUD_STORAGE_DISK_MONITOR_INTERVAL(POSITIVE_INTEGER, 60),
+        CLOUD_STORAGE_DISK_MONITOR_INTERVAL(POSITIVE_INTEGER, 120),
         CLOUD_STORAGE_INDEX_INACTIVE_DURATION_THRESHOLD(POSITIVE_INTEGER, 360),
         CLOUD_STORAGE_DEBUG_MODE_ENABLED(BOOLEAN, false),
         CLOUD_STORAGE_DEBUG_SWEEP_THRESHOLD_SIZE(LONG_BYTE_UNIT, StorageUtil.getLongSizeInBytes(1, GIGABYTE)),
-        CLOUD_PROFILER_LOG_INTERVAL(NONNEGATIVE_INTEGER, 0);
+        CLOUD_PROFILER_LOG_INTERVAL(NONNEGATIVE_INTEGER, 5),
+        CLOUD_ACQUIRE_TOKEN_TIMEOUT(POSITIVE_INTEGER, 100),
+        CLOUD_MAX_WRITE_REQUESTS_PER_SECOND(NONNEGATIVE_INTEGER, 250),
+        CLOUD_MAX_READ_REQUESTS_PER_SECOND(NONNEGATIVE_INTEGER, 1500),
+        CLOUD_WRITE_BUFFER_SIZE(
+                getRangedIntegerType(5, Integer.MAX_VALUE),
+                StorageUtil.getIntSizeInBytes(8, StorageUtil.StorageUnit.MEGABYTE)),
+        CLOUD_EVICTION_PLAN_REEVALUATE_THRESHOLD(POSITIVE_INTEGER, 50),
+        CLOUD_REQUESTS_MAX_HTTP_CONNECTIONS(POSITIVE_INTEGER, 1000),
+        CLOUD_REQUESTS_MAX_PENDING_HTTP_CONNECTIONS(POSITIVE_INTEGER, 10000),
+        CLOUD_REQUESTS_HTTP_CONNECTION_ACQUIRE_TIMEOUT(POSITIVE_INTEGER, 120),
+        CLOUD_STORAGE_FORCE_PATH_STYLE(BOOLEAN, false),
+        CLOUD_STORAGE_DISABLE_SSL_VERIFY(BOOLEAN, false),
+        CLOUD_STORAGE_LIST_EVENTUALLY_CONSISTENT(BOOLEAN, false);
 
         private final IOptionType interpreter;
         private final Object defaultValue;
@@ -83,6 +97,17 @@ public class CloudProperties extends AbstractProperties {
                 case CLOUD_STORAGE_DEBUG_SWEEP_THRESHOLD_SIZE:
                 case CLOUD_STORAGE_DEBUG_MODE_ENABLED:
                 case CLOUD_PROFILER_LOG_INTERVAL:
+                case CLOUD_ACQUIRE_TOKEN_TIMEOUT:
+                case CLOUD_MAX_WRITE_REQUESTS_PER_SECOND:
+                case CLOUD_MAX_READ_REQUESTS_PER_SECOND:
+                case CLOUD_WRITE_BUFFER_SIZE:
+                case CLOUD_EVICTION_PLAN_REEVALUATE_THRESHOLD:
+                case CLOUD_REQUESTS_MAX_HTTP_CONNECTIONS:
+                case CLOUD_REQUESTS_MAX_PENDING_HTTP_CONNECTIONS:
+                case CLOUD_REQUESTS_HTTP_CONNECTION_ACQUIRE_TIMEOUT:
+                case CLOUD_STORAGE_FORCE_PATH_STYLE:
+                case CLOUD_STORAGE_DISABLE_SSL_VERIFY:
+                case CLOUD_STORAGE_LIST_EVENTUALLY_CONSISTENT:
                     return Section.COMMON;
                 default:
                     return Section.NC;
@@ -110,7 +135,7 @@ public class CloudProperties extends AbstractProperties {
                             + " request to open it. 'selective' caching will act as the 'lazy' policy; however, "
                             + " it allows to use the local disk(s) as a cache, where pages and indexes can be "
                             + " cached or evicted according to the pressure imposed on the local disks."
-                            + " (default: 'lazy')";
+                            + " (default: 'selective')";
                 case CLOUD_STORAGE_ALLOCATION_PERCENTAGE:
                     return "The percentage of the total disk space that should be allocated for data storage when the"
                             + " 'selective' caching policy is used. The remaining will act as a buffer for "
@@ -124,7 +149,7 @@ public class CloudProperties extends AbstractProperties {
                 case CLOUD_STORAGE_DISK_MONITOR_INTERVAL:
                     return "The disk monitoring interval time (in seconds): determines how often the system"
                             + " checks for pressure on disk space when using the 'selective' caching policy."
-                            + " (default : 60 seconds)";
+                            + " (default : 120 seconds)";
                 case CLOUD_STORAGE_INDEX_INACTIVE_DURATION_THRESHOLD:
                     return "The duration in minutes to consider an index is inactive. (default: 360 or 6 hours)";
                 case CLOUD_STORAGE_DEBUG_MODE_ENABLED:
@@ -136,9 +161,35 @@ public class CloudProperties extends AbstractProperties {
                             + " CLOUD_STORAGE_SWEEP_THRESHOLD_PERCENTAGE."
                             + " (default: 0. I.e., CLOUD_STORAGE_SWEEP_THRESHOLD_PERCENTAGE will be used by default)";
                 case CLOUD_PROFILER_LOG_INTERVAL:
-                    return "The waiting time (in minutes) to log cloud request statistics (default: 0, which means"
-                            + " the profiler is disabled by default). The minimum is 1 minute."
-                            + " NOTE: Enabling the profiler could perturb the performance of cloud requests";
+                    return "The waiting time (in minutes) to log cloud request statistics. The minimum is 1 minute."
+                            + " Note: by default, the logging is disabled. Enabling it could perturb the performance of cloud requests";
+                case CLOUD_ACQUIRE_TOKEN_TIMEOUT:
+                    return "The waiting time (in milliseconds) if a requesting thread failed to acquire a token if the"
+                            + " rate limit of cloud requests exceeded (default: 100, min: 1, and max: 5000)";
+                case CLOUD_MAX_WRITE_REQUESTS_PER_SECOND:
+                    return "The maximum number of write requests per second (default: 2500, 0 means unlimited)";
+                case CLOUD_MAX_READ_REQUESTS_PER_SECOND:
+                    return "The maximum number of read requests per second (default: 4000, 0 means unlimited)";
+                case CLOUD_WRITE_BUFFER_SIZE:
+                    return "The write buffer size in bytes. (default: 8MB, min: 5MB)";
+                case CLOUD_EVICTION_PLAN_REEVALUATE_THRESHOLD:
+                    return "The number of cloud reads for re-evaluating an eviction plan. (default: 50)";
+                case CLOUD_REQUESTS_MAX_HTTP_CONNECTIONS:
+                    return "The maximum number of HTTP connections to use concurrently for cloud requests per node. (default: 1000)";
+                case CLOUD_REQUESTS_MAX_PENDING_HTTP_CONNECTIONS:
+                    return "The maximum number of HTTP connections allowed to wait for a connection per node. (default: 10000)";
+                case CLOUD_REQUESTS_HTTP_CONNECTION_ACQUIRE_TIMEOUT:
+                    return "The waiting time (in seconds) to acquire an HTTP connection before failing the request."
+                            + " (default: 120 seconds)";
+                case CLOUD_STORAGE_FORCE_PATH_STYLE:
+                    return "Indicates whether or not to force path style when accessing the cloud storage. (default:"
+                            + " false)";
+                case CLOUD_STORAGE_DISABLE_SSL_VERIFY:
+                    return "Indicates whether or not to disable SSL certificate verification on the cloud storage. "
+                            + "(default: false)";
+                case CLOUD_STORAGE_LIST_EVENTUALLY_CONSISTENT:
+                    return "Indicates whether or not deleted objects may be contained in list operations for some time"
+                            + "after they are deleted. (default: false)";
                 default:
                     throw new IllegalStateException("NYI: " + this);
             }
@@ -212,5 +263,50 @@ public class CloudProperties extends AbstractProperties {
     public long getProfilerLogInterval() {
         long interval = TimeUnit.MINUTES.toNanos(accessor.getInt(Option.CLOUD_PROFILER_LOG_INTERVAL));
         return interval == 0 ? 0 : Math.max(interval, TimeUnit.MINUTES.toNanos(1));
+    }
+
+    public long getTokenAcquireTimeout() {
+        int time = accessor.getInt(Option.CLOUD_ACQUIRE_TOKEN_TIMEOUT);
+        return Math.min(time, 1000);
+    }
+
+    public int getWriteMaxRequestsPerSecond() {
+        return accessor.getInt(Option.CLOUD_MAX_WRITE_REQUESTS_PER_SECOND);
+    }
+
+    public int getReadMaxRequestsPerSecond() {
+        return accessor.getInt(Option.CLOUD_MAX_READ_REQUESTS_PER_SECOND);
+    }
+
+    public int getWriteBufferSize() {
+        return accessor.getInt(Option.CLOUD_WRITE_BUFFER_SIZE);
+    }
+
+    public int getEvictionPlanReevaluationThreshold() {
+        return accessor.getInt(Option.CLOUD_EVICTION_PLAN_REEVALUATE_THRESHOLD);
+    }
+
+    public int getRequestsMaxHttpConnections() {
+        return accessor.getInt(Option.CLOUD_REQUESTS_MAX_HTTP_CONNECTIONS);
+    }
+
+    public int getRequestsMaxPendingHttpConnections() {
+        return accessor.getInt(Option.CLOUD_REQUESTS_MAX_PENDING_HTTP_CONNECTIONS);
+    }
+
+    public int getRequestsHttpConnectionAcquireTimeout() {
+        return accessor.getInt(Option.CLOUD_REQUESTS_HTTP_CONNECTION_ACQUIRE_TIMEOUT);
+    }
+
+    public boolean isStorageForcePathStyle() {
+        return accessor.getBoolean(Option.CLOUD_STORAGE_FORCE_PATH_STYLE);
+    }
+
+    public boolean isStorageDisableSSLVerify() {
+        return accessor.getBoolean(Option.CLOUD_STORAGE_DISABLE_SSL_VERIFY);
+    }
+
+    public boolean isStorageListEventuallyConsistent() {
+        return accessor.getBoolean(Option.CLOUD_STORAGE_LIST_EVENTUALLY_CONSISTENT);
     }
 }

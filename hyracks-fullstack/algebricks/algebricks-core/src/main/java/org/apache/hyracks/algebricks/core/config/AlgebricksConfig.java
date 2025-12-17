@@ -46,5 +46,7 @@ public class AlgebricksConfig {
             StorageUtil.getIntSizeInBytes(8, StorageUtil.StorageUnit.KILOBYTE);
     public static final boolean BATCH_LOOKUP_DEFAULT = true;
     public static final boolean COLUMN_FILTER_DEFAULT = true;
+    public static final boolean ORDERED_FIELDS = true;
+    public static final int MAX_VARIABLE_OCCURRENCES_INLINING_DEFAULT = 128;
     public static final String JOB_GROUP_DEFAULT = "d";
 }

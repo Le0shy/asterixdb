@@ -49,9 +49,9 @@ import org.apache.asterix.runtime.evaluators.common.ListAccessor;
 import org.apache.asterix.runtime.functions.FunctionTypeInferers;
 import org.apache.hyracks.algebricks.common.exceptions.AlgebricksException;
 import org.apache.hyracks.algebricks.core.algebra.functions.FunctionIdentifier;
-import org.apache.hyracks.algebricks.runtime.base.IEvaluatorContext;
 import org.apache.hyracks.algebricks.runtime.base.IScalarEvaluator;
 import org.apache.hyracks.algebricks.runtime.base.IScalarEvaluatorFactory;
+import org.apache.hyracks.api.context.IEvaluatorContext;
 import org.apache.hyracks.api.dataflow.value.IBinaryComparator;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
 import org.apache.hyracks.data.std.accessors.UTF8StringBinaryComparatorFactory;
@@ -182,7 +182,7 @@ public class ArrayStarDescriptor extends AbstractScalarFunctionDynamicDescriptor
         private final IPointable list;
         private final IPointable tempList;
         private final IPointable object;
-        private final CastTypeEvaluator caster;
+        private final TypeCaster caster;
         private final ListAccessor listAccessor;
         private final RecordBuilder recordBuilder;
         private final IAsterixListBuilder listBuilder;
@@ -198,7 +198,7 @@ public class ArrayStarDescriptor extends AbstractScalarFunctionDynamicDescriptor
             list = new VoidPointable();
             tempList = new VoidPointable();
             listEval = args[0].createScalarEvaluator(ctx);
-            caster = new CastTypeEvaluator();
+            caster = new TypeCaster(sourceLoc);
             listAccessor = new ListAccessor();
             recordBuilder = new RecordBuilder();
             listBuilder = new OrderedListBuilder();
@@ -225,8 +225,8 @@ public class ArrayStarDescriptor extends AbstractScalarFunctionDynamicDescriptor
             }
 
             try {
-                caster.resetAndAllocate(DefaultOpenFieldType.NESTED_OPEN_AORDERED_LIST_TYPE, inputListType, listEval);
-                caster.cast(tempList, list);
+                caster.allocateAndCast(tempList, inputListType, list,
+                        DefaultOpenFieldType.NESTED_OPEN_AORDERED_LIST_TYPE);
 
                 tempMinHeap.clear();
                 fieldNameToValuesList.clear();

@@ -31,6 +31,7 @@ import org.apache.hyracks.storage.common.buffercache.CachedPage;
 import org.apache.hyracks.storage.common.buffercache.IBufferCache;
 import org.apache.hyracks.storage.common.buffercache.ICachedPage;
 import org.apache.hyracks.storage.common.file.BufferedFileHandle;
+import org.apache.hyracks.util.IThreadStats;
 
 public final class DefaultColumnReadContext implements IColumnReadContext {
     public static final IColumnReadContext INSTANCE = new DefaultColumnReadContext();
@@ -60,15 +61,16 @@ public final class DefaultColumnReadContext implements IColumnReadContext {
 
     @Override
     public ByteBuffer processHeader(IOManager ioManager, BufferedFileHandle fileHandle, BufferCacheHeaderHelper header,
-            CachedPage cPage) throws HyracksDataException {
-        return DEFAULT.processHeader(ioManager, fileHandle, header, cPage);
+            CachedPage cPage, IThreadStats threadStats) throws HyracksDataException {
+        return DEFAULT.processHeader(ioManager, fileHandle, header, cPage, threadStats);
     }
 
     @Override
     public ICachedPage pinNext(ColumnBTreeReadLeafFrame leafFrame, IBufferCache bufferCache, int fileId)
             throws HyracksDataException {
-        ICachedPage nextPage = bufferCache.pin(BufferedFileHandle.getDiskPageId(fileId, leafFrame.getNextLeaf()));
+        int nextLeaf = leafFrame.getNextLeaf();
         bufferCache.unpin(leafFrame.getPage());
+        ICachedPage nextPage = bufferCache.pin(BufferedFileHandle.getDiskPageId(fileId, nextLeaf));
         leafFrame.setPage(nextPage);
         return nextPage;
     }

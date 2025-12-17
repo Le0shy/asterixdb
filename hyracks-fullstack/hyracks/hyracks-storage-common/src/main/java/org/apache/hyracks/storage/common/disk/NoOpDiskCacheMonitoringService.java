@@ -39,6 +39,16 @@ public final class NoOpDiskCacheMonitoringService implements IDiskCacheMonitorin
     }
 
     @Override
+    public void pause() {
+        // NoOp
+    }
+
+    @Override
+    public void resume() {
+        // NoOp
+    }
+
+    @Override
     public boolean isEnabled() {
         return false;
     }
@@ -51,5 +61,10 @@ public final class NoOpDiskCacheMonitoringService implements IDiskCacheMonitorin
     @Override
     public IPhysicalDrive getPhysicalDrive() {
         return DummyPhysicalDrive.INSTANCE;
+    }
+
+    @Override
+    public int getEvictionPlanReevaluationThreshold() {
+        return 0;
     }
 }

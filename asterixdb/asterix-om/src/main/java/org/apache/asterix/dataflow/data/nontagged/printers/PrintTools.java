@@ -18,6 +18,8 @@
  */
 package org.apache.asterix.dataflow.data.nontagged.printers;
 
+import static org.apache.asterix.dataflow.data.nontagged.printers.csv.CSVUtils.DEFAULT_QUOTE;
+
 import java.io.DataOutput;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -25,15 +27,21 @@ import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.TimeUnit;
 
+import org.apache.asterix.dataflow.data.nontagged.printers.csv.CSVUtils;
 import org.apache.asterix.dataflow.data.nontagged.serde.ADoubleSerializerDeserializer;
 import org.apache.asterix.dataflow.data.nontagged.serde.AFloatSerializerDeserializer;
 import org.apache.asterix.dataflow.data.nontagged.serde.AInt32SerializerDeserializer;
 import org.apache.asterix.dataflow.data.nontagged.serde.AInt64SerializerDeserializer;
+import org.apache.asterix.dataflow.data.nontagged.serde.jacksonjts.JtsModule;
 import org.apache.asterix.om.base.temporal.GregorianCalendarSystem;
 import org.apache.hyracks.algebricks.data.utils.WriteValueTools;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
 import org.apache.hyracks.util.bytes.HexPrinter;
 import org.apache.hyracks.util.string.UTF8StringUtil;
+import org.locationtech.jts.geom.Geometry;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 public class PrintTools {
 
@@ -41,7 +49,7 @@ public class PrintTools {
     private static final long CHRONON_OF_DAY = TimeUnit.DAYS.toMillis(1);
 
     public static void printDateString(byte[] b, int s, int l, PrintStream ps) throws HyracksDataException {
-        long chrononTime = AInt32SerializerDeserializer.getInt(b, s + 1) * CHRONON_OF_DAY;
+        long chrononTime = getDateChronon(b, s + 1);
 
         try {
             gCalInstance.getExtendStringRepUntilField(chrononTime, ps, GregorianCalendarSystem.Fields.YEAR,
@@ -51,8 +59,12 @@ public class PrintTools {
         }
     }
 
+    public static long getDateChronon(byte[] b, int s) {
+        return AInt32SerializerDeserializer.getInt(b, s) * CHRONON_OF_DAY;
+    }
+
     public static void printDateTimeString(byte[] b, int s, int l, PrintStream ps) throws HyracksDataException {
-        long chrononTime = AInt64SerializerDeserializer.getLong(b, s + 1);
+        long chrononTime = getDateTimeChronon(b, s + 1);
 
         try {
             gCalInstance.getExtendStringRepUntilField(chrononTime, ps, GregorianCalendarSystem.Fields.YEAR,
@@ -62,9 +74,13 @@ public class PrintTools {
         }
     }
 
+    public static long getDateTimeChronon(byte[] b, int s) {
+        return AInt64SerializerDeserializer.getLong(b, s);
+    }
+
     public static void printDayTimeDurationString(byte[] b, int s, int l, PrintStream ps) throws HyracksDataException {
         boolean positive = true;
-        long milliseconds = AInt64SerializerDeserializer.getLong(b, s + 1);
+        long milliseconds = getDateTimeChronon(b, s + 1);
 
         // set the negative flag. "||" is necessary in case that months field is not there (so it is 0)
         if (milliseconds < 0) {
@@ -210,7 +226,7 @@ public class PrintTools {
     }
 
     public static void printTimeString(byte[] b, int s, int l, PrintStream ps) throws HyracksDataException {
-        int time = AInt32SerializerDeserializer.getInt(b, s + 1);
+        int time = getTimeChronon(b, s + 1);
 
         try {
             gCalInstance.getExtendStringRepUntilField(time, ps, GregorianCalendarSystem.Fields.HOUR,
@@ -218,6 +234,10 @@ public class PrintTools {
         } catch (IOException e) {
             throw HyracksDataException.create(e);
         }
+    }
+
+    public static int getTimeChronon(byte[] b, int s) {
+        return AInt32SerializerDeserializer.getInt(b, s);
     }
 
     public static void printDoubleForJson(byte[] b, int s, PrintStream ps) {
@@ -275,29 +295,55 @@ public class PrintTools {
         UPPER_CASE,
     }
 
-    public static void writeUTF8StringAsCSV(byte[] b, int s, int l, OutputStream os) throws IOException {
+    public static void writeUTF8StringAsCSV(byte[] b, int s, int l, PrintStream ps, char quote, boolean forceQuote,
+            char escape, char delimiter) throws IOException {
         int stringLength = UTF8StringUtil.getUTFLength(b, s);
         int position = s + UTF8StringUtil.getNumBytesToStoreLength(stringLength);
         int maxPosition = position + stringLength;
-        os.write('"');
+        char quoteChar = quote == CSVUtils.NULL_CHAR ? DEFAULT_QUOTE : quote;
+
+        boolean shouldQuote = forceQuote;
+        if (!shouldQuote) {
+            // Check if the string contains any special characters that require quoting
+            for (int i = position; i < maxPosition; i++) {
+                char c = UTF8StringUtil.charAt(b, i);
+                if (c == quote || c == '\r' || c == '\n' || c == escape || c == delimiter) {
+                    shouldQuote = true;
+                    break;
+                }
+            }
+        }
+
+        if (shouldQuote) {
+            ps.print(quoteChar);
+        }
+
         while (position < maxPosition) {
             char c = UTF8StringUtil.charAt(b, position);
             int sz = UTF8StringUtil.charSize(b, position);
-            if (c == '"') {
-                os.write('"');
+
+            // todo: Escape character handling -- as the data is strictly quoted in case of carriage return, should "\r" needs to get handled?
+            if (c == quote || c == '\r') {
+                ps.print(escape);
             }
+
+            // Handling surrogate pairs
             if (Character.isHighSurrogate(c)) {
-                position += writeSupplementaryChar(os, b, maxPosition, position, c, sz);
+                position += writeSupplementaryChar(ps, b, maxPosition, position, c, sz);
                 continue;
             }
+
+            // Write the character bytes
             while (sz > 0) {
-                os.write(b[position]);
+                ps.print(c);
                 ++position;
                 --sz;
             }
-            break;
         }
-        os.write('"');
+
+        if (shouldQuote) {
+            ps.print(quoteChar);
+        }
     }
 
     public static void writeUTF8StringRaw(byte[] b, int s, int l, DataOutput os) throws IOException {
@@ -459,6 +505,25 @@ public class PrintTools {
         final int lowSurrogateSize = UTF8StringUtil.charSize(src, lowSurrogatePos);
         os.write(new String(new char[] { highSurrogate, lowSurrogate }).getBytes(StandardCharsets.UTF_8));
         return highSurrogateSize + lowSurrogateSize;
+    }
+
+    /**
+     * Converts a JTS Geometry to a GeoJSON string. Returns Empty String in case of exceptions
+     *
+     * @param geometry The JTS Geometry to be converted.
+     * @return A GeoJSON string representation of the Geometry or an error message.
+     */
+    public static String geometryToGeoJSON(Geometry geometry) {
+        if (geometry == null) {
+            return "";
+        }
+        ObjectMapper mapper = new ObjectMapper();
+        mapper.registerModule(new JtsModule());
+        try {
+            return mapper.writeValueAsString(geometry);
+        } catch (JsonProcessingException e) {
+            return "";
+        }
     }
 
 }

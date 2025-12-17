@@ -88,6 +88,27 @@ public class PushdownUtil {
         }
     }
 
+    public static int getFieldNameId(AbstractFunctionCallExpression fieldAccessExpr) {
+        if (!BuiltinFunctions.FIELD_ACCESS_BY_INDEX.equals(fieldAccessExpr.getFunctionIdentifier())) {
+            return -1;
+        }
+
+        Integer fieldNameId = ConstantExpressionUtil.getIntArgument(fieldAccessExpr, 1);
+        if (fieldNameId == null) {
+            return -1;
+        }
+
+        return fieldNameId;
+    }
+
+    public static String getFieldName(AbstractFunctionCallExpression fieldAccessExpr) {
+        if (!BuiltinFunctions.FIELD_ACCESS_BY_NAME.equals(fieldAccessExpr.getFunctionIdentifier())) {
+            throw new IllegalStateException(
+                    "Cannot get field name from " + fieldAccessExpr.getFunctionIdentifier().getName());
+        }
+        return ConstantExpressionUtil.getStringArgument(fieldAccessExpr, 1);
+    }
+
     public static String getFieldName(AbstractFunctionCallExpression fieldAccessExpr, IVariableTypeEnvironment typeEnv)
             throws AlgebricksException {
         if (BuiltinFunctions.FIELD_ACCESS_BY_NAME.equals(fieldAccessExpr.getFunctionIdentifier())) {
@@ -150,8 +171,9 @@ public class PushdownUtil {
         return fid.getName().startsWith("is");
     }
 
-    public static boolean isNestedFunction(FunctionIdentifier fid) {
-        return isObjectFunction(fid) || isArrayOrAggregateFunction(fid) || BuiltinFunctions.DEEP_EQUAL.equals(fid);
+    public static boolean isNestedFunction(FunctionIdentifier fid, AbstractFunctionCallExpression expression) {
+        return isObjectFunction(fid) || isArrayOrAggregateFunction(fid) || BuiltinFunctions.DEEP_EQUAL.equals(fid)
+                || isNonScalar(expression);
     }
 
     public static boolean isObjectFunction(FunctionIdentifier fid) {
@@ -164,6 +186,10 @@ public class PushdownUtil {
         return functionName.startsWith("array") || functionName.startsWith("strict") || functionName.startsWith("sql")
                 || BuiltinFunctions.GET_ITEM.equals(fid) || BuiltinFunctions.isBuiltinScalarAggregateFunction(fid)
                 || BuiltinFunctions.isBuiltinAggregateFunction(fid);
+    }
+
+    public static boolean isNonScalar(AbstractFunctionCallExpression expression) {
+        return expression.getKind() != AbstractFunctionCallExpression.FunctionKind.SCALAR;
     }
 
     public static boolean isSameFunction(ILogicalExpression expr1, ILogicalExpression expr2) {
@@ -181,10 +207,10 @@ public class PushdownUtil {
         return fid != null && FILTER_PUSHABLE_AGGREGATE_FUNCTIONS.contains(fid);
     }
 
-    public static boolean isProhibitedFilterFunction(ILogicalExpression expression) {
+    public static boolean isProhibitedFilterFunction(AbstractFunctionCallExpression expression) {
         FunctionIdentifier fid = getFunctionIdentifier(expression);
-        return fid != null && !RANGE_FILTER_PUSHABLE_FUNCTIONS.contains(fid)
-                && (isNestedFunction(fid) || isTypeFunction(fid) || FILTER_PROHIBITED_FUNCTIONS.contains(fid));
+        return fid != null && !RANGE_FILTER_PUSHABLE_FUNCTIONS.contains(fid) && (isNestedFunction(fid, expression)
+                || isTypeFunction(fid) || FILTER_PROHIBITED_FUNCTIONS.contains(fid));
     }
 
     public static IAObject getConstant(ILogicalExpression expr) {

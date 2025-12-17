@@ -41,6 +41,9 @@ public class MetricsPrinter implements IResponseFieldPrinter {
         WARNING_COUNT("warningCount"),
         BUFFERCACHE_HIT_RATIO("bufferCacheHitRatio"),
         BUFFERCACHE_PAGEREAD_COUNT("bufferCachePageReadCount"),
+        REMOTE_STORAGE_REQUESTS_COUNT("remoteStorageRequestsCount"),
+        REMOTE_STORAGE_PAGES_READ_COUNT("remoteStoragePagesReadCount"),
+        REMOTE_PAGES_PERSISTED_COUNT("remoteStoragePagesPersistedCount"),
         ADDED_TO_THE_QUEUE_TIME_NANO("addedToTheQueueTimeNano"),
         ADDED_TO_THE_MEMORY_QUEUE_TIME_NANO("addedToTheMemoryQueueTimeNano"),
         EXECUTION_START_TIME_NANO("executionStartTimeNano"),
@@ -91,6 +94,9 @@ public class MetricsPrinter implements IResponseFieldPrinter {
         final boolean hasErrors = metrics.getErrorCount() > 0;
         final boolean hasWarnings = metrics.getWarnCount() > 0;
         final boolean usedCache = !(Double.isNaN(metrics.getBufferCacheHitRatio()));
+        final boolean madeCloudReadRequests = metrics.getCloudReadRequestsCount() > 0;
+        ResultUtil.printField(pw, Metrics.PROCESSED_OBJECTS_COUNT.str(), metrics.getProcessedObjects(),
+                usedCache || hasWarnings || hasErrors);
         ResultUtil.printField(pw, Metrics.PROCESSED_OBJECTS_COUNT.str(), metrics.getProcessedObjects(), true);
         pw.print("\n");
         if (usedCache) {
@@ -100,6 +106,21 @@ public class MetricsPrinter implements IResponseFieldPrinter {
             pw.print("\n");
             pw.print("\t");
             ResultUtil.printField(pw, Metrics.BUFFERCACHE_PAGEREAD_COUNT.str(), metrics.getBufferCachePageReadCount(),
+                    hasWarnings || hasErrors || madeCloudReadRequests);
+            pw.print("\n");
+        }
+        if (madeCloudReadRequests) {
+            pw.print("\t");
+            ResultUtil.printField(pw, Metrics.REMOTE_STORAGE_REQUESTS_COUNT.str(), metrics.getCloudReadRequestsCount(),
+                    true);
+            pw.print("\n");
+            pw.print("\t");
+            ResultUtil.printField(pw, Metrics.REMOTE_STORAGE_PAGES_READ_COUNT.str(), metrics.getCloudPagesReadCount(),
+                    true);
+            pw.print("\n");
+            pw.print("\t");
+            ResultUtil.printField(pw, Metrics.REMOTE_PAGES_PERSISTED_COUNT.str(), metrics.getCloudPagesPersistedCount(),
+                    hasWarnings || hasErrors);
                     true);
             pw.print("\n");
         }

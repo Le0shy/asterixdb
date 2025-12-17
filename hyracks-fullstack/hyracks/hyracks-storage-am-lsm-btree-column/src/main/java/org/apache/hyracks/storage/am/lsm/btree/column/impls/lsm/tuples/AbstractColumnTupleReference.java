@@ -44,7 +44,7 @@ public abstract class AbstractColumnTupleReference implements IColumnTupleIterat
     private final IColumnBufferProvider[] filterBufferProviders;
     private final IColumnBufferProvider[] buffersProviders;
     private final int numberOfPrimaryKeys;
-    private int endIndex;
+    protected int endIndex;
     protected int tupleIndex;
 
     // For logging
@@ -153,13 +153,16 @@ public abstract class AbstractColumnTupleReference implements IColumnTupleIterat
              * skipCount from calling setPrimaryKeysAt(startIndex, startIndex) is a negative value. For that reason,
              * non-key column should not skip any value.
              */
-            skip(Math.max(skipCount, 0));
+            initSkip(tupleIndex, Math.max(skipCount, 0));
         } else {
+            skipMegaLeafNode();
             numOfSkippedMegaLeafNodes++;
         }
 
         totalNumberOfMegaLeafNodes++;
     }
+
+    protected abstract void skipMegaLeafNode();
 
     @Override
     public final void setAt(int startIndex) throws HyracksDataException {
@@ -188,7 +191,7 @@ public abstract class AbstractColumnTupleReference implements IColumnTupleIterat
          * For values, we need to do 6 skips, as next will be called later by the assembler
          * -- setting the position at 12 as well.
          */
-        skip(skipCount);
+        initSkip(tupleIndex, skipCount);
     }
 
     protected abstract int setPrimaryKeysAt(int index, int skipCount) throws HyracksDataException;

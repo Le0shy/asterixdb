@@ -32,6 +32,8 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutorService;
 
 import org.apache.asterix.active.ActiveManager;
+import org.apache.asterix.app.external.ExternalCredentialsCache;
+import org.apache.asterix.app.external.ExternalCredentialsCacheUpdater;
 import org.apache.asterix.app.result.ResultReader;
 import org.apache.asterix.cloud.CloudConfigurator;
 import org.apache.asterix.cloud.LocalPartitionBootstrapper;
@@ -63,6 +65,8 @@ import org.apache.asterix.common.context.DatasetLifecycleManager;
 import org.apache.asterix.common.context.DiskWriteRateLimiterProvider;
 import org.apache.asterix.common.context.GlobalVirtualBufferCache;
 import org.apache.asterix.common.context.IStorageComponentProvider;
+import org.apache.asterix.common.external.IExternalCredentialsCache;
+import org.apache.asterix.common.external.IExternalCredentialsCacheUpdater;
 import org.apache.asterix.common.library.ILibraryManager;
 import org.apache.asterix.common.replication.IReplicationChannel;
 import org.apache.asterix.common.replication.IReplicationManager;
@@ -186,6 +190,8 @@ public class NCAppRuntimeContext implements INcApplicationContext {
     private final INamespacePathResolver namespacePathResolver;
     private final INamespaceResolver namespaceResolver;
     private IDiskCacheMonitoringService diskCacheService;
+    protected IExternalCredentialsCache externalCredentialsCache;
+    protected IExternalCredentialsCacheUpdater externalCredentialsCacheUpdater;
 
     public NCAppRuntimeContext(INCServiceContext ncServiceContext, NCExtensionManager extensionManager,
             IPropertiesFactory propertiesFactory, INamespaceResolver namespaceResolver,
@@ -210,6 +216,8 @@ public class NCAppRuntimeContext implements INcApplicationContext {
         cacheManager = new CacheManager();
         this.namespacePathResolver = namespacePathResolver;
         this.namespaceResolver = namespaceResolver;
+        this.externalCredentialsCache = new ExternalCredentialsCache(this);
+        this.externalCredentialsCacheUpdater = new ExternalCredentialsCacheUpdater(this);
     }
 
     @Override
@@ -217,6 +225,8 @@ public class NCAppRuntimeContext implements INcApplicationContext {
             IConfigValidatorFactory configValidatorFactory, IReplicationStrategyFactory replicationStrategyFactory,
             boolean initialRun) throws IOException {
         ioManager = getServiceContext().getIoManager();
+        threadExecutor =
+                MaintainedThreadNameExecutorService.newCachedThreadPool(getServiceContext().getThreadFactory());
         CloudConfigurator cloudConfigurator;
         IDiskResourceCacheLockNotifier lockNotifier;
         IDiskCachedPageAllocator pageAllocator;
@@ -239,8 +249,6 @@ public class NCAppRuntimeContext implements INcApplicationContext {
         }
 
         int ioQueueLen = getServiceContext().getAppConfig().getInt(NCConfig.Option.IO_QUEUE_SIZE);
-        threadExecutor =
-                MaintainedThreadNameExecutorService.newCachedThreadPool(getServiceContext().getThreadFactory());
         ICacheMemoryAllocator bufferAllocator = new HeapBufferAllocator();
         IPageCleanerPolicy pcp = new DelayPageCleanerPolicy(600000);
         IPageReplacementStrategy prs = new ClockPageReplacementStrategy(bufferAllocator, pageAllocator,
@@ -278,8 +286,9 @@ public class NCAppRuntimeContext implements INcApplicationContext {
         // Must start vbc now instead of by life cycle component manager (lccm) because lccm happens after
         // the metadata bootstrap task
         ((ILifeCycleComponent) virtualBufferCache).start();
-        datasetLifecycleManager = new DatasetLifecycleManager(storageProperties, localResourceRepository,
-                txnSubsystem.getLogManager(), virtualBufferCache, indexCheckpointManagerProvider, lockNotifier);
+        datasetLifecycleManager =
+                new DatasetLifecycleManager(ncServiceContext, storageProperties, localResourceRepository, recoveryMgr,
+                        txnSubsystem.getLogManager(), virtualBufferCache, indexCheckpointManagerProvider, lockNotifier);
         localResourceRepository.setDatasetLifecycleManager(datasetLifecycleManager);
         final String nodeId = getServiceContext().getNodeId();
         final Set<Integer> nodePartitions = metadataProperties.getNodePartitions(nodeId);
@@ -327,8 +336,8 @@ public class NCAppRuntimeContext implements INcApplicationContext {
 
         NodeControllerService ncs = (NodeControllerService) getServiceContext().getControllerService();
         FileReference appDir =
-                ioManager.resolveAbsolutePath(getServiceContext().getServerCtx().getAppDir().getAbsolutePath());
-        libraryManager = new ExternalLibraryManager(ncs, persistedResourceRegistry, appDir, ioManager);
+                persistenceIOManager.resolveAbsolutePath(getServiceContext().getServerCtx().getAppDir().getPath());
+        libraryManager = new ExternalLibraryManager(ncs, persistedResourceRegistry, appDir, persistenceIOManager);
         libraryManager.initialize(resetStorageData);
 
         /*
@@ -697,7 +706,7 @@ public class NCAppRuntimeContext implements INcApplicationContext {
         String schedulerName = storageProperties.getIoScheduler();
         int numPartitions = ioManager.getIODevices().size();
 
-        int maxConcurrentFlushes = storageProperties.geMaxConcurrentFlushes(numPartitions);
+        int maxConcurrentFlushes = storageProperties.getMaxConcurrentFlushes(numPartitions);
         int maxScheduledMerges = storageProperties.getMaxScheduledMerges(numPartitions);
         int maxConcurrentMerges = storageProperties.getMaxConcurrentMerges(numPartitions);
 
@@ -747,5 +756,15 @@ public class NCAppRuntimeContext implements INcApplicationContext {
     private int getResourceIdBlockSize() {
         return isCloudDeployment() ? storageProperties.getStoragePartitionsCount()
                 : ncServiceContext.getIoManager().getIODevices().size();
+    }
+
+    @Override
+    public IExternalCredentialsCache getExternalCredentialsCache() {
+        return externalCredentialsCache;
+    }
+
+    @Override
+    public IExternalCredentialsCacheUpdater getExternalCredentialsCacheUpdater() {
+        return externalCredentialsCacheUpdater;
     }
 }

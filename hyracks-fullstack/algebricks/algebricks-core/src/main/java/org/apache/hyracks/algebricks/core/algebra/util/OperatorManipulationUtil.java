@@ -181,17 +181,24 @@ public class OperatorManipulationUtil {
     }
 
     public static void substituteVarRec(AbstractLogicalOperator op, LogicalVariable v1, LogicalVariable v2,
-            boolean goThroughNts, ITypingContext ctx) throws AlgebricksException {
+            boolean goThroughNts, ITypingContext ctx, Set<ILogicalOperator> visited) throws AlgebricksException {
         VariableUtilities.substituteVariables(op, v1, v2, goThroughNts, ctx);
         for (Mutable<ILogicalOperator> opRef2 : op.getInputs()) {
-            substituteVarRec((AbstractLogicalOperator) opRef2.getValue(), v1, v2, goThroughNts, ctx);
+            if (visited.contains(opRef2.getValue())) {
+                continue;
+            }
+            visited.add(opRef2.getValue());
+            substituteVarRec((AbstractLogicalOperator) opRef2.getValue(), v1, v2, goThroughNts, ctx, visited);
         }
         if (op.getOperatorTag() == LogicalOperatorTag.NESTEDTUPLESOURCE && goThroughNts) {
             NestedTupleSourceOperator nts = (NestedTupleSourceOperator) op;
             if (nts.getDataSourceReference() != null) {
                 AbstractLogicalOperator op2 =
                         (AbstractLogicalOperator) nts.getDataSourceReference().getValue().getInputs().get(0).getValue();
-                substituteVarRec(op2, v1, v2, goThroughNts, ctx);
+                if (!visited.contains(op2)) {
+                    visited.add(op2);
+                    substituteVarRec(op2, v1, v2, goThroughNts, ctx, visited);
+                }
             }
         }
         if (op.hasNestedPlans()) {
@@ -199,7 +206,11 @@ public class OperatorManipulationUtil {
             for (ILogicalPlan p : aonp.getNestedPlans()) {
                 for (Mutable<ILogicalOperator> ref : p.getRoots()) {
                     AbstractLogicalOperator aop = (AbstractLogicalOperator) ref.getValue();
-                    substituteVarRec(aop, v1, v2, goThroughNts, ctx);
+                    if (visited.contains(aop)) {
+                        continue;
+                    }
+                    visited.add(aop);
+                    substituteVarRec(aop, v1, v2, goThroughNts, ctx, visited);
                 }
             }
         }
@@ -353,6 +364,15 @@ public class OperatorManipulationUtil {
         if (tags.contains(opTag)) {
             return true;
         }
+        for (Mutable<ILogicalOperator> children : op.getInputs()) {
+            if (ancestorOfOperators(children.getValue(), tags)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public static boolean ancestorOfOperatorsExcludeCurrent(ILogicalOperator op, Set<LogicalOperatorTag> tags) {
         for (Mutable<ILogicalOperator> children : op.getInputs()) {
             if (ancestorOfOperators(children.getValue(), tags)) {
                 return true;
@@ -534,6 +554,8 @@ public class OperatorManipulationUtil {
                     case OperatorAnnotations.OP_COST_TOTAL:
                     case OperatorAnnotations.OP_INPUT_CARDINALITY:
                     case OperatorAnnotations.OP_OUTPUT_CARDINALITY:
+                    case OperatorAnnotations.OP_INPUT_DOCSIZE:
+                    case OperatorAnnotations.OP_OUTPUT_DOCSIZE:
                     case OperatorAnnotations.OP_LEFT_EXCHANGE_COST:
                     case OperatorAnnotations.OP_RIGHT_EXCHANGE_COST:
                         destOp.getAnnotations().put(annotation, annotationVal);

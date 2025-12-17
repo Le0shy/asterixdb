@@ -28,7 +28,6 @@ import org.apache.hyracks.storage.am.lsm.btree.column.api.projection.IColumnTupl
 import org.apache.hyracks.storage.am.lsm.btree.column.cloud.buffercache.IColumnReadContext;
 import org.apache.hyracks.storage.am.lsm.btree.column.cloud.buffercache.IColumnWriteContext;
 import org.apache.hyracks.storage.am.lsm.btree.column.cloud.buffercache.read.CloudColumnReadContext;
-import org.apache.hyracks.storage.am.lsm.btree.column.cloud.buffercache.read.DefaultColumnReadContext;
 import org.apache.hyracks.storage.am.lsm.btree.column.cloud.buffercache.write.CloudColumnWriteContext;
 import org.apache.hyracks.storage.am.lsm.btree.column.cloud.sweep.ColumnSweepPlanner;
 import org.apache.hyracks.storage.am.lsm.btree.column.cloud.sweep.ColumnSweeper;
@@ -48,11 +47,11 @@ public final class CloudColumnIndexDiskCacheManager implements IColumnIndexDiskC
     private final ColumnSweepPlanner planner;
     private final ColumnSweeper sweeper;
 
-    public CloudColumnIndexDiskCacheManager(int numberOfPrimaryKeys, IColumnTupleProjector sweepProjector,
-            IPhysicalDrive drive) {
+    public CloudColumnIndexDiskCacheManager(int numberOfPrimaryKeys, int evictionPlanReevaluationThreshold,
+            IColumnTupleProjector sweepProjector, IPhysicalDrive drive) {
         this.sweepProjector = sweepProjector;
         this.drive = drive;
-        planner = new ColumnSweepPlanner(numberOfPrimaryKeys, System::nanoTime);
+        planner = new ColumnSweepPlanner(numberOfPrimaryKeys, evictionPlanReevaluationThreshold, System::nanoTime);
         sweeper = new ColumnSweeper(numberOfPrimaryKeys);
     }
 
@@ -71,11 +70,10 @@ public final class CloudColumnIndexDiskCacheManager implements IColumnIndexDiskC
     public IColumnReadContext createReadContext(IColumnProjectionInfo projectionInfo) {
         ColumnProjectorType projectorType = projectionInfo.getProjectorType();
         if (projectorType == ColumnProjectorType.QUERY) {
-            planner.access(projectionInfo, drive.hasSpace());
+            planner.access(projectionInfo);
         } else if (projectorType == ColumnProjectorType.MODIFY) {
-            planner.setIndexedColumns(projectionInfo);
             // Requested (and indexed) columns will be persisted if space permits
-            return DefaultColumnReadContext.INSTANCE;
+            planner.setIndexedColumns(projectionInfo);
         }
         return new CloudColumnReadContext(projectionInfo, drive, planner.getPlanCopy());
     }

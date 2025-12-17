@@ -20,6 +20,7 @@ package org.apache.asterix.external.writer;
 
 import java.io.File;
 
+import org.apache.asterix.common.api.IApplicationContext;
 import org.apache.asterix.common.exceptions.CompilationException;
 import org.apache.asterix.common.exceptions.ErrorCode;
 import org.apache.asterix.common.exceptions.RuntimeDataException;
@@ -29,6 +30,8 @@ import org.apache.asterix.runtime.writer.IExternalFileWriterFactory;
 import org.apache.asterix.runtime.writer.IExternalFileWriterFactoryProvider;
 import org.apache.asterix.runtime.writer.IExternalPrinterFactory;
 import org.apache.hyracks.algebricks.common.exceptions.AlgebricksException;
+import org.apache.hyracks.algebricks.runtime.evaluators.EvaluatorContext;
+import org.apache.hyracks.api.context.IEvaluatorContext;
 import org.apache.hyracks.api.context.IHyracksTaskContext;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
 import org.apache.hyracks.api.exceptions.SourceLocation;
@@ -71,7 +74,9 @@ public final class LocalFSExternalFileWriterFactory implements IExternalFileWrit
             }
             validator = NO_OP_VALIDATOR;
         }
-        return new LocalFSExternalFileWriter(printerFactory.createPrinter(), validator, pathSourceLocation);
+        IEvaluatorContext evaluatorContext = new EvaluatorContext(context);
+        return new LocalFSExternalFileWriter(printerFactory.createPrinter(evaluatorContext), validator,
+                pathSourceLocation);
     }
 
     @Override
@@ -80,7 +85,7 @@ public final class LocalFSExternalFileWriterFactory implements IExternalFileWrit
     }
 
     @Override
-    public void validate() throws AlgebricksException {
+    public void validate(IApplicationContext appCtx) throws AlgebricksException {
         // A special case validation for a single node cluster
         if (singleNodeCluster && staticPath != null) {
             if (isNonEmptyDirectory(new File(staticPath))) {

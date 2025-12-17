@@ -33,12 +33,14 @@ public final class CloudDiskCacheMonitoringAndPrefetchingService
     private final ExecutorService executor;
     private final DiskCacheSweeperThread monitorThread;
     private final IPhysicalDrive drive;
+    private final int evictionPlanReevaluationThreshold;
 
     public CloudDiskCacheMonitoringAndPrefetchingService(ExecutorService executor, IPhysicalDrive drive,
-            DiskCacheSweeperThread monitorThread) {
+            DiskCacheSweeperThread monitorThread, int evictionPlanReevaluationThreshold) {
         this.executor = executor;
         this.drive = drive;
         this.monitorThread = monitorThread;
+        this.evictionPlanReevaluationThreshold = evictionPlanReevaluationThreshold;
     }
 
     @Override
@@ -48,7 +50,18 @@ public final class CloudDiskCacheMonitoringAndPrefetchingService
 
     @Override
     public void stop() {
+        monitorThread.pause();
         executor.shutdown();
+    }
+
+    @Override
+    public void pause() {
+        monitorThread.pause();
+    }
+
+    @Override
+    public void resume() {
+        monitorThread.resume();
     }
 
     @Override
@@ -69,5 +82,10 @@ public final class CloudDiskCacheMonitoringAndPrefetchingService
     @Override
     public void request(AbstractPrefetchRequest request) throws HyracksDataException {
         // TODO implement
+    }
+
+    @Override
+    public int getEvictionPlanReevaluationThreshold() {
+        return evictionPlanReevaluationThreshold;
     }
 }

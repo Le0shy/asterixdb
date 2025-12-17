@@ -27,10 +27,7 @@ import org.apache.asterix.om.types.IAType;
 import org.apache.asterix.runtime.evaluators.base.AbstractScalarFunctionDynamicDescriptor;
 import org.apache.asterix.runtime.functions.FunctionTypeInferers;
 import org.apache.hyracks.algebricks.core.algebra.functions.FunctionIdentifier;
-import org.apache.hyracks.algebricks.runtime.base.IEvaluatorContext;
-import org.apache.hyracks.algebricks.runtime.base.IScalarEvaluator;
 import org.apache.hyracks.algebricks.runtime.base.IScalarEvaluatorFactory;
-import org.apache.hyracks.api.exceptions.HyracksDataException;
 
 /**
  * This runtime function casts an input ADM instance of a certain type into the form
@@ -73,15 +70,6 @@ public class CastTypeDescriptor extends AbstractScalarFunctionDynamicDescriptor 
     @Override
     public IScalarEvaluatorFactory createEvaluatorFactory(final IScalarEvaluatorFactory[] args) {
         final IScalarEvaluatorFactory recordEvalFactory = args[0];
-
-        return new IScalarEvaluatorFactory() {
-            private static final long serialVersionUID = 1L;
-
-            @Override
-            public IScalarEvaluator createScalarEvaluator(IEvaluatorContext ctx) throws HyracksDataException {
-                IScalarEvaluator argEval = recordEvalFactory.createScalarEvaluator(ctx);
-                return new CastTypeEvaluator(reqType, inputType, argEval, sourceLoc);
-            }
-        };
+        return new CastTypeEvaluatorFactory(recordEvalFactory, reqType, inputType, sourceLoc);
     }
 }

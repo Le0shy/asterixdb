@@ -359,6 +359,9 @@ public class TestExecutor {
             } else if (actualFile.toString().endsWith(".plan")) {
                 runScriptAndCompareWithResultPlan(scriptFile, readerExpected, readerActual);
                 return;
+            } else if (actualFile.toString().endsWith(".jsonl")) {
+                runScriptAndCompareWithResultJsonl(scriptFile, readerExpected, readerActual, statement);
+                return;
             }
 
             String lineExpected, lineActual;
@@ -421,18 +424,18 @@ public class TestExecutor {
 
     public static ComparisonException createLineChangedException(File scriptFile, String lineExpected,
             String lineActual, int num) {
-        return new ComparisonException("Result for " + canonicalize(scriptFile) + " changed at line " + num
+        return ComparisonException.differentResult("Result for " + canonicalize(scriptFile) + " changed at line " + num
                 + ":\nexpected < " + truncateIfLong(lineExpected) + "\nactual   > " + truncateIfLong(lineActual));
     }
 
     public static ComparisonException createLineNotFoundException(File scriptFile, String lineExpected, int num) {
-        return new ComparisonException("Result for " + canonicalize(scriptFile) + " expected line at " + num
+        return ComparisonException.differentResult("Result for " + canonicalize(scriptFile) + " expected line at " + num
                 + " not found: " + truncateIfLong(lineExpected));
     }
 
     private ComparisonException createExpectedLinesNotReturnedException(File scriptFile, List<String> expectedLines) {
-        return new ComparisonException("Result for " + canonicalize(scriptFile) + " expected lines not returned:\n"
-                + String.join("\n", expectedLines));
+        return ComparisonException.differentResult("Result for " + canonicalize(scriptFile)
+                + " expected lines not returned:\n" + String.join("\n", expectedLines));
     }
 
     private static String truncateIfLong(String string) {
@@ -618,21 +621,64 @@ public class TestExecutor {
         try {
             expectedJson = SINGLE_JSON_NODE_READER.readTree(readerExpected);
         } catch (JsonProcessingException e) {
-            throw new ComparisonException("Invalid expected JSON for: " + scriptFile, e);
+            throw ComparisonException.malformedResult("Invalid expected JSON for: " + scriptFile, e);
         }
         try {
             actualJson = SINGLE_JSON_NODE_READER.readTree(readerActual);
         } catch (JsonProcessingException e) {
-            throw new ComparisonException("Invalid actual JSON for: " + scriptFile, e);
+            throw ComparisonException.malformedResult("Invalid actual JSON for: " + scriptFile, e);
         }
         if (expectedJson == null) {
-            throw new ComparisonException("No expected result for: " + scriptFile);
+            throw ComparisonException.noResult("No expected result for: " + scriptFile);
         } else if (actualJson == null) {
-            throw new ComparisonException("No actual result for: " + scriptFile);
+            throw ComparisonException.noResult("No actual result for: " + scriptFile);
         }
         if (!TestHelper.equalJson(expectedJson, actualJson, compareUnorderedArray, ignoreExtraFields, false, null)) {
-            throw new ComparisonException("Result for " + scriptFile + " didn't match the expected JSON"
+            throw ComparisonException.differentResult("Result for " + scriptFile + " didn't match the expected JSON"
                     + "\nexpected result:\n" + expectedJson + "\nactual result:\n" + actualJson);
+        }
+    }
+
+    private static void runScriptAndCompareWithResultJsonl(File scriptFile, BufferedReader readerExpected,
+            BufferedReader readerActual, String statement) throws ComparisonException, IOException {
+        List<String> expectedLines = readerExpected.lines().collect(Collectors.toList());
+        List<String> actualLines = readerActual.lines().collect(Collectors.toList());
+        boolean compareUnorderedArray = statement != null && getCompareUnorderedArray(statement);
+        boolean ignoreExtraFields = statement != null && getIgnoreExtraFields(statement);
+
+        JsonNode expectedJson, actualJson;
+        int i = 0;
+        for (String expectedLine : expectedLines) {
+            if (actualLines.size() <= i) {
+                throw ComparisonException.differentResult("Result for " + canonicalize(scriptFile)
+                        + " expected json line at " + i + " not found: " + truncateIfLong(expectedLine));
+            }
+            String actualLine = actualLines.get(i);
+            i += 1;
+            try {
+                expectedJson = SINGLE_JSON_NODE_READER.readTree(expectedLine);
+            } catch (JsonProcessingException e) {
+                throw ComparisonException.malformedResult("Invalid expected JSON for: " + scriptFile, e);
+            }
+            try {
+                actualJson = SINGLE_JSON_NODE_READER.readTree(actualLine);
+            } catch (JsonProcessingException e) {
+                throw ComparisonException.malformedResult("Invalid actual JSON for: " + scriptFile, e);
+            }
+            if (expectedJson == null) {
+                throw ComparisonException.noResult("No expected result for: " + scriptFile);
+            } else if (actualJson == null) {
+                throw ComparisonException.noResult("No actual result for: " + scriptFile);
+            }
+            if (!TestHelper.equalJson(expectedJson, actualJson, compareUnorderedArray, ignoreExtraFields, false,
+                    null)) {
+                throw ComparisonException.differentResult("Result for " + scriptFile + " didn't match the expected JSON"
+                        + "\nexpected result:\n" + expectedJson + "\nactual result:\n" + actualJson);
+            }
+        }
+        if (actualLines.size() > i) {
+            throw ComparisonException.differentResult("Result for " + canonicalize(scriptFile) + " extra json line at "
+                    + i + " found: " + truncateIfLong(actualLines.get(i)));
         }
     }
 
@@ -887,9 +933,9 @@ public class TestExecutor {
     }
 
     public InputStream executeQueryService(String str, TestFileContext ctx, OutputFormat fmt, URI uri,
-            List<Parameter> params, boolean jsonEncoded, Charset responseCharset,
+            List<Parameter> params, List<Placeholder> placeholders, boolean jsonEncoded, Charset responseCharset,
             Predicate<Integer> responseCodeValidator, boolean cancellable) throws Exception {
-        return executeQueryService(str, fmt, uri, constructQueryParameters(str, fmt, params), jsonEncoded,
+        return executeQueryService(str, fmt, uri, constructQueryParameters(str, fmt, params), placeholders, jsonEncoded,
                 responseCharset, responseCodeValidator, cancellable);
     }
 
@@ -1228,7 +1274,11 @@ public class TestExecutor {
                 if (isDmlRecoveryTest && statement.contains("nc1://")) {
                     statement = statement.replaceAll("nc1://", "127.0.0.1://../../../../../../asterix-app/");
                 }
-                executeSqlppUpdateOrDdl(statement, OutputFormat.forCompilationUnit(cUnit));
+                if (cUnit.getPlaceholder().isEmpty()) {
+                    executeSqlppUpdateOrDdl(statement, OutputFormat.forCompilationUnit(cUnit));
+                } else {
+                    executeSqlppUpdateOrDdl(statement, OutputFormat.forCompilationUnit(cUnit), cUnit);
+                }
                 break;
             case "pollget":
             case "pollquery":
@@ -1261,9 +1311,10 @@ public class TestExecutor {
                                 : expectedResultFileCtxs.get(queryCount.intValue()).getFile();
                 File actualResultFile = expectedResultFile == null ? null
                         : testCaseCtx.getActualResultFile(cUnit, expectedResultFile, new File(actualPath));
-                ExtractedResult extractedResult = executeQuery(OutputFormat.forCompilationUnit(cUnit), statement,
-                        variableCtx, ctx, expectedResultFile, actualResultFile, queryCount,
-                        expectedResultFileCtxs.size(), cUnit.getParameter(), ComparisonEnum.TEXT);
+                ExtractedResult extractedResult =
+                        executeQuery(OutputFormat.forCompilationUnit(cUnit), statement, variableCtx, ctx,
+                                expectedResultFile, actualResultFile, queryCount, expectedResultFileCtxs.size(),
+                                cUnit.getParameter(), cUnit.getPlaceholder(), ComparisonEnum.TEXT);
 
                 validateWarning(extractedResult, testCaseCtx, cUnit, testFile);
                 break;
@@ -1277,7 +1328,7 @@ public class TestExecutor {
                         + cUnit.getName() + '.' + ctx.getSeqNum() + ".adm");
                 executeQuery(OutputFormat.forCompilationUnit(cUnit), statement, variableCtx, ctx, null,
                         actualResultFile, queryCount, expectedResultFileCtxs.size(), cUnit.getParameter(),
-                        ComparisonEnum.TEXT);
+                        cUnit.getPlaceholder(), ComparisonEnum.TEXT);
                 variableCtx.put(key, actualResultFile);
                 break;
             case "validate":
@@ -1357,7 +1408,7 @@ public class TestExecutor {
                                     + " (start <test server name> <port> [<arg1>][<arg2>][<arg3>]...");
                         }
                         String name = command[1];
-                        Integer port = new Integer(command[2]);
+                        Integer port = Integer.valueOf(command[2]);
                         if (runningTestServers.containsKey(port)) {
                             throw new Exception("server with port " + port + " is already running");
                         }
@@ -1373,7 +1424,7 @@ public class TestExecutor {
                             }
                             runningTestServers.clear();
                         } else {
-                            Integer port = new Integer(command[1]);
+                            Integer port = Integer.valueOf(command[1]);
                             ITestServer server = runningTestServers.get(port);
                             if (server == null) {
                                 throw new Exception("no server is listening to port " + port);
@@ -1519,7 +1570,7 @@ public class TestExecutor {
                 + cUnit.getName() + '.' + ctx.getSeqNum() + ".adm");
         executeQuery(OutputFormat.forCompilationUnit(cUnit), statement, variableCtx,
                 new TestFileContext(testFile, "validate"), expectedResultFile, actualResultFile, queryCount,
-                expectedResultFileCtxs.size(), cUnit.getParameter(), ComparisonEnum.TEXT);
+                expectedResultFileCtxs.size(), cUnit.getParameter(), cUnit.getPlaceholder(), ComparisonEnum.TEXT);
     }
 
     protected void executeHttpRequest(OutputFormat fmt, String statement, Map<String, Object> variableCtx,
@@ -1592,7 +1643,8 @@ public class TestExecutor {
 
     public ExtractedResult executeQuery(OutputFormat fmt, String statement, Map<String, Object> variableCtx,
             TestFileContext ctx, File expectedResultFile, File actualResultFile, MutableInt queryCount,
-            int numResultFiles, List<Parameter> params, ComparisonEnum compare, URI uri) throws Exception {
+            int numResultFiles, List<Parameter> params, List<Placeholder> placeholders, ComparisonEnum compare, URI uri)
+            throws Exception {
 
         String delivery = DELIVERY_IMMEDIATE;
         String reqType = ctx.getType();
@@ -1610,8 +1662,8 @@ public class TestExecutor {
         final String variablesReplaced = replaceVarRefRelaxed(statement, variableCtx);
         String resultVar = getResultVariable(statement); //Is the result of the statement/query to be used in later tests
         if (DELIVERY_IMMEDIATE.equals(delivery)) {
-            resultStream = executeQueryService(variablesReplaced, ctx, fmt, uri, params, isJsonEncoded, responseCharset,
-                    null, isCancellable(reqType));
+            resultStream = executeQueryService(variablesReplaced, ctx, fmt, uri, params, placeholders, isJsonEncoded,
+                    responseCharset, null, isCancellable(reqType));
             switch (reqType) {
                 case METRICS_QUERY_TYPE:
                     resultStream = ResultExtractor.extractMetrics(resultStream, responseCharset);
@@ -1674,10 +1726,11 @@ public class TestExecutor {
 
     public ExtractedResult executeQuery(OutputFormat fmt, String statement, Map<String, Object> variableCtx,
             TestFileContext ctx, File expectedResultFile, File actualResultFile, MutableInt queryCount,
-            int numResultFiles, List<Parameter> params, ComparisonEnum compare) throws Exception {
+            int numResultFiles, List<Parameter> params, List<Placeholder> placeholders, ComparisonEnum compare)
+            throws Exception {
         URI uri = getEndpoint(Servlets.QUERY_SERVICE, FilenameUtils.getExtension(ctx.getFile().getName()));
         return executeQuery(fmt, statement, variableCtx, ctx, expectedResultFile, actualResultFile, queryCount,
-                numResultFiles, params, compare, uri);
+                numResultFiles, params, placeholders, compare, uri);
     }
 
     private void polldynamic(TestCaseContext testCaseCtx, TestFileContext ctx, Map<String, Object> variableCtx,
@@ -2378,6 +2431,8 @@ public class TestExecutor {
                     str = applyAzureSubstitution(str, placeholders);
                 } else if (placeholder.getValue().equalsIgnoreCase("GCS")) {
                     str = applyGCSSubstitution(str, placeholders);
+                } else if (placeholder.getValue().equalsIgnoreCase("HDFS")) {
+                    str = applyHDFSSubstitution(str, placeholders);
                 }
             } else {
                 // Any other place holders, just replace with the value
@@ -2405,7 +2460,7 @@ public class TestExecutor {
     }
 
     protected boolean noTemplateRequired(String str) {
-        return !str.contains("%template%");
+        return !str.contains("%template%") && !str.contains("%template_colons%");
     }
 
     protected String applyS3Substitution(String str, List<Placeholder> placeholders) {
@@ -2456,7 +2511,11 @@ public class TestExecutor {
     }
 
     protected String setS3TemplateDefault(String str) {
-        return str.replace("%template%", TestConstants.S3_TEMPLATE_DEFAULT);
+        if (str.contains("%template%")) {
+            return str.replace("%template%", TestConstants.S3_TEMPLATE_DEFAULT);
+        } else {
+            return str.replace("%template_colons%", TestConstants.S3_TEMPLATE_DEFAULT_NO_PARENTHESES_WITH_COLONS);
+        }
     }
 
     protected String applyAzureSubstitution(String str, List<Placeholder> placeholders) {
@@ -2488,16 +2547,34 @@ public class TestExecutor {
         return str;
     }
 
+    protected String applyHDFSSubstitution(String str, List<Placeholder> placeholders) {
+        str = setHDFSTemplateDefault(str);
+        return str;
+    }
+
     protected String setAzureTemplate(String str) {
         return str.replace("%template%", TEMPLATE);
     }
 
     protected String setAzureTemplateDefault(String str) {
-        return str.replace("%template%", TEMPLATE_DEFAULT);
+        if (str.contains("%template%")) {
+            return str.replace("%template%", TEMPLATE_DEFAULT);
+        } else {
+            return str.replace("%template_colons%", TestConstants.Azure.TEMPLATE_DEFAULT_NO_PARENTHESES_WITH_COLONS);
+        }
     }
 
     protected String setGCSTemplateDefault(String str) {
         return str;
+    }
+
+    protected String setHDFSTemplateDefault(String str) {
+        if (str.contains("%template%")) {
+            return str.replace("%template%", TestConstants.HDFS.HDFS_TEMPLATE_DEFAULT);
+        } else {
+            return str.replace("%template_colons%",
+                    TestConstants.HDFS.HDFS_TEMPLATE_DEFAULT_NO_PARENTHESES_WITH_COLONS);
+        }
     }
 
     protected void fail(boolean runDiagnostics, TestCaseContext testCaseCtx, CompilationUnit cUnit,
@@ -2965,7 +3042,7 @@ public class TestExecutor {
                         LOGGER.error("was expecting the following warnings: ");
                     }
                     for (int i = expectedWarnings.nextSetBit(0); i >= 0; i = expectedWarnings.nextSetBit(i + 1)) {
-                        LOGGER.error(expectedWarn.get(i));
+                        LOGGER.error(expectedWarn.get(i).getValue());
                     }
                     throw new Exception(msg);
                 }

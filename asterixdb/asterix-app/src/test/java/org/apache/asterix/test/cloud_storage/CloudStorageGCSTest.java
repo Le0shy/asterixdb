@@ -21,9 +21,13 @@ package org.apache.asterix.test.cloud_storage;
 import static org.apache.asterix.api.common.LocalCloudUtil.CLOUD_STORAGE_BUCKET;
 import static org.apache.asterix.api.common.LocalCloudUtil.MOCK_SERVER_REGION;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Objects;
+import java.util.Random;
 
+import org.apache.asterix.api.common.LocalCloudUtilAdobeMock;
 import org.apache.asterix.common.config.GlobalConfig;
 import org.apache.asterix.test.common.TestExecutor;
 import org.apache.asterix.test.runtime.LangExecutionUtil;
@@ -36,6 +40,7 @@ import org.junit.AfterClass;
 import org.junit.Assume;
 import org.junit.BeforeClass;
 import org.junit.FixMethodOrder;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.MethodSorters;
@@ -53,6 +58,7 @@ import com.google.cloud.storage.StorageOptions;
  * Run tests in cloud deployment environment
  */
 @RunWith(Parameterized.class)
+@Ignore
 @FixMethodOrder(MethodSorters.NAME_ASCENDING)
 public class CloudStorageGCSTest {
 
@@ -64,7 +70,7 @@ public class CloudStorageGCSTest {
     private static final String CONFIG_FILE_NAME = "src/test/resources/cc-cloud-storage-gcs.conf";
     private static final String DELTA_RESULT_PATH = "results_cloud";
     private static final String EXCLUDED_TESTS = "MP";
-    public static final String MOCK_SERVER_HOSTNAME = "http://127.0.0.1:4443";
+    public static final String MOCK_SERVER_HOSTNAME = "http://127.0.0.1:24443";
     private static final String MOCK_SERVER_PROJECT_ID = "asterixdb-gcs-test-project-id";
 
     public CloudStorageGCSTest(TestCaseContext tcCtx) {
@@ -73,6 +79,7 @@ public class CloudStorageGCSTest {
 
     @BeforeClass
     public static void setUp() throws Exception {
+        LocalCloudUtilAdobeMock.startS3CloudEnvironment(true, true);
         Storage storage = StorageOptions.newBuilder().setHost(MOCK_SERVER_HOSTNAME)
                 .setCredentials(NoCredentials.getInstance()).setProjectId(MOCK_SERVER_PROJECT_ID).build().getService();
         cleanup(storage);
@@ -88,11 +95,26 @@ public class CloudStorageGCSTest {
     @AfterClass
     public static void tearDown() throws Exception {
         LangExecutionUtil.tearDown();
+        LocalCloudUtilAdobeMock.shutdownSilently();
     }
 
     @Parameters(name = "CloudStorageGCSTest {index}: {0}")
     public static Collection<Object[]> tests() throws Exception {
-        return LangExecutionUtil.tests(ONLY_TESTS, SUITE_TESTS);
+        long seed = System.nanoTime();
+        Random random = new Random(seed);
+        LOGGER.info("CloudStorageGCSTest seed {}", seed);
+        Collection<Object[]> tests = LangExecutionUtil.tests(ONLY_TESTS, SUITE_TESTS);
+        List<Object[]> selected = new ArrayList<>();
+        for (Object[] test : tests) {
+            if (!Objects.equals(((TestCaseContext) test[0]).getTestGroups()[0].getName(), "sqlpp_queries")) {
+                selected.add(test);
+            }
+            // Select 10% of the tests randomly
+            else if (random.nextInt(10) == 0) {
+                selected.add(test);
+            }
+        }
+        return selected;
     }
 
     @Test

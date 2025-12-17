@@ -33,7 +33,9 @@ public interface ICloudWriter {
      * @param page   to write
      * @return written bytes
      */
-    int write(ByteBuffer header, ByteBuffer page) throws HyracksDataException;
+    default int write(ByteBuffer header, ByteBuffer page) throws HyracksDataException {
+        return write(header) + write(page);
+    }
 
     /**
      * Write a page
@@ -59,6 +61,11 @@ public interface ICloudWriter {
      * @return written bytes
      */
     int write(byte[] b, int off, int len) throws HyracksDataException;
+
+    /**
+     * @return the current position of the writer
+     */
+    long position();
 
     /**
      * Finish the write operation

@@ -26,7 +26,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.hyracks.api.exceptions.HyracksDataException;
 import org.apache.hyracks.api.io.IODeviceHandle;
@@ -40,36 +40,55 @@ import org.apache.logging.log4j.Logger;
 public final class PhysicalDrive implements IPhysicalDrive {
     private static final Logger LOGGER = LogManager.getLogger();
     private final List<FileStore> drivePaths;
-    private final long pressureSize;
-    private final AtomicBoolean pressured;
+    private final DiskSpace diskSpace;
+    private final AtomicLong usedSpace;
 
     public PhysicalDrive(List<IODeviceHandle> deviceHandles, double pressureThreshold, double storagePercentage,
             long pressureDebugSize) throws HyracksDataException {
         drivePaths = getDrivePaths(deviceHandles);
-        pressureSize = getPressureSize(drivePaths, pressureThreshold, storagePercentage, pressureDebugSize);
-        pressured = new AtomicBoolean();
+        diskSpace = getPressureSize(drivePaths, pressureThreshold, storagePercentage, pressureDebugSize);
+        usedSpace = new AtomicLong();
         computeAndCheckIsPressured();
     }
 
     @Override
     public boolean computeAndCheckIsPressured() {
-        long usedSpace = getUsedSpace();
-        boolean isPressured = usedSpace > pressureSize;
-        pressured.set(isPressured);
-        LOGGER.info("Used space: {}, pressureCapacity: {} (isPressured: {})",
-                StorageUtil.toHumanReadableSize(usedSpace), StorageUtil.toHumanReadableSize(pressureSize), isPressured);
+        long usedSpace = getUsedSpace(drivePaths);
+        long pressureCapacity = diskSpace.getPressureCapacity();
+        boolean isPressured = usedSpace > pressureCapacity;
+        this.usedSpace.set(usedSpace);
+
+        if (usedSpace >= diskSpace.getAllocatedCapacity()) {
+            LOGGER.warn(
+                    "Allocated disk space has been exceeded. Used space: {}, pressureCapacity: {} (isPressured: {})",
+                    StorageUtil.toHumanReadableSize(usedSpace), StorageUtil.toHumanReadableSize(pressureCapacity),
+                    true);
+        } else if (isPressured) {
+            LOGGER.info("Used space: {}, pressureCapacity: {} (isPressured: {})",
+                    StorageUtil.toHumanReadableSize(usedSpace), StorageUtil.toHumanReadableSize(pressureCapacity),
+                    true);
+        } else {
+            LOGGER.debug("Used space: {}, pressureCapacity: {} (isPressured: {})",
+                    StorageUtil.toHumanReadableSize(usedSpace), StorageUtil.toHumanReadableSize(pressureCapacity),
+                    false);
+        }
+
         return isPressured;
     }
 
     @Override
-    public boolean hasSpace() {
-        return !pressured.get();
+    public boolean isUnpressured() {
+        return usedSpace.get() <= diskSpace.getPressureCapacity();
     }
 
-    private long getUsedSpace() {
+    @Override
+    public boolean hasSpace() {
+        return usedSpace.get() < diskSpace.getPressureCapacity();
+    }
+
+    public static long getUsedSpace(List<FileStore> drivePaths) {
         long totalUsedSpace = 0;
-        for (int i = 0; i < drivePaths.size(); i++) {
-            FileStore device = drivePaths.get(i);
+        for (FileStore device : drivePaths) {
             try {
                 totalUsedSpace += getTotalSpace(device) - getUsableSpace(device);
             } catch (HyracksDataException e) {
@@ -79,8 +98,8 @@ public final class PhysicalDrive implements IPhysicalDrive {
         return totalUsedSpace;
     }
 
-    private static long getPressureSize(List<FileStore> drivePaths, double pressureThreshold, double storagePercentage,
-            long pressureDebugSize) throws HyracksDataException {
+    private static DiskSpace getPressureSize(List<FileStore> drivePaths, double pressureThreshold,
+            double storagePercentage, long pressureDebugSize) throws HyracksDataException {
 
         long totalCapacity = 0;
         long totalUsedSpace = 0;
@@ -99,10 +118,10 @@ public final class PhysicalDrive implements IPhysicalDrive {
                 StorageUtil.toHumanReadableSize(totalCapacity), StorageUtil.toHumanReadableSize(allocatedCapacity),
                 StorageUtil.toHumanReadableSize(pressureCapacity), StorageUtil.toHumanReadableSize(totalUsedSpace));
 
-        return pressureCapacity;
+        return new DiskSpace(allocatedCapacity, pressureCapacity);
     }
 
-    private static List<FileStore> getDrivePaths(List<IODeviceHandle> deviceHandles) throws HyracksDataException {
+    public static List<FileStore> getDrivePaths(List<IODeviceHandle> deviceHandles) throws HyracksDataException {
         Set<String> distinctDrives = new HashSet<>();
         List<FileStore> fileStores = new ArrayList<>();
         for (IODeviceHandle handle : deviceHandles) {
@@ -137,6 +156,24 @@ public final class PhysicalDrive implements IPhysicalDrive {
             return fileStore.getUsableSpace();
         } catch (IOException e) {
             throw HyracksDataException.create(e);
+        }
+    }
+
+    private static class DiskSpace {
+        private final long allocatedCapacity;
+        private final long pressureCapacity;
+
+        private DiskSpace(long allocatedCapacity, long pressureCapacity) {
+            this.allocatedCapacity = allocatedCapacity;
+            this.pressureCapacity = pressureCapacity;
+        }
+
+        public long getAllocatedCapacity() {
+            return allocatedCapacity;
+        }
+
+        public long getPressureCapacity() {
+            return pressureCapacity;
         }
     }
 }

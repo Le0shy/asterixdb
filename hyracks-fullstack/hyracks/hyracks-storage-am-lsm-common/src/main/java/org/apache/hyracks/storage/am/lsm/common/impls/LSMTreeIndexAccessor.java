@@ -29,6 +29,7 @@ import org.apache.hyracks.dataflow.common.comm.io.FrameTupleAccessor;
 import org.apache.hyracks.dataflow.common.data.accessors.FrameTupleReference;
 import org.apache.hyracks.dataflow.common.data.accessors.ITupleReference;
 import org.apache.hyracks.storage.am.common.ophelpers.IndexOperation;
+import org.apache.hyracks.storage.am.lsm.common.api.IBatchController;
 import org.apache.hyracks.storage.am.lsm.common.api.IFrameOperationCallback;
 import org.apache.hyracks.storage.am.lsm.common.api.IFrameTupleProcessor;
 import org.apache.hyracks.storage.am.lsm.common.api.ILSMComponent;
@@ -40,6 +41,8 @@ import org.apache.hyracks.storage.am.lsm.common.api.ILSMIndexOperationContext;
 import org.apache.hyracks.storage.am.lsm.common.api.LSMOperationType;
 import org.apache.hyracks.storage.common.IIndexCursor;
 import org.apache.hyracks.storage.common.ISearchPredicate;
+import org.apache.hyracks.util.ExponentialRetryPolicy;
+import org.apache.hyracks.util.IRetryPolicy;
 
 public class LSMTreeIndexAccessor implements ILSMIndexAccessor {
     @FunctionalInterface
@@ -121,6 +124,23 @@ public class LSMTreeIndexAccessor implements ILSMIndexAccessor {
     @Override
     public void flush(ILSMIOOperation operation) throws HyracksDataException {
         lsmHarness.flush(operation);
+        if (operation.getStatus() == ILSMIOOperation.LSMIOOperationStatus.FAILURE) {
+            IRetryPolicy policy = new ExponentialRetryPolicy();
+            while (operation.getStatus() == ILSMIOOperation.LSMIOOperationStatus.FAILURE) {
+                try {
+                    if (policy.retry(operation.getFailure())) {
+                        operation.setFailure(null);
+                        operation.setStatus(ILSMIOOperation.LSMIOOperationStatus.SUCCESS);
+                        lsmHarness.flush(operation);
+                    } else {
+                        break;
+                    }
+                } catch (InterruptedException e) {
+                    // in reality, this thread won't be interrupted
+                    throw HyracksDataException.create(e);
+                }
+            }
+        }
     }
 
     @Override
@@ -211,8 +231,9 @@ public class LSMTreeIndexAccessor implements ILSMIndexAccessor {
     }
 
     public void batchOperate(FrameTupleAccessor accessor, FrameTupleReference tuple, IFrameTupleProcessor processor,
-            IFrameOperationCallback frameOpCallback, Set<Integer> tuples) throws HyracksDataException {
-        lsmHarness.batchOperate(ctx, accessor, tuple, processor, frameOpCallback, tuples);
+            IFrameOperationCallback frameOpCallback, IBatchController batchController, Set<Integer> tuples)
+            throws HyracksDataException {
+        lsmHarness.batchOperate(ctx, accessor, tuple, processor, frameOpCallback, batchController, tuples);
     }
 
     @Override

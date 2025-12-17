@@ -18,7 +18,8 @@
  */
 package org.apache.asterix.optimizer.rules.pushdown.schema;
 
-import org.apache.hyracks.api.exceptions.SourceLocation;
+import org.apache.hyracks.algebricks.core.algebra.base.ILogicalExpression;
+import org.apache.hyracks.algebricks.core.algebra.expressions.AbstractFunctionCallExpression;
 
 public class RootExpectedSchemaNode extends ObjectExpectedSchemaNode {
     //Root with zero fields
@@ -45,13 +46,18 @@ public class RootExpectedSchemaNode extends ObjectExpectedSchemaNode {
     }
 
     @Override
+    public boolean allowsReplacing() {
+        return rootType != ALL_FIELDS_ROOT_IRREPLACEABLE;
+    }
+
+    @Override
     public boolean isRoot() {
         return true;
     }
 
     @Override
     public AbstractComplexExpectedSchemaNode replaceIfNeeded(ExpectedSchemaNodeType expectedNodeType,
-            SourceLocation sourceLocation, String functionName) {
+            AbstractFunctionCallExpression parentExpression, ILogicalExpression expression) {
         if (rootType == ALL_FIELDS_ROOT) {
             //ALL_FIELDS_ROOT. Return a new CLIPPED_ROOT root
             return new RootExpectedSchemaNode();
@@ -70,5 +76,9 @@ public class RootExpectedSchemaNode extends ObjectExpectedSchemaNode {
 
     public boolean isAllFields() {
         return rootType == ALL_FIELDS_ROOT || rootType == ALL_FIELDS_ROOT_IRREPLACEABLE;
+    }
+
+    public static boolean isPreDefinedRootNode(IExpectedSchemaNode node) {
+        return node == ALL_FIELDS_ROOT_NODE || node == ALL_FIELDS_ROOT_IRREPLACEABLE_NODE || node == EMPTY_ROOT_NODE;
     }
 }

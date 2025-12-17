@@ -396,7 +396,7 @@ public class JobManager implements IJobManager {
         run.setStartTime(System.currentTimeMillis());
         run.setStartTimeZoneId(ZoneId.systemDefault().getId());
         JobId jobId = run.getJobId();
-        logJobCapacity(run, "running", Level.DEBUG);
+        logJobCapacity(run, "running", Level.INFO);
         activeRunMap.put(jobId, run);
         run.setStatus(JobStatus.RUNNING, null);
         executeJobInternal(run);
@@ -404,6 +404,7 @@ public class JobManager implements IJobManager {
 
     // Queue a job when the required capacity for the job is not met.
     protected void queueJob(JobRun jobRun) throws HyracksException {
+        logJobCapacity(jobRun, "queueing", Level.INFO);
         jobRun.setStatus(JobStatus.PENDING, null);
         jobQueue.add(jobRun);
     }
@@ -439,7 +440,7 @@ public class JobManager implements IJobManager {
     private void releaseJobCapacity(JobRun jobRun) {
         final JobSpecification job = jobRun.getJobSpecification();
         jobCapacityController.release(job);
-        logJobCapacity(jobRun, "released", Level.DEBUG);
+        logJobCapacity(jobRun, "released", Level.INFO);
     }
 
     private void logJobCapacity(JobRun jobRun, String jobStateDesc, Level lvl) {
@@ -453,7 +454,8 @@ public class JobManager implements IJobManager {
             return;
         }
         IReadOnlyClusterCapacity clusterCapacity = jobCapacityController.getClusterCapacity();
-        LOGGER.log(lvl, "{} {}, memory={}, cpu={}, (new) cluster memory={}, cpu={}, currently running={}, queued={}",
+        LOGGER.log(lvl,
+                "{} {}, job memory={}, cpu={}, (new) cluster memory={}, cpu={}, currently running={}, queued={}",
                 jobStateDesc, jobRun.getJobId(), requiredMemory, requiredCPUs,
                 clusterCapacity.getAggregatedMemoryByteSize(), clusterCapacity.getAggregatedCores(),
                 getRunningJobsCount(), jobQueue.size());

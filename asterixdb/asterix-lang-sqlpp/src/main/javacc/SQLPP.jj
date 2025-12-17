@@ -157,6 +157,7 @@ import org.apache.asterix.lang.common.statement.DeleteStatement;
 import org.apache.asterix.lang.common.statement.DeleteQGroupStatement;
 import org.apache.asterix.lang.common.statement.DisconnectFeedStatement;
 import org.apache.asterix.lang.common.statement.DropDatasetStatement;
+import org.apache.asterix.lang.common.statement.TruncateDatasetStatement;
 import org.apache.asterix.lang.common.statement.EnableSchedulerStatement;
 import org.apache.asterix.lang.common.statement.ExternalDetailsDecl;
 import org.apache.asterix.lang.common.statement.FeedDropStatement;
@@ -780,6 +781,9 @@ class SQLPPParser extends ScopeChecker implements IParser {
                  Matcher numMat = number.matcher(matchedGroup);
                  if (numMat.find()) {
                    productivity = Double.parseDouble (numMat.group());
+                   if (productivity == 0.0) {
+                     throw new SqlppParseException(getSourceLocation(hintToken), "Productivity has to be a decimal value greater than 0");
+                   }
                  }
                  else {
                    throw new SqlppParseException(getSourceLocation(hintToken), "Productivity has to be a decimal value greater than 0");
@@ -1022,6 +1026,7 @@ Statement SingleStatement() throws ParseException:
     | stmt = LoadStatement()
     | stmt = CopyStatement()
     | stmt = DropStatement()
+    | stmt = TruncateStatement()
     | stmt = SetStatement()
     | stmt = InsertStatement()
     | LOOKAHEAD(2) stmt = UpsertQGroupStatement()
@@ -1875,13 +1880,18 @@ CreateFunctionStatement CreateFunctionStatement(Token startStmtToken, boolean or
   CreateFunctionStatement stmt = null;
 }
 {
-  <FUNCTION> stmt = FunctionSpecification(startStmtToken, orReplace)
+  <TRANSFORM> <FUNCTION> stmt = FunctionSpecification(startStmtToken, orReplace, true)
+  {
+    return stmt;
+  }
+  |
+  <FUNCTION> stmt = FunctionSpecification(startStmtToken, orReplace, false)
   {
     return stmt;
   }
 }
 
-CreateFunctionStatement FunctionSpecification(Token startStmtToken, boolean orReplace) throws ParseException:
+CreateFunctionStatement FunctionSpecification(Token startStmtToken, boolean orReplace, boolean transform) throws ParseException:
 {
   FunctionSignature signature = null;
   FunctionName fctName = null;
@@ -1936,7 +1946,7 @@ CreateFunctionStatement FunctionSpecification(Token startStmtToken, boolean orRe
         getCurrentScope().addFunctionDescriptor(signature, false);
         removeCurrentScope();
         ensureNoTypeDeclsInFunction(fctName.function, params, returnType, startStmtToken);
-        stmt = new CreateFunctionStatement(signature, params, functionBody, functionBodyExpr, orReplace, ifNotExists);
+        stmt = new CreateFunctionStatement(signature, params, functionBody, functionBodyExpr, orReplace, ifNotExists, transform);
       }
     )
   |
@@ -2418,6 +2428,43 @@ Pair<List<Integer>, List<List<String>>> PrimaryKeyFields() throws ParseException
     {
       return new Pair<List<Integer>, List<List<String>>> (keyFieldSourceIndicators, primaryKeyFields);
     }
+}
+Statement TruncateStatement() throws ParseException:
+{
+  Token startToken = null;
+  Statement stmt = null;
+}
+{
+  <TRUNCATE> { startToken = token; }
+  (
+    stmt = TruncateDatasetStatement(startToken)
+  )
+  {
+    return stmt;
+  }
+}
+TruncateDatasetStatement TruncateDatasetStatement(Token startStmtToken) throws ParseException:
+{
+  TruncateDatasetStatement stmt = null;
+}
+{
+  DatasetToken() stmt = TruncateDatasetSpecification(startStmtToken)
+  {
+    return stmt;
+  }
+}
+
+TruncateDatasetStatement TruncateDatasetSpecification(Token startStmtToken) throws ParseException:
+{
+  Pair<Namespace,Identifier> pairId = null;
+  boolean ifExists = false;
+}
+{
+  pairId = QualifiedName() ifExists = IfExists()
+  {
+    TruncateDatasetStatement stmt = new TruncateDatasetStatement(pairId.first, pairId.second.getValue(), ifExists);
+    return addSourceLocation(stmt, startStmtToken);
+  }
 }
 
 Statement DropStatement() throws ParseException:
@@ -3079,6 +3126,11 @@ CopyToStatement CopyToStatement(Token startToken, Pair<Namespace, Identifier> na
   Namespace namespace = nameComponents == null ? null : nameComponents.first;
   String datasetName = nameComponents == null ? null : nameComponents.second.getValue();
   List<Expression> pathExprs;
+  RecordTypeDefinition recordTypeDefinition = null;
+  TypeExpression typeExpr = null;
+  Boolean isRecordTypeDefinition = false;
+  Map<String, String> formatConfigs = null;
+  String propertyName = null, propertyValue = null;
 
   List<Expression> partitionExprs = new ArrayList<Expression>();
   Map<Integer, VariableExpr> partitionVarExprs = new HashMap<Integer, VariableExpr>();
@@ -3090,6 +3142,30 @@ CopyToStatement CopyToStatement(Token startToken, Pair<Namespace, Identifier> na
   <TO> adapterName = AdapterName()
   <PATH> <LEFTPAREN> pathExprs = ExpressionList() <RIGHTPAREN>
   (CopyToOverClause(partitionExprs, partitionVarExprs, orderbyList, orderbyModifierList, orderbyNullModifierList))?
+  (<TYPE> <LEFTPAREN>
+    {
+      recordTypeDefinition = RecordTypeDef();
+      isRecordTypeDefinition = true;
+    }
+    <RIGHTPAREN>
+  )?
+  (<AS>
+    {
+      if (isRecordTypeDefinition == false) {
+        typeExpr = DatasetRecordTypeSpecification(false, null);
+      } else {
+        throw new SqlppParseException(getSourceLocation(token), "Syntax error: Both 'TYPE()' and 'AS()' are provided. Please use either 'TYPE()' or 'AS()'.");
+      }
+    }
+  )?
+  (LOOKAHEAD(2) <IDENTIFIER> { propertyName = token.image.toLowerCase(); } propertyValue = StringLiteral()
+    {
+      if (formatConfigs == null) {
+        formatConfigs = new HashMap<String, String>();
+      }
+      formatConfigs.put(propertyName, propertyValue);
+    }
+  )*
   <WITH> withRecord = RecordConstructor()
     {
        ExternalDetailsDecl edd = new ExternalDetailsDecl();
@@ -3104,8 +3180,7 @@ CopyToStatement CopyToStatement(Token startToken, Pair<Namespace, Identifier> na
           usedAlias = new VariableExpr(SqlppVariableUtil.toInternalVariableIdentifier(datasetName));
        }
 
-       CopyToStatement stmt = new CopyToStatement(namespace, datasetName, query, usedAlias, edd, pathExprs,
-            partitionExprs, partitionVarExprs, orderbyList, orderbyModifierList, orderbyNullModifierList, getVarCounter());
+       CopyToStatement stmt = new CopyToStatement(namespace, datasetName, query, usedAlias, edd, pathExprs, partitionExprs, partitionVarExprs, orderbyList, orderbyModifierList, orderbyNullModifierList, getVarCounter(), typeExpr, recordTypeDefinition, formatConfigs);
        return addSourceLocation(stmt, startToken);
     }
 }
@@ -4329,6 +4404,7 @@ Expression LikeExpr() throws ParseException:
   OperatorExpr op = null;
   Expression operand = null;
   IExpressionAnnotation annotation = null;
+  List<IExpressionAnnotation> annotationList = null;
 }
 {
     operand = ConcatExpr()
@@ -4336,9 +4412,17 @@ Expression LikeExpr() throws ParseException:
         LOOKAHEAD(2)
         (<NOT> { not = true; })? <LIKE>
         {
-          Token hintToken = fetchHint(token, SqlppHint.SINGLE_DATASET_PREDICATE_SELECTIVITY_HINT);
-          if (hintToken != null) {
-               annotation = parseExpressionAnnotation(hintToken);
+          List<Token> hintTokens = fetchHints(token, SqlppHint.SINGLE_DATASET_PREDICATE_SELECTIVITY_HINT,
+            SqlppHint.SKIP_SECONDARY_INDEX_SEARCH_HINT, SqlppHint.USE_SECONDARY_INDEX_SEARCH_HINT);
+          if (hintTokens != null && !hintTokens.isEmpty()) {
+            annotationList = new ArrayList<IExpressionAnnotation>();
+          }
+          for (Token hintToken : hintTokens) {
+            annotation = parseExpressionAnnotation(hintToken);
+            if (annotation != null) {
+              // annotation may be null if hints are malformed
+              annotationList.add(annotation);
+            }
           }
           op = new OperatorExpr();
           op.addOperand(operand);
@@ -4354,8 +4438,8 @@ Expression LikeExpr() throws ParseException:
           } catch (CompilationException e){
             throw new SqlppParseException(getSourceLocation(token), e.getMessage());
           }
-          if (annotation != null) {
-             op.addHint(annotation);
+          if (annotationList != null && !annotationList.isEmpty()) {
+            op.addHints(annotationList);
           }
         }
 
@@ -4536,9 +4620,11 @@ Expression ValueExpr() throws ParseException:
 {
   expr = PrimaryExpr()
   (
-    accessor = FieldAccessor(accessor != null ? accessor : expr)
-    |
-    accessor = IndexAccessor(accessor != null ? accessor : expr)
+    LOOKAHEAD(2)(
+      accessor = FieldAccessor(accessor != null ? accessor : expr)
+      |
+      accessor = IndexAccessor(accessor != null ? accessor : expr)
+    )
   )*
   {
     return accessor == null ? expr : accessor;
@@ -4569,7 +4655,7 @@ AbstractAccessor IndexAccessor(Expression inputExpr) throws ParseException:
   (
     <MUL> { star = true; }
     |
-    ( expr1 = Expression() ( <COLON> { slice = true; } ( expr2 = Expression() )? )? )
+    ( (expr1 = Expression()) ? ( <COLON> { slice = true; } ( expr2 = Expression() )? )? )
   )
   <RIGHTBRACKET>
   {
@@ -4580,10 +4666,14 @@ AbstractAccessor IndexAccessor(Expression inputExpr) throws ParseException:
       ensureIntegerLiteral( (LiteralExpr) expr2, "Index");
     }
     AbstractAccessor resultAccessor;
-    if (slice) {
+
+    if (star) {
+          resultAccessor = new IndexAccessor(inputExpr, IndexAccessor.IndexKind.STAR, null);
+    } else if (slice || expr1 == null) {
+      if (expr1 == null) {
+        expr1 = new LiteralExpr(new LongIntegerLiteral(0L));
+      }
       resultAccessor = new ListSliceExpression(inputExpr, expr1, expr2);
-    } else if (star) {
-      resultAccessor = new IndexAccessor(inputExpr, IndexAccessor.IndexKind.STAR, null);
     } else {
       resultAccessor = new IndexAccessor(inputExpr, IndexAccessor.IndexKind.ELEMENT, expr1);
     }
@@ -5476,8 +5566,8 @@ Projection Projection() throws ParseException :
 {
   (
     <MUL> { kind = Projection.Kind.STAR; startSrcLoc = getSourceLocation(token); }
-    | LOOKAHEAD(3) expr = VariableRef() <DOT> <MUL> { kind = Projection.Kind.VAR_STAR; }
-    | expr = Expression()
+        | LOOKAHEAD(ValueExpr() <DOT> <MUL>) expr = ValueExpr() <DOT> <MUL> { kind = Projection.Kind.VAR_STAR; }
+        | expr = Expression()
       ( // EXCLUDE is a soft-keyword-- we want to avoid mistaking EXCLUDE as an identifier here.
         LOOKAHEAD({ getToken(1).kind == AS || getToken(1).kind == QUOTED_STRING
                     || (getToken(1).kind == IDENTIFIER && !laIdentifier(1, EXCLUDE)) })
@@ -5949,6 +6039,7 @@ LimitClause LimitClause() throws ParseException:
     |
     (
       <OFFSET> { startToken = token; pushForbiddenScope(getCurrentScope()); } offsetExpr = Expression()
+      ( <LIMIT> limitExpr = Expression() )?
       { popForbiddenScope(); }
     )
   )
@@ -6099,6 +6190,7 @@ TOKEN [IGNORE_CASE]:
   | <DISTINCT : "distinct">
   | <DIV : "div">
   | <DROP : "drop">
+  | <TRUNCATE : "truncate">
   | <ELEMENT : "element">
   | <EXPLAIN : "explain">
   | <ELSE : "else">
@@ -6195,6 +6287,7 @@ TOKEN [IGNORE_CASE]:
   | <WITH : "with">
   | <WRITE : "write">
   | <COPY : "copy">
+  | <TRANSFORM : "transform">
 }
 
 <DEFAULT,IN_DBL_BRACE>

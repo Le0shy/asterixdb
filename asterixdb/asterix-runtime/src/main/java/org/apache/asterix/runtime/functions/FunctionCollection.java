@@ -37,6 +37,8 @@ import org.apache.asterix.runtime.aggregates.scalar.ScalarAvgAggregateDescriptor
 import org.apache.asterix.runtime.aggregates.scalar.ScalarAvgDistinctAggregateDescriptor;
 import org.apache.asterix.runtime.aggregates.scalar.ScalarCountAggregateDescriptor;
 import org.apache.asterix.runtime.aggregates.scalar.ScalarCountDistinctAggregateDescriptor;
+import org.apache.asterix.runtime.aggregates.scalar.ScalarCountNAggregateDescriptor;
+import org.apache.asterix.runtime.aggregates.scalar.ScalarCountNDistinctAggregateDescriptor;
 import org.apache.asterix.runtime.aggregates.scalar.ScalarFirstElementAggregateDescriptor;
 import org.apache.asterix.runtime.aggregates.scalar.ScalarKurtosisAggregateDescriptor;
 import org.apache.asterix.runtime.aggregates.scalar.ScalarKurtosisDistinctAggregateDescriptor;
@@ -50,6 +52,8 @@ import org.apache.asterix.runtime.aggregates.scalar.ScalarSqlAvgAggregateDescrip
 import org.apache.asterix.runtime.aggregates.scalar.ScalarSqlAvgDistinctAggregateDescriptor;
 import org.apache.asterix.runtime.aggregates.scalar.ScalarSqlCountAggregateDescriptor;
 import org.apache.asterix.runtime.aggregates.scalar.ScalarSqlCountDistinctAggregateDescriptor;
+import org.apache.asterix.runtime.aggregates.scalar.ScalarSqlCountNAggregateDescriptor;
+import org.apache.asterix.runtime.aggregates.scalar.ScalarSqlCountNDistinctAggregateDescriptor;
 import org.apache.asterix.runtime.aggregates.scalar.ScalarSqlKurtosisAggregateDescriptor;
 import org.apache.asterix.runtime.aggregates.scalar.ScalarSqlKurtosisDistinctAggregateDescriptor;
 import org.apache.asterix.runtime.aggregates.scalar.ScalarSqlMaxAggregateDescriptor;
@@ -83,6 +87,7 @@ import org.apache.asterix.runtime.aggregates.scalar.ScalarVarPopAggregateDescrip
 import org.apache.asterix.runtime.aggregates.scalar.ScalarVarPopDistinctAggregateDescriptor;
 import org.apache.asterix.runtime.aggregates.serializable.std.SerializableAvgAggregateDescriptor;
 import org.apache.asterix.runtime.aggregates.serializable.std.SerializableCountAggregateDescriptor;
+import org.apache.asterix.runtime.aggregates.serializable.std.SerializableCountNAggregateDescriptor;
 import org.apache.asterix.runtime.aggregates.serializable.std.SerializableGlobalAvgAggregateDescriptor;
 import org.apache.asterix.runtime.aggregates.serializable.std.SerializableGlobalKurtosisAggregateDescriptor;
 import org.apache.asterix.runtime.aggregates.serializable.std.SerializableGlobalSkewnessAggregateDescriptor;
@@ -135,6 +140,7 @@ import org.apache.asterix.runtime.aggregates.serializable.std.SerializableLocalV
 import org.apache.asterix.runtime.aggregates.serializable.std.SerializableSkewnessAggregateDescriptor;
 import org.apache.asterix.runtime.aggregates.serializable.std.SerializableSqlAvgAggregateDescriptor;
 import org.apache.asterix.runtime.aggregates.serializable.std.SerializableSqlCountAggregateDescriptor;
+import org.apache.asterix.runtime.aggregates.serializable.std.SerializableSqlCountNAggregateDescriptor;
 import org.apache.asterix.runtime.aggregates.serializable.std.SerializableSqlKurtosisAggregateDescriptor;
 import org.apache.asterix.runtime.aggregates.serializable.std.SerializableSqlSkewnessAggregateDescriptor;
 import org.apache.asterix.runtime.aggregates.serializable.std.SerializableSqlStddevAggregateDescriptor;
@@ -149,6 +155,7 @@ import org.apache.asterix.runtime.aggregates.serializable.std.SerializableVarAgg
 import org.apache.asterix.runtime.aggregates.serializable.std.SerializableVarPopAggregateDescriptor;
 import org.apache.asterix.runtime.aggregates.std.AvgAggregateDescriptor;
 import org.apache.asterix.runtime.aggregates.std.CountAggregateDescriptor;
+import org.apache.asterix.runtime.aggregates.std.CountNAggregateDescriptor;
 import org.apache.asterix.runtime.aggregates.std.GlobalAvgAggregateDescriptor;
 import org.apache.asterix.runtime.aggregates.std.GlobalKurtosisAggregateDescriptor;
 import org.apache.asterix.runtime.aggregates.std.GlobalMaxAggregateDescriptor;
@@ -226,6 +233,7 @@ import org.apache.asterix.runtime.aggregates.std.RangeMapAggregateDescriptor;
 import org.apache.asterix.runtime.aggregates.std.SkewnessAggregateDescriptor;
 import org.apache.asterix.runtime.aggregates.std.SqlAvgAggregateDescriptor;
 import org.apache.asterix.runtime.aggregates.std.SqlCountAggregateDescriptor;
+import org.apache.asterix.runtime.aggregates.std.SqlCountNAggregateDescriptor;
 import org.apache.asterix.runtime.aggregates.std.SqlKurtosisAggregateDescriptor;
 import org.apache.asterix.runtime.aggregates.std.SqlMaxAggregateDescriptor;
 import org.apache.asterix.runtime.aggregates.std.SqlMedianAggregateDescriptor;
@@ -374,12 +382,14 @@ import org.apache.asterix.runtime.evaluators.functions.CreateRectangleDescriptor
 import org.apache.asterix.runtime.evaluators.functions.CreateUUIDDescriptor;
 import org.apache.asterix.runtime.evaluators.functions.DecodeDataverseNameDescriptor;
 import org.apache.asterix.runtime.evaluators.functions.DeepEqualityDescriptor;
+import org.apache.asterix.runtime.evaluators.functions.FromBaseDescriptor;
 import org.apache.asterix.runtime.evaluators.functions.FullTextContainsFunctionDescriptor;
 import org.apache.asterix.runtime.evaluators.functions.FullTextContainsWithoutOptionFunctionDescriptor;
 import org.apache.asterix.runtime.evaluators.functions.GetIntersectionDescriptor;
 import org.apache.asterix.runtime.evaluators.functions.GetItemDescriptor;
 import org.apache.asterix.runtime.evaluators.functions.GetJobParameterByNameDescriptor;
 import org.apache.asterix.runtime.evaluators.functions.GetTypeDescriptor;
+import org.apache.asterix.runtime.evaluators.functions.IfErrorDescriptor;
 import org.apache.asterix.runtime.evaluators.functions.IfInfDescriptor;
 import org.apache.asterix.runtime.evaluators.functions.IfMissingDescriptor;
 import org.apache.asterix.runtime.evaluators.functions.IfMissingOrNullDescriptor;
@@ -455,6 +465,8 @@ import org.apache.asterix.runtime.evaluators.functions.RandomDescriptor;
 import org.apache.asterix.runtime.evaluators.functions.RandomWithSeedDescriptor;
 import org.apache.asterix.runtime.evaluators.functions.ReferenceTileDescriptor;
 import org.apache.asterix.runtime.evaluators.functions.SerializedSizeDescriptor;
+import org.apache.asterix.runtime.evaluators.functions.Sha1Base64Descriptor;
+import org.apache.asterix.runtime.evaluators.functions.Sha1HexDescriptor;
 import org.apache.asterix.runtime.evaluators.functions.SleepDescriptor;
 import org.apache.asterix.runtime.evaluators.functions.SpatialAreaDescriptor;
 import org.apache.asterix.runtime.evaluators.functions.SpatialCellDescriptor;
@@ -471,6 +483,7 @@ import org.apache.asterix.runtime.evaluators.functions.StringLTrimDescriptor;
 import org.apache.asterix.runtime.evaluators.functions.StringLengthDescriptor;
 import org.apache.asterix.runtime.evaluators.functions.StringLikeDescriptor;
 import org.apache.asterix.runtime.evaluators.functions.StringLowerCaseDescriptor;
+import org.apache.asterix.runtime.evaluators.functions.StringLpadDescriptor;
 import org.apache.asterix.runtime.evaluators.functions.StringPositionDescriptor;
 import org.apache.asterix.runtime.evaluators.functions.StringPositionOffset1Descriptor;
 import org.apache.asterix.runtime.evaluators.functions.StringRTrim2Descriptor;
@@ -491,6 +504,7 @@ import org.apache.asterix.runtime.evaluators.functions.StringRepeatDescriptor;
 import org.apache.asterix.runtime.evaluators.functions.StringReplaceDescriptor;
 import org.apache.asterix.runtime.evaluators.functions.StringReplaceWithLimitDescriptor;
 import org.apache.asterix.runtime.evaluators.functions.StringReverseDescriptor;
+import org.apache.asterix.runtime.evaluators.functions.StringRpadDescriptor;
 import org.apache.asterix.runtime.evaluators.functions.StringSplitDescriptor;
 import org.apache.asterix.runtime.evaluators.functions.StringStartsWithDescriptor;
 import org.apache.asterix.runtime.evaluators.functions.StringToCodePointDescriptor;
@@ -511,6 +525,7 @@ import org.apache.asterix.runtime.evaluators.functions.ToBooleanDescriptor;
 import org.apache.asterix.runtime.evaluators.functions.ToDoubleDescriptor;
 import org.apache.asterix.runtime.evaluators.functions.ToNumberDescriptor;
 import org.apache.asterix.runtime.evaluators.functions.ToObjectDescriptor;
+import org.apache.asterix.runtime.evaluators.functions.ToObjectVarStrDescriptor;
 import org.apache.asterix.runtime.evaluators.functions.ToStringDescriptor;
 import org.apache.asterix.runtime.evaluators.functions.TreatAsIntegerDescriptor;
 import org.apache.asterix.runtime.evaluators.functions.UUIDDescriptor;
@@ -535,12 +550,15 @@ import org.apache.asterix.runtime.evaluators.functions.bitwise.BitTestWithoutAll
 import org.apache.asterix.runtime.evaluators.functions.bitwise.BitXorDescriptor;
 import org.apache.asterix.runtime.evaluators.functions.bitwise.IsBitSetWithAllFlagDescriptor;
 import org.apache.asterix.runtime.evaluators.functions.bitwise.IsBitSetWithoutAllFlagDescriptor;
+import org.apache.asterix.runtime.evaluators.functions.records.AccessFieldDescriptor;
+import org.apache.asterix.runtime.evaluators.functions.records.AccessNestedFieldDescriptor;
 import org.apache.asterix.runtime.evaluators.functions.records.FieldAccessByIndexDescriptor;
 import org.apache.asterix.runtime.evaluators.functions.records.FieldAccessByNameDescriptor;
 import org.apache.asterix.runtime.evaluators.functions.records.FieldAccessNestedDescriptor;
 import org.apache.asterix.runtime.evaluators.functions.records.GetRecordFieldValueDescriptor;
 import org.apache.asterix.runtime.evaluators.functions.records.GetRecordFieldsDescriptor;
 import org.apache.asterix.runtime.evaluators.functions.records.PairsDescriptor;
+import org.apache.asterix.runtime.evaluators.functions.records.PutAutogeneratedKeyDescriptor;
 import org.apache.asterix.runtime.evaluators.functions.records.RecordAddDescriptor;
 import org.apache.asterix.runtime.evaluators.functions.records.RecordAddFieldsDescriptor;
 import org.apache.asterix.runtime.evaluators.functions.records.RecordConcatDescriptor;
@@ -694,6 +712,7 @@ public final class FunctionCollection implements IFunctionCollection {
         // aggregate functions
         fc.add(ListifyAggregateDescriptor.FACTORY);
         fc.add(CountAggregateDescriptor.FACTORY);
+        fc.add(CountNAggregateDescriptor.FACTORY);
         fc.add(AvgAggregateDescriptor.FACTORY);
         fc.add(LocalAvgAggregateDescriptor.FACTORY);
         fc.add(IntermediateAvgAggregateDescriptor.FACTORY);
@@ -749,6 +768,7 @@ public final class FunctionCollection implements IFunctionCollection {
 
         // serializable aggregates
         fc.add(SerializableCountAggregateDescriptor.FACTORY);
+        fc.add(SerializableCountNAggregateDescriptor.FACTORY);
         fc.add(SerializableAvgAggregateDescriptor.FACTORY);
         fc.add(SerializableLocalAvgAggregateDescriptor.FACTORY);
         fc.add(SerializableIntermediateAvgAggregateDescriptor.FACTORY);
@@ -786,7 +806,9 @@ public final class FunctionCollection implements IFunctionCollection {
         fc.add(ScalarArrayAggAggregateDescriptor.FACTORY);
         fc.add(ScalarArrayAggDistinctAggregateDescriptor.FACTORY);
         fc.add(ScalarCountAggregateDescriptor.FACTORY);
+        fc.add(ScalarCountNAggregateDescriptor.FACTORY);
         fc.add(ScalarCountDistinctAggregateDescriptor.FACTORY);
+        fc.add(ScalarCountNDistinctAggregateDescriptor.FACTORY);
         fc.add(ScalarAvgAggregateDescriptor.FACTORY);
         fc.add(ScalarAvgDistinctAggregateDescriptor.FACTORY);
         fc.add(ScalarSumAggregateDescriptor.FACTORY);
@@ -812,6 +834,7 @@ public final class FunctionCollection implements IFunctionCollection {
 
         // SQL aggregates
         fc.add(SqlCountAggregateDescriptor.FACTORY);
+        fc.add(SqlCountNAggregateDescriptor.FACTORY);
         fc.add(SqlAvgAggregateDescriptor.FACTORY);
         fc.add(LocalSqlAvgAggregateDescriptor.FACTORY);
         fc.add(IntermediateSqlAvgAggregateDescriptor.FACTORY);
@@ -863,6 +886,7 @@ public final class FunctionCollection implements IFunctionCollection {
 
         // SQL serializable aggregates
         fc.add(SerializableSqlCountAggregateDescriptor.FACTORY);
+        fc.add(SerializableSqlCountNAggregateDescriptor.FACTORY);
         fc.add(SerializableSqlAvgAggregateDescriptor.FACTORY);
         fc.add(SerializableLocalSqlAvgAggregateDescriptor.FACTORY);
         fc.add(SerializableIntermediateSqlAvgAggregateDescriptor.FACTORY);
@@ -899,6 +923,8 @@ public final class FunctionCollection implements IFunctionCollection {
         // SQL scalar aggregates
         fc.add(ScalarSqlCountAggregateDescriptor.FACTORY);
         fc.add(ScalarSqlCountDistinctAggregateDescriptor.FACTORY);
+        fc.add(ScalarSqlCountNDistinctAggregateDescriptor.FACTORY);
+        fc.add(ScalarSqlCountNAggregateDescriptor.FACTORY);
         fc.add(ScalarSqlAvgAggregateDescriptor.FACTORY);
         fc.add(ScalarSqlAvgDistinctAggregateDescriptor.FACTORY);
         fc.add(ScalarSqlSumAggregateDescriptor.FACTORY);
@@ -988,7 +1014,9 @@ public final class FunctionCollection implements IFunctionCollection {
         // Element accessors.
         fc.add(FieldAccessByIndexDescriptor.FACTORY);
         fc.add(FieldAccessByNameDescriptor.FACTORY);
+        fc.add(AccessFieldDescriptor.FACTORY);
         fc.add(FieldAccessNestedDescriptor.FACTORY);
+        fc.add(AccessNestedFieldDescriptor.FACTORY);
 
         fc.add(AnyCollectionMemberDescriptor.FACTORY);
         fc.add(GetItemDescriptor.FACTORY);
@@ -1033,6 +1061,7 @@ public final class FunctionCollection implements IFunctionCollection {
         fc.add(NumericSignDescriptor.FACTORY);
         fc.add(NumericTruncDescriptor.FACTORY);
         fc.add(NumericATan2Descriptor.FACTORY);
+        fc.add(FromBaseDescriptor.FACTORY);
 
         // Comparisons.
         fc.add(EqualsDescriptor.FACTORY);
@@ -1119,6 +1148,8 @@ public final class FunctionCollection implements IFunctionCollection {
         fc.add(StringReplaceWithLimitDescriptor.FACTORY);
         fc.add(StringReverseDescriptor.FACTORY);
         fc.add(StringSplitDescriptor.FACTORY);
+        fc.add(StringLpadDescriptor.FACTORY);
+        fc.add(StringRpadDescriptor.FACTORY);
 
         // Constructors
         fc.add(ABooleanConstructorDescriptor.FACTORY);
@@ -1322,6 +1353,7 @@ public final class FunctionCollection implements IFunctionCollection {
         fc.add(ToDoubleDescriptor.FACTORY);
         fc.add(ToNumberDescriptor.FACTORY);
         fc.add(ToObjectDescriptor.FACTORY);
+        fc.add(ToObjectVarStrDescriptor.FACTORY);
         fc.add(ToStringDescriptor.FACTORY);
 
         fc.add(TreatAsIntegerDescriptor.FACTORY);
@@ -1333,10 +1365,16 @@ public final class FunctionCollection implements IFunctionCollection {
         // Record function
         fc.add(RecordPairsDescriptor.FACTORY);
 
+        // Crypto functions
+        fc.add(Sha1HexDescriptor.FACTORY);
+        fc.add(Sha1Base64Descriptor.FACTORY);
+
         // Other functions
         fc.add(DecodeDataverseNameDescriptor.FACTORY);
         fc.add(RandomWithSeedDescriptor.FACTORY);
         fc.add(SerializedSizeDescriptor.FACTORY);
+        fc.add(PutAutogeneratedKeyDescriptor.FACTORY);
+        fc.add(IfErrorDescriptor.FACTORY);
 
         ServiceLoader.load(IFunctionRegistrant.class).iterator().forEachRemaining(c -> c.register(fc));
         return fc;

@@ -19,6 +19,8 @@
 
 package org.apache.asterix.optimizer.rules.cbo;
 
+import static org.apache.asterix.om.functions.BuiltinFunctions.getBuiltinFunctionInfo;
+
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -33,6 +35,7 @@ import org.apache.asterix.common.annotations.SecondaryIndexSearchPreferenceAnnot
 import org.apache.asterix.common.annotations.SkipSecondaryIndexSearchExpressionAnnotation;
 import org.apache.asterix.common.exceptions.AsterixException;
 import org.apache.asterix.common.exceptions.ErrorCode;
+import org.apache.asterix.lang.common.util.FunctionUtil;
 import org.apache.asterix.metadata.declared.DataSource;
 import org.apache.asterix.metadata.declared.DataSourceId;
 import org.apache.asterix.metadata.declared.DatasetDataSource;
@@ -68,7 +71,9 @@ import org.apache.hyracks.algebricks.core.algebra.expressions.IExpressionAnnotat
 import org.apache.hyracks.algebricks.core.algebra.expressions.PredicateCardinalityAnnotation;
 import org.apache.hyracks.algebricks.core.algebra.expressions.ScalarFunctionCallExpression;
 import org.apache.hyracks.algebricks.core.algebra.expressions.UnnestingFunctionCallExpression;
+import org.apache.hyracks.algebricks.core.algebra.expressions.VariableReferenceExpression;
 import org.apache.hyracks.algebricks.core.algebra.functions.AlgebricksBuiltinFunctions;
+import org.apache.hyracks.algebricks.core.algebra.functions.IFunctionInfo;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.AbstractBinaryJoinOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.AbstractLogicalOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.AssignOperator;
@@ -116,6 +121,7 @@ public class JoinEnum {
     protected List<AssignOperator> assignOps;
     List<Quadruple<Integer, Integer, JoinOperator, Integer>> outerJoinsDependencyList;
     HashMap<LogicalVariable, Integer> varLeafInputIds;
+    protected List<List<List<ILogicalOperator>>> unnestOpsInfo;
     protected List<JoinOperator> allJoinOps;
     protected ILogicalOperator localJoinOp; // used in nestedLoopsApplicable code.
     protected IOptimizationContext optCtx;
@@ -137,6 +143,7 @@ public class JoinEnum {
     protected ICost cost;
     protected ICostMethods costMethods;
     List<LogicalVariable> resultAndJoinVars;
+    Map<DataSourceScanOperator, Boolean> fakeLeafInputsMap;
 
     public JoinEnum() {
     }
@@ -145,9 +152,11 @@ public class JoinEnum {
             List<ILogicalOperator> leafInputs, List<JoinOperator> allJoinOps, List<AssignOperator> assignOps,
             List<Quadruple<Integer, Integer, JoinOperator, Integer>> outerJoinsDependencyList,
             List<Triple<Integer, Integer, Boolean>> buildSets, HashMap<LogicalVariable, Integer> varLeafInputIds,
+            List<List<List<ILogicalOperator>>> unnestOpsInfo,
             HashMap<DataSourceScanOperator, ILogicalOperator> dataScanAndGroupByDistinctOps,
             ILogicalOperator grpByDistinctOp, ILogicalOperator orderByOp, List<LogicalVariable> resultAndJoinVars,
-            IOptimizationContext context) throws AsterixException {
+            Map<DataSourceScanOperator, Boolean> fakeLeafInputsMap, IOptimizationContext context)
+            throws AsterixException {
         this.singleDatasetPreds = new ArrayList<>();
         this.joinConditions = new ArrayList<>();
         this.joinHints = new HashMap<>();
@@ -166,10 +175,12 @@ public class JoinEnum {
         this.allJoinOps = allJoinOps;
         this.buildSets = buildSets;
         this.varLeafInputIds = varLeafInputIds;
+        this.unnestOpsInfo = unnestOpsInfo;
         this.dataScanAndGroupByDistinctOps = dataScanAndGroupByDistinctOps;
         this.rootGroupByDistinctOp = grpByDistinctOp;
         this.rootOrderByOp = orderByOp;
         this.resultAndJoinVars = resultAndJoinVars;
+        this.fakeLeafInputsMap = fakeLeafInputsMap;
         this.op = op;
         this.forceJoinOrderMode = getForceJoinOrderMode(context);
         this.queryPlanShape = getQueryPlanShape(context);
@@ -255,8 +266,8 @@ public class JoinEnum {
             JoinCondition jc = joinConditions.get(newJoinConditions.get(0));
             return jc.joinCondition;
         }
-        ScalarFunctionCallExpression andExpr = new ScalarFunctionCallExpression(
-                BuiltinFunctions.getBuiltinFunctionInfo(AlgebricksBuiltinFunctions.AND));
+        ScalarFunctionCallExpression andExpr =
+                new ScalarFunctionCallExpression(getBuiltinFunctionInfo(AlgebricksBuiltinFunctions.AND));
 
         for (int joinNum : newJoinConditions) {
             // Need to AND all the expressions.
@@ -275,17 +286,26 @@ public class JoinEnum {
             JoinCondition jc = joinConditions.get(newJoinConditions.get(0));
             return jc.joinCondition;
         }
-        ScalarFunctionCallExpression andExpr = new ScalarFunctionCallExpression(
-                BuiltinFunctions.getBuiltinFunctionInfo(AlgebricksBuiltinFunctions.AND));
+        ScalarFunctionCallExpression andExpr =
+                new ScalarFunctionCallExpression(getBuiltinFunctionInfo(AlgebricksBuiltinFunctions.AND));
         for (int joinNum : newJoinConditions) {
-            // need to AND all the expressions.
+            // need to AND all the expressions. skip derived exprs for now.
             JoinCondition jc = joinConditions.get(joinNum);
+            if (jc.derived) {
+                continue;
+            }
             andExpr.getArguments().add(new MutableObject<>(jc.joinCondition));
+        }
+
+        if (andExpr.getArguments().size() == 1) {
+            return andExpr.getArguments().get(0).getValue(); // remove the AND if there is only one argument
+        } else if (andExpr.getArguments().size() > 1) {
+            return null; // the nested loops code expects only one predicate of the type R.a op S.a
         }
         return andExpr;
     }
 
-    protected ILogicalExpression getHashJoinExpr(List<Integer> newJoinConditions) {
+    protected ILogicalExpression getHashJoinExpr(List<Integer> newJoinConditions, boolean outerJoin) {
         if (newJoinConditions.size() == 0) {
             // this is a cartesian product
             return ConstantExpression.TRUE;
@@ -297,8 +317,8 @@ public class JoinEnum {
             }
             return null;
         }
-        ScalarFunctionCallExpression andExpr = new ScalarFunctionCallExpression(
-                BuiltinFunctions.getBuiltinFunctionInfo(AlgebricksBuiltinFunctions.AND));
+        ScalarFunctionCallExpression andExpr =
+                new ScalarFunctionCallExpression(getBuiltinFunctionInfo(AlgebricksBuiltinFunctions.AND));
 
         // at least one equality predicate needs to be present for a hash join to be possible.
         boolean eqPredFound = false;
@@ -307,6 +327,10 @@ public class JoinEnum {
             JoinCondition jc = joinConditions.get(joinNum);
             if (jc.comparisonType == JoinCondition.comparisonOp.OP_EQ) {
                 eqPredFound = true;
+            } else if (outerJoin) {
+                // For outer joins, non-eq predicates cannot be pulled up and applied after the
+                // join, so a hash join will not be possible.
+                return null;
             }
             andExpr.getArguments().add(new MutableObject<>(jc.joinCondition));
         }
@@ -433,9 +457,8 @@ public class JoinEnum {
     }
 
     // This finds all the join Conditions in the whole query. This is a global list of all join predicates.
-    // It also fills in the dataset Bits for each join predicate.
-    private void findJoinConditionsAndAssignSels() throws AlgebricksException {
-
+    // It also fills in the dataset Bits for each join predicate. Add Transitive Join Predicates also.
+    private void findJoinConditionsAndDoTC() throws AlgebricksException {
         List<Mutable<ILogicalExpression>> conjs = new ArrayList<>();
         for (JoinOperator jOp : allJoinOps) {
             AbstractBinaryJoinOperator joinOp = jOp.getAbstractJoinOp();
@@ -449,8 +472,11 @@ public class JoinEnum {
                     if (jc.outerJoin) {
                         outerJoin = true;
                     }
-                    jc.joinCondition = conj.getValue().cloneExpression();
+                    jc.joinCondition = conj.getValue();
+                    LOGGER.info("adding JC " + jc.joinCondition);
+                    jc.usedVars = getUsedVars(jc);
                     joinConditions.add(jc);
+                    jc.joinOp = jOp;
                 }
             } else {
                 if ((expr.getExpressionTag() == LogicalExpressionTag.FUNCTION_CALL)) {
@@ -459,31 +485,59 @@ public class JoinEnum {
                     if (jc.outerJoin) {
                         outerJoin = true;
                     }
-                    // change to not a true condition
-                    jc.joinCondition = expr.cloneExpression();
+                    jc.joinCondition = expr;
+                    LOGGER.info("adding JC " + jc.joinCondition);
+                    jc.usedVars = getUsedVars(jc);
                     joinConditions.add(jc);
+                    jc.joinOp = jOp;
                 }
             }
         }
-
+        addTCJoinPreds(); // transitive close of join predicates
         // now patch up any join conditions that have variables referenced in any internal assign statements.
         List<LogicalVariable> usedVars = new ArrayList<>();
         List<AssignOperator> erase = new ArrayList<>();
         for (JoinCondition jc : joinConditions) {
-            usedVars.clear();
             ILogicalExpression expr = jc.joinCondition;
+            AbstractFunctionCallExpression aexpr = (AbstractFunctionCallExpression) expr;
+            usedVars.clear();
             expr.getUsedVariables(usedVars);
-            for (AssignOperator aOp : assignOps) {
+            boolean fixed = false;
+            for (AssignOperator aOp : assignOps) { // These assignOps are internal assignOps (found between join nodes)
                 for (int i = 0; i < aOp.getVariables().size(); i++) {
                     if (usedVars.contains(aOp.getVariables().get(i))) {
                         OperatorManipulationUtil.replaceVarWithExpr((AbstractFunctionCallExpression) expr,
                                 aOp.getVariables().get(i), aOp.getExpressions().get(i).getValue());
                         jc.joinCondition = expr;
                         erase.add(aOp);
+                        fixed = true;
                     }
                 }
             }
-            jc.selectivity = stats.getSelectivityFromAnnotationMain(jc.joinCondition, true, false);
+            if (!fixed) {
+                // now comes the hard part. Need to look thru all the assigns in the leafInputs
+                for (ILogicalOperator op : leafInputs) {
+                    while (op.getOperatorTag() != LogicalOperatorTag.EMPTYTUPLESOURCE) {
+                        if (op.getOperatorTag() == LogicalOperatorTag.ASSIGN) {
+                            AssignOperator aOp = (AssignOperator) op;
+                            ILogicalExpression a = aOp.getExpressions().get(0).getValue();
+                            usedVars.clear();
+                            a.getUsedVariables(usedVars);
+                            if (usedVars.size() > 1) {
+                                for (int i = 0; i < aOp.getVariables().size(); i++) {
+                                    if (usedVars.contains(aOp.getVariables().get(i))) {
+                                        OperatorManipulationUtil.replaceVarWithExpr(
+                                                (AbstractFunctionCallExpression) expr, aOp.getVariables().get(i),
+                                                aOp.getExpressions().get(i).getValue());
+                                        jc.joinCondition = expr;
+                                    }
+                                }
+                            }
+                        }
+                        op = op.getInputs().get(0).getValue();
+                    }
+                }
+            }
         }
         for (int i = erase.size() - 1; i >= 0; i--) {
             assignOps.remove(erase.get(i));
@@ -504,36 +558,217 @@ public class JoinEnum {
             }
             jc.numberOfVars = usedVars.size();
 
+            List<Integer> leafInputNumbers = new ArrayList<>(jc.numberOfVars);
             for (int i = 0; i < jc.numberOfVars; i++) {
-                int bits = 1 << (varLeafInputIds.get(usedVars.get(i)) - 1);
-                if (bits != JoinCondition.NO_JC) {
-                    if (i == 0) {
-                        jc.leftSideBits = bits;
-                    } else if (i == 1) {
-                        jc.rightSideBits = bits;
-                    } else {
-                        // have to deal with preds such as r.a + s.a = 5 OR r.a + s.a = t.a
+                int idx = varLeafInputIds.get(usedVars.get(i));
+                if (!leafInputNumbers.contains(idx)) {
+                    leafInputNumbers.add(idx);
+                }
+            }
+            jc.numLeafInputs = leafInputNumbers.size();
+            for (int i = 0; i < jc.numLeafInputs; i++) {
+                int side = leafInputNumbers.get(i);
+                int bits = 1 << (side - 1);
+                if (i == 0) {
+                    jc.leftSide = side;
+                    jc.leftSideBits = bits;
+                } else if (i == 1) {
+                    jc.rightSide = side;
+                    jc.rightSideBits = bits;
+                }
+                jc.datasetBits |= bits;
+            }
+        }
+    }
+
+    // transitive close of join predicates; add only if they are not already present; user may have added them in the query
+    private void addTCJoinPreds() {
+        boolean changes = true;
+        while (changes) {
+            changes = false;
+            int size = joinConditions.size(); // store the size here. We will add more join conditions.
+            for (int i = 0; i < size - 1; i++) {
+                List<LogicalVariable> vars1 = joinConditions.get(i).usedVars; // see if the predicate just added will yield any TC preds.
+                if (vars1 != null) {
+                    for (int j = i + 1; j < size; j++) {
+                        ILogicalExpression newExpr = null;
+                        List<LogicalVariable> vars2 = joinConditions.get(j).usedVars;
+                        if (vars2 != null) {
+                            if (vars1.get(0) == vars2.get(0)) {
+                                if (notFound(vars1.get(1), vars2.get(1))) {
+                                    newExpr = makeNewEQJoinExpr(vars1.get(1), vars2.get(1));
+                                }
+                            } else if (vars1.get(0) == vars2.get(1)) {
+                                if (notFound(vars1.get(1), vars2.get(0))) {
+                                    newExpr = makeNewEQJoinExpr(vars1.get(1), vars2.get(0));
+                                }
+                            } else if (vars1.get(1) == vars2.get(1)) {
+                                if (notFound(vars1.get(0), vars2.get(0))) {
+                                    newExpr = makeNewEQJoinExpr(vars1.get(0), vars2.get(0));
+                                }
+                            } else if (vars1.get(1) == vars2.get(0)) {
+                                if (notFound(vars1.get(0), vars2.get(1))) {
+                                    newExpr = makeNewEQJoinExpr(vars1.get(0), vars2.get(1));
+                                }
+                            }
+                        }
+                        if (newExpr != null) {
+                            changes = true;
+                            LOGGER.info("vars1 " + vars1 + "; vars2 " + vars2 + " = " + "newExpr " + newExpr);
+                            JoinCondition jc = new JoinCondition();
+                            jc.outerJoin = false;
+                            jc.derived = true; // useful to exclude for NL Joins since NL joins can take only one pred
+                            jc.joinCondition = newExpr;
+                            jc.usedVars = getUsedVars(jc);
+                            joinConditions.add(jc);
+                            jc.joinOp = joinConditions.get(i).joinOp; // borrowing the joinOp here as this does not have a joinOp of its own.
+                        }
                     }
-                    jc.datasetBits |= bits;
                 }
             }
         }
     }
 
-    // in case we have l.partkey = ps.partkey and l.suppkey = ps.suppkey, we will only use the first one for cardinality computations.
-    // treat it like a Pk-Fk join; simplifies cardinality computation
-    private void markCompositeJoinPredicates() {
-        // can use dataSetBits??? This will be simpler.
-        for (int i = 0; i < joinConditions.size() - 1; i++) {
-            for (int j = i + 1; j < joinConditions.size(); j++) {
-                if (joinConditions.get(i).datasetBits == joinConditions.get(j).datasetBits) {
-                    joinConditions.get(i).selectivity = 1.0 / smallerDatasetSize(joinConditions.get(i).datasetBits);
-                    // 1/P will be the selectivity of the composite clause
-                    joinConditions.get(j).partOfComposite = true;
-                    joinConditions.get(j).selectivity = 1.0;
+    protected ILogicalExpression makeNewEQJoinExpr(LogicalVariable var1, LogicalVariable var2) {
+        if (varLeafInputIds.get(var1) == varLeafInputIds.get(var2)) {
+            return null; // must be from different datasets to make a join expression
+        }
+        List<Mutable<ILogicalExpression>> arguments = new ArrayList<>();
+        VariableReferenceExpression e1 = new VariableReferenceExpression(var1);
+        arguments.add(new MutableObject<>(e1));
+        VariableReferenceExpression e2 = new VariableReferenceExpression(var2);
+        arguments.add(new MutableObject<>(e2));
+        ScalarFunctionCallExpression expr = new ScalarFunctionCallExpression(
+                FunctionUtil.getFunctionInfo(AlgebricksBuiltinFunctions.EQ), arguments);
+        return expr;
+    }
+
+    private boolean notFound(LogicalVariable var1, LogicalVariable var2) {
+        for (int i = 0; i < joinConditions.size(); i++) {
+            List<LogicalVariable> vars = joinConditions.get(i).usedVars;
+            if (vars != null) {
+                if (vars.get(0) == var1 && vars.get(1) == var2) {
+                    return false;
+                }
+                if (vars.get(1) == var1 && vars.get(0) == var2) {
+                    return false;
                 }
             }
         }
+        return true;
+    }
+
+    // This routine is collecting information about the variables in the predicates to see if we can do a Transitive closure.
+    // Only considering equi join predicates for now.
+    private List<LogicalVariable> getUsedVars(JoinCondition jc) {
+        ILogicalExpression exp = jc.joinCondition;
+        if (!jc.outerJoin) {
+            if (exp.getExpressionTag().equals(LogicalExpressionTag.FUNCTION_CALL)) {
+                AbstractFunctionCallExpression afcexpr = (AbstractFunctionCallExpression) exp;
+                if (afcexpr.getFunctionIdentifier().equals(AlgebricksBuiltinFunctions.EQ)) {
+                    List<LogicalVariable> usedVars = new ArrayList<>();
+                    exp.getUsedVariables(usedVars);
+                    if (usedVars.size() == 2) {
+                        return usedVars;
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    // This is basically a heuristic routine. Not guaranteed to be 100% accurate.
+    // Use only when primary keys are not defined (shadow data sets)
+    // Examples l.partkey = ps.partkey and l.suppkey = ps.suppkey TPCH
+    // c.c_d_id = o.o_d_id and c.c_w_id = o.o_w_id and c.c_id = o.o_c_id in CH2
+    //for (JoinCondition jc : joinConditions) {
+    //jc.selectivity = stats.getSelectivityFromAnnotationMain(jc, null, true, false, jc.joinOp);
+    //}
+    private void markCompositeJoinPredicates() throws AlgebricksException {
+        List<JoinCondition> JCs = new ArrayList<>();
+        for (int i = 0; i < joinConditions.size(); i++) {
+            JoinCondition jcI = joinConditions.get(i);
+            if (jcI.usedVars == null || jcI.usedVars.size() != 2 || jcI.numLeafInputs != 2 || jcI.partOfComposite) {
+                continue;
+            }
+            JCs.clear();
+            JCs.add(jcI);
+            if (jcI.comparisonType == JoinCondition.comparisonOp.OP_EQ) {
+                for (int j = i + 1; j < joinConditions.size(); j++) {
+                    JoinCondition jcJ = joinConditions.get(j);
+                    if (jcJ.usedVars == null) {
+                        continue;
+                    }
+                    if (jcJ.comparisonType == JoinCondition.comparisonOp.OP_EQ && (jcJ.usedVars.size() == 2)
+                            && (jcJ.numLeafInputs == 2) && (jcI.datasetBits == jcJ.datasetBits)) {
+                        JCs.add(jcJ);
+                    }
+                }
+                double sel = checkForPrimaryKey(JCs);
+                //if (JCs.size() > 1) { // need at least two to form a composite join key
+                // Now check if selectivities have to be adjusted for this composite key
+                if (JCs.size() > 1) {
+                    for (JoinCondition jc : JCs) {
+                        jc.partOfComposite = true;
+                    }
+                }
+                if (sel == -1.0) {
+                    for (JoinCondition jc : JCs) {
+                        jc.selectivity = stats.getSelectivityFromAnnotationMain(jc, null, true, false, jc.joinOp);
+                    }
+
+                } else {
+                    for (JoinCondition jc : JCs) {
+                        jc.selectivity = 1.0;
+                    }
+                    JCs.get(0).selectivity = sel; // store this in the first condition. Does not matter which one it is!
+                }
+            }
+        }
+    }
+
+    // at this point the join is binary. Not sure if all the predicates may not be in the same order?? Appears to be the case
+    private double checkForPrimaryKey(List<JoinCondition> jCs) {
+        List<LogicalVariable> leftVars = new ArrayList<>();
+        List<LogicalVariable> rightVars = new ArrayList<>();
+        for (JoinCondition jc : jCs) {
+            leftVars.add(jc.usedVars.get(0));
+            rightVars.add(jc.usedVars.get(1));
+        }
+        double sel = -1.0;
+        ILogicalOperator leftLeafInput = leafInputs.get(jCs.get(0).leftSide - 1);
+        DataSourceScanOperator leftScanOp = findDataSourceScanOperator(leftLeafInput);
+        boolean leftPrimary = false;
+        if (leftScanOp.getVariables().containsAll(leftVars)
+                && leftScanOp.getVariables().size() == leftVars.size() + 1) {
+            // this is the primary side
+            leftPrimary = true;
+            sel = 1.0 / jnArray[jCs.get(0).leftSide].getOrigCardinality();
+        }
+        boolean rightPrimary = false;
+        ILogicalOperator rightLeafInput = leafInputs.get(jCs.get(0).rightSide - 1);
+        DataSourceScanOperator rightScanOp = findDataSourceScanOperator(rightLeafInput);
+        if (rightScanOp.getVariables().containsAll(rightVars)
+                && rightScanOp.getVariables().size() == rightVars.size() + 1) {
+            // this is the primary side
+            rightPrimary = true;
+            sel = 1.0 / jnArray[jCs.get(0).rightSide].getOrigCardinality();
+        }
+
+        if (leftPrimary && rightPrimary) {
+            // this is the subset case. The join cardinality will be the smaller side. So selectvity will be 1/biggerCard
+            sel = 1.0 / Math.max(jnArray[jCs.get(0).leftSide].getOrigCardinality(),
+                    jnArray[jCs.get(0).rightSide].getOrigCardinality());
+        }
+        return sel;
+    }
+
+    private boolean close(double size1, double size2) {
+        double ratio = size1 / size2;
+        if (ratio > 0.8 && ratio < 1.2) {
+            return true;
+        }
+        return false;
     }
 
     private double smallerDatasetSize(int datasetBits) {
@@ -738,16 +973,15 @@ public class JoinEnum {
                     jn.datasetIndexes = new ArrayList<>();
                     jn.datasetIndexes.addAll(jnI.datasetIndexes);
                     jn.datasetIndexes.addAll(jnJ.datasetIndexes);
-                    Collections.sort(jn.datasetIndexes);
 
                     jn.datasetNames = new ArrayList<>();
                     jn.datasetNames.addAll(jnI.datasetNames);
                     jn.datasetNames.addAll(jnJ.datasetNames);
-                    Collections.sort(jn.datasetNames);
+
                     jn.aliases = new ArrayList<>();
                     jn.aliases.addAll(jnI.aliases);
                     jn.aliases.addAll(jnJ.aliases);
-                    Collections.sort(jn.aliases);
+
                     jn.size = jnI.size + jnJ.size; // These are the original document sizes
                     jn.setCardinality(jn.computeJoinCardinality(), true);
                     jn.setSizeVarsAfterScan(jnI.getSizeVarsAfterScan() + jnJ.getSizeVarsAfterScan());
@@ -911,6 +1145,14 @@ public class JoinEnum {
             JoinNode jn = jnArray[i];
             Index.SampleIndexDetails idxDetails = jn.getIdxDetails();
             ILogicalOperator leafInput = this.leafInputs.get(i - 1);
+            DataSourceScanOperator scanOp = findDataSourceScanOperator(leafInput);
+            if (scanOp != null && fakeLeafInputsMap.get(scanOp) != null) {
+                jn.setFake();
+            }
+            int numArrayRefs = 0;
+            if (unnestOpsInfo.size() > 0) {
+                numArrayRefs = unnestOpsInfo.get(i - 1).size();
+            }
             if (!cboTestMode) {
                 if (idxDetails == null) {
                     dataScanPlan = jn.addSingleDatasetPlans();
@@ -919,10 +1161,11 @@ public class JoinEnum {
                     }
                     continue;
                 }
-                jn.setCardsAndSizes(idxDetails, leafInput);
-
                 // Compute the distinct cardinalities for each base join node.
-                DataSourceScanOperator scanOp = findDataSourceScanOperator(leafInput);
+                if (!jn.getFake()) {
+                    jn.setCardsAndSizes(idxDetails, leafInput, i); // the fake case gets handled in this routine.
+                }
+
                 ILogicalOperator grpByDistinctOp = this.dataScanAndGroupByDistinctOps.get(scanOp);
                 if (grpByDistinctOp != null) {
                     long distinctCardinality = stats.findDistinctCardinality(grpByDistinctOp);
@@ -932,6 +1175,11 @@ public class JoinEnum {
                     grpByDistinctOp.getAnnotations().put(OperatorAnnotations.OP_INPUT_CARDINALITY, grpInputCard);
                     grpByDistinctOp.getAnnotations().put(OperatorAnnotations.OP_OUTPUT_CARDINALITY, grpOutputCard);
                 }
+            } else {
+                // cboTestMode. There are no samples here.
+                for (int j = 1; j <= numArrayRefs; j++) {
+                    jn.setCardsAndSizesForFakeJn(i, j, 10.0);
+                }
             }
 
             dataScanPlan = jn.addSingleDatasetPlans();
@@ -939,7 +1187,7 @@ public class JoinEnum {
                 return PlanNode.NO_PLAN;
             }
             // We may not add any index plans, so need to check for NO_PLAN
-            jn.addIndexAccessPlans(leafInput);
+            jn.addIndexAccessPlans(EnumerateJoinsRule.removeTrue(leafInput));
         }
         return this.numberOfTerms;
     }
@@ -1028,8 +1276,12 @@ public class JoinEnum {
     // Find the join conditions. Assign selectivities to the join conditions from any user provided annotation hints.
     // If there are no annotation hints, use samples to find the selectivities of the single table predicates
     // found inside of complex join predicates (as in q7). A lot of extra code has gone into making q7 work.
-    private void findJoinConditions() throws AlgebricksException {
-        findJoinConditionsAndAssignSels();
+    // With this routine we can compute the cardinality of the join predicate between n1 and n2 correctly (2 in this case).
+    //The predicate in Q7 between n1 and n2 is
+    //(n1.name = INDIA AND n2.name = JAPAN) OR
+    //(n1.name = JAPAN AND n2.name = INDIA)
+    // So this appears as a join predicate but we have to compute the selectivities of the selection predicates inside the join. MESSY
+    private void findSelectionPredsInsideJoins() throws AlgebricksException {
         // for all the singleVarExprs, we need to issue a sample query. These exprs did not get assigned a selectivity.
         for (ILogicalExpression exp : this.singleDatasetPreds) {
             if (isPredicateCardinalityAnnotationPresent(exp)) {
@@ -1042,7 +1294,7 @@ public class JoinEnum {
                 ILogicalOperator leafInput = findLeafInput(vars);
                 SelectOperator selOp;
                 if (leafInput.getOperatorTag().equals(LogicalOperatorTag.SELECT)) {
-                    selOp = (SelectOperator) getStatsHandle().findSelectOpWithExpr(leafInput, exp);
+                    selOp = getStatsHandle().findSelectOpWithExpr(leafInput, exp);
                     if (selOp == null) {
                         selOp = (SelectOperator) leafInput;
                     }
@@ -1062,10 +1314,10 @@ public class JoinEnum {
             }
         }
 
-        if (this.singleDatasetPreds.size() > 0) { // We did not have selectivities for these before. Now we do.
+        if (this.singleDatasetPreds.size() > 0) {
             for (JoinCondition jc : joinConditions) {
                 // we may be repeating some work here, but that is ok. This will rarely happen (happens in q7 tpch)
-                double sel = stats.getSelectivityFromAnnotationMain(jc.getJoinCondition(), false, true);
+                double sel = stats.getSelectivityFromAnnotationMain(jc, null, false, true, null);
                 if (sel != -1) {
                     jc.selectivity = sel;
                 }
@@ -1080,6 +1332,9 @@ public class JoinEnum {
         localJoinOp = new InnerJoinOperator(new MutableObject<>(ConstantExpression.TRUE),
                 new MutableObject<>(dummyInput), new MutableObject<>(dummyInput));
 
+        findJoinConditionsAndDoTC();
+        addTCSelectionPredicates();
+        keepOnlyOneSelectivityHint();
         int lastBaseLevelJnNum = enumerateBaseLevelJoinNodes();
         if (lastBaseLevelJnNum == PlanNode.NO_PLAN) {
             return PlanNode.NO_PLAN;
@@ -1090,7 +1345,14 @@ public class JoinEnum {
             EnumerateJoinsRule.printPlan(pp, op, "Original Whole plan in JN 1");
         }
 
-        findJoinConditions();
+        for (JoinCondition jc : joinConditions) {
+            if (!((AbstractFunctionCallExpression) jc.joinCondition).getFunctionIdentifier()
+                    .equals(AlgebricksBuiltinFunctions.EQ)) {
+                jc.selectivity = stats.getSelectivityFromAnnotationMain(jc, null, true, false, jc.joinOp);
+            }
+        }
+
+        findSelectionPredsInsideJoins(); // This was added to make TPCH Q7 work. cleanup/redo. difficult to debug currently
         findIfJoinGraphIsConnected();
 
         if (LOGGER.isTraceEnabled()) {
@@ -1098,15 +1360,165 @@ public class JoinEnum {
         }
 
         markCompositeJoinPredicates();
+        for (JoinCondition jc : joinConditions) {
+            if (jc.selectivity == -1) {// just in case we missed computing some selectivities perhaps because there were no keys found
+                jc.selectivity = stats.getSelectivityFromAnnotationMain(jc, null, true, false, jc.joinOp);
+            }
+        }
         int lastJnNum = enumerateHigherLevelJoinNodes();
         JoinNode lastJn = jnArray[allTabsJnNum];
+        // return the cheapest plan
         if (LOGGER.isTraceEnabled()) {
             EnumerateJoinsRule.printPlan(pp, op, "Original Whole plan in JN END");
             LOGGER.trace(dumpJoinNodes(lastJnNum));
         }
 
-        // return the cheapest plan
         return lastJn.cheapestPlanIndex;
+    }
+
+    private void keepOnlyOneSelectivityHint() {
+        AbstractFunctionCallExpression afce;
+        for (JoinCondition jc : joinConditions) {
+            int n = 0;
+            for (SelectOperator selOp : jc.derivedSelOps) {
+                afce = (AbstractFunctionCallExpression) selOp.getCondition().getValue();
+                if (afce.hasAnnotation(PredicateCardinalityAnnotation.class)) {
+                    n++;
+                }
+            }
+            if (n <= 1) { // R.a = S.a and R.a < 1
+                return; // perfect. At most one predicate has the annotation
+            } else {// n == 2, both of them have it of them have it, So remove it from the last one
+                // R.a = S.a and R.a < 1 and S.a < 1; user typed in both predicates, so each one looks derived.
+                afce = (AbstractFunctionCallExpression) jc.derivedSelOps.get(n - 1).getCondition().getValue();
+                afce.removeAnnotation(PredicateCardinalityAnnotation.class);
+            }
+        }
+    }
+
+    // R.a = S.a and R.a op operand ==> S.a op operand
+    private void addTCSelectionPredicates() throws AlgebricksException {
+        List<SelectOperator> existingSelOps = new ArrayList<>();
+        for (ILogicalOperator leafInput : this.leafInputs) {
+            ILogicalOperator li = leafInput.getInputs().get(0).getValue(); // skip the true on the top
+            List<SelectOperator> selOps = findAllSimpleSelOps(li); // variable op operand
+            existingSelOps.addAll(selOps);
+        }
+        addTCSelectionPredicatesHelper(existingSelOps);
+    }
+
+    private void addTCSelectionPredicatesHelper(List<SelectOperator> existingSelOps) throws AlgebricksException {
+        for (SelectOperator selOp : existingSelOps) {
+            AbstractFunctionCallExpression exp = (AbstractFunctionCallExpression) selOp.getCondition().getValue();
+            Mutable<ILogicalExpression> x = exp.getArguments().get(0);
+            VariableReferenceExpression varRef = (VariableReferenceExpression) x.getValue();
+            LogicalVariable var = varRef.getVariableReference();
+            SelectOperator newSelOp;
+            List<JoinCondition> jcs = findVarinJoinPreds(var);
+            for (JoinCondition jc : jcs) { // join predicate can be R.a = S.a or S.a = R.a. Check for both cases
+                if (var == jc.usedVars.get(0)) { // R.a
+                    newSelOp = makeNewSelOper(jc, existingSelOps, jc.usedVars.get(1), // == S.a
+                            ((AbstractFunctionCallExpression) selOp.getCondition().getValue()).getFunctionInfo(), // op
+                            exp.getArguments().get(1)); // operand
+                    if (newSelOp != null) { // does not already exist
+                        addSelOpToLeafInput(jc, jc.usedVars.get(1), newSelOp);
+                    }
+                } else if (var == jc.usedVars.get(1)) { // R.a
+                    newSelOp = makeNewSelOper(jc, existingSelOps, jc.usedVars.get(0), // == S.a
+                            ((AbstractFunctionCallExpression) selOp.getCondition().getValue()).getFunctionInfo(), // op
+                            exp.getArguments().get(1)); // operand
+                    if (newSelOp != null) {
+                        addSelOpToLeafInput(jc, jc.usedVars.get(0), newSelOp);
+                    }
+                }
+            }
+        }
+    }
+
+    private SelectOperator makeNewSelOper(JoinCondition jc, List<SelectOperator> existingSelOps, LogicalVariable var,
+            IFunctionInfo tag, Mutable<ILogicalExpression> arg) throws AlgebricksException {
+        List<Mutable<ILogicalExpression>> arguments = new ArrayList<>();
+        VariableReferenceExpression e1 = new VariableReferenceExpression(var);
+        arguments.add(new MutableObject<>(e1)); // S.a
+        arguments.add(new MutableObject<>(arg.getValue())); // this will be the operand
+        ScalarFunctionCallExpression expr = new ScalarFunctionCallExpression(tag, arguments); //S.a op operand
+        SelectOperator newsel = new SelectOperator(new MutableObject<>(expr), null, null);
+        if (newSelNotPresent(jc, newsel, existingSelOps)) {
+            LOGGER.info("adding newsel " + newsel.getCondition());
+            return newsel; // add since it does not exist
+        } else {
+            return null; // already exists, no need to add again
+        }
+    }
+
+    private boolean newSelNotPresent(JoinCondition jc, SelectOperator newsel, List<SelectOperator> existingSelOps) {
+        for (SelectOperator existingSelOp : existingSelOps) {
+            if (newsel.getCondition().equals(existingSelOp.getCondition())) {
+                PredicateCardinalityAnnotation anno = new PredicateCardinalityAnnotation(0.9999); // cannot be 1.0 as check in setCardsAndSizes will not work
+                AbstractFunctionCallExpression afce =
+                        (AbstractFunctionCallExpression) existingSelOp.getCondition().getValue();
+                afce.putAnnotation(anno);
+                jc.derivedSelOps.add(existingSelOp);
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private void addSelOpToLeafInput(JoinCondition jc, LogicalVariable var, SelectOperator newSelOp)
+            throws AlgebricksException {
+        int l = varLeafInputIds.get(var); // get the corresponding leafInput using the map
+        ILogicalOperator parent = leafInputs.get(l - 1);
+        ILogicalOperator child = parent.getInputs().get(0).getValue();
+        parent.getInputs().get(0).setValue(newSelOp);
+        newSelOp.getInputs().add(new MutableObject<>(child));
+        // Add the selectivity annotation with selectivity 1.0;
+        // Note the actual cardinality will be different; but all join cardinalities should be ok.
+        PredicateCardinalityAnnotation anno = new PredicateCardinalityAnnotation(0.9999);
+        AbstractFunctionCallExpression afce = (AbstractFunctionCallExpression) newSelOp.getCondition().getValue();
+        afce.putAnnotation(anno);
+        jc.derivedSelOps.add(newSelOp);
+        optCtx.computeAndSetTypeEnvironmentForOperator(newSelOp);
+    }
+
+    private List<JoinCondition> findVarinJoinPreds(LogicalVariable var) {
+        List<JoinCondition> jcs = new ArrayList<>();
+        for (JoinCondition jc : joinConditions) {
+            if (jc.usedVars != null && jc.usedVars.contains(var)) { // this will only search inner join predicates
+                jcs.add(jc);
+            }
+        }
+        return jcs;
+    }
+
+    private List<SelectOperator> findAllSimpleSelOps(ILogicalOperator li) {
+        List<SelectOperator> selOps = new ArrayList<>();
+        while (li != null && li.getOperatorTag() != LogicalOperatorTag.EMPTYTUPLESOURCE) {
+            if (li.getOperatorTag().equals(LogicalOperatorTag.SELECT)) {
+                SelectOperator selOp = (SelectOperator) li;
+                ILogicalExpression condition = selOp.getCondition().getValue();
+                if (simpleCondition(condition)) {
+                    selOps.add(selOp);
+                }
+            }
+            li = li.getInputs().get(0).getValue();
+        }
+        return selOps;
+    }
+
+    private boolean simpleCondition(ILogicalExpression condition) {
+        if (condition.getExpressionTag() == LogicalExpressionTag.FUNCTION_CALL) {
+            AbstractFunctionCallExpression exp = (AbstractFunctionCallExpression) condition;
+            if (exp.getArguments().size() == 2) {
+                Mutable<ILogicalExpression> arg0 = exp.getArguments().get(0);
+                Mutable<ILogicalExpression> arg1 = exp.getArguments().get(1);
+                if (arg0.getValue().getExpressionTag() == LogicalExpressionTag.VARIABLE
+                        && arg1.getValue().getExpressionTag() == LogicalExpressionTag.CONSTANT) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private String dumpJoinNodes(int numJoinNodes) {

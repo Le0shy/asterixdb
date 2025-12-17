@@ -19,6 +19,7 @@
 package org.apache.asterix.dataflow.data.nontagged.printers.csv;
 
 import java.io.PrintStream;
+import java.util.Map;
 
 import org.apache.asterix.om.pointables.PointableAllocator;
 import org.apache.asterix.om.pointables.base.DefaultOpenFieldType;
@@ -30,24 +31,33 @@ import org.apache.asterix.om.types.IAType;
 import org.apache.hyracks.algebricks.common.utils.Pair;
 import org.apache.hyracks.algebricks.data.IPrinter;
 import org.apache.hyracks.algebricks.data.IPrinterFactory;
+import org.apache.hyracks.api.context.IEvaluatorContext;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
 
 public class ARecordPrinterFactory implements IPrinterFactory {
 
     private static final long serialVersionUID = 1L;
     private final ARecordType recType;
+    private final ARecordType itemType;
+    private final Map<String, String> formatConfigs;
+    private final Map<String, String> configuration;
 
-    public ARecordPrinterFactory(ARecordType recType) {
+    public ARecordPrinterFactory(ARecordType recType, ARecordType itemType, Map<String, String> formatConfigs,
+            Map<String, String> configuration) {
         this.recType = recType;
+        this.itemType = itemType;
+        this.formatConfigs = formatConfigs;
+        this.configuration = configuration;
     }
 
     @Override
-    public IPrinter createPrinter() {
+    public IPrinter createPrinter(IEvaluatorContext context) {
+
         final PointableAllocator allocator = new PointableAllocator();
         final IAType inputType =
                 recType == null ? DefaultOpenFieldType.getDefaultOpenFieldType(ATypeTag.OBJECT) : recType;
         final IVisitablePointable recAccessor = allocator.allocateRecordValue(inputType);
-        final APrintVisitor printVisitor = new APrintVisitor();
+        final APrintVisitor printVisitor = new APrintVisitor(context, itemType, formatConfigs, configuration);
         final Pair<PrintStream, ATypeTag> arg = new Pair<>(null, null);
 
         return new IPrinter() {

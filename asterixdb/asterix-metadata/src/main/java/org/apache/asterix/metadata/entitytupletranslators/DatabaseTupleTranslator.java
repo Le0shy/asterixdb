@@ -21,13 +21,17 @@ package org.apache.asterix.metadata.entitytupletranslators;
 
 import java.util.Calendar;
 
+import org.apache.asterix.builders.RecordBuilder;
 import org.apache.asterix.metadata.bootstrap.DatabaseEntity;
+import org.apache.asterix.metadata.bootstrap.MetadataRecordTypes;
 import org.apache.asterix.metadata.entities.Database;
+import org.apache.asterix.metadata.utils.Creator;
 import org.apache.asterix.om.base.ABoolean;
 import org.apache.asterix.om.base.AInt32;
 import org.apache.asterix.om.base.AMutableInt32;
 import org.apache.asterix.om.base.ARecord;
 import org.apache.asterix.om.base.AString;
+import org.apache.asterix.om.pointables.base.DefaultOpenFieldType;
 import org.apache.hyracks.algebricks.common.exceptions.AlgebricksException;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
 import org.apache.hyracks.dataflow.common.data.accessors.ITupleReference;
@@ -55,7 +59,9 @@ public class DatabaseTupleTranslator extends AbstractTupleTranslator<Database> {
         boolean isSystemDatabase =
                 ((ABoolean) databaseRecord.getValueByPos(databaseEntity.systemDatabaseIndex())).getBoolean();
         int pendingOp = ((AInt32) databaseRecord.getValueByPos(databaseEntity.pendingOpIndex())).getIntegerValue();
-        return new Database(databaseName, isSystemDatabase, pendingOp);
+        Creator creator = Creator.createOrDefault(databaseRecord);
+
+        return new Database(databaseName, isSystemDatabase, pendingOp, creator);
     }
 
     @Override
@@ -94,11 +100,49 @@ public class DatabaseTupleTranslator extends AbstractTupleTranslator<Database> {
         int32Serde.serialize(aInt32, fieldValue.getDataOutput());
         recordBuilder.addField(databaseEntity.pendingOpIndex(), fieldValue);
 
+        // write open fields
+        writeOpenFields(database);
+
         // write the payload record
         recordBuilder.write(tupleBuilder.getDataOutput(), true);
         tupleBuilder.addFieldEndOffset();
 
         tuple.reset(tupleBuilder.getFieldEndOffsets(), tupleBuilder.getByteArray());
         return tuple;
+    }
+
+    protected void writeOpenFields(Database database) throws HyracksDataException {
+        writeDatabaseCreator(database);
+    }
+
+    private void writeDatabaseCreator(Database database) throws HyracksDataException {
+        if (databaseEntity.databaseNameIndex() >= 0) {
+            Creator creatorInfo = database.getCreator();
+            RecordBuilder creatorObject = new RecordBuilder();
+            creatorObject.reset(DefaultOpenFieldType.NESTED_OPEN_RECORD_TYPE);
+
+            fieldName.reset();
+            aString.setValue(MetadataRecordTypes.FIELD_NAME_CREATOR_NAME);
+            stringSerde.serialize(aString, fieldName.getDataOutput());
+            fieldValue.reset();
+            aString.setValue(creatorInfo.getName());
+            stringSerde.serialize(aString, fieldValue.getDataOutput());
+            creatorObject.addField(fieldName, fieldValue);
+
+            fieldName.reset();
+            aString.setValue(MetadataRecordTypes.FIELD_NAME_CREATOR_UUID);
+            stringSerde.serialize(aString, fieldName.getDataOutput());
+            fieldValue.reset();
+            aString.setValue(creatorInfo.getUuid());
+            stringSerde.serialize(aString, fieldValue.getDataOutput());
+            creatorObject.addField(fieldName, fieldValue);
+
+            fieldName.reset();
+            aString.setValue(MetadataRecordTypes.CREATOR_ARECORD_FIELD_NAME);
+            stringSerde.serialize(aString, fieldName.getDataOutput());
+            fieldValue.reset();
+            creatorObject.write(fieldValue.getDataOutput(), true);
+            recordBuilder.addField(fieldName, fieldValue);
+        }
     }
 }

@@ -25,40 +25,21 @@ import org.apache.hyracks.algebricks.runtime.base.IScalarEvaluator;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
 
 public class ColumnIterableFilterEvaluator extends AbstractIterableFilterEvaluator {
-    private final List<IColumnValuesReader> readers;
 
     public ColumnIterableFilterEvaluator(IScalarEvaluator evaluator, List<IColumnValuesReader> readers) {
-        super(evaluator);
-        this.readers = readers;
+        super(evaluator, readers);
     }
 
     @Override
     public boolean evaluate() throws HyracksDataException {
         boolean result = false;
+        // If next() returns false, it means there are no more matching tuples left.
+        // Inside the next() function, tupleIndex and valueIndex are incremented.
+        // This causes tupleIndex to eventually reach tupleCount,
+        // indicating that all tuples have been processed.
         while (!result && next()) {
             result = inspect();
-            index++;
-        }
-        if (!result) {
-            // Last tuple does not satisfy the condition
-            index++;
         }
         return result;
-    }
-
-    private boolean next() throws HyracksDataException {
-        for (int i = 0; i < readers.size(); i++) {
-            if (!readers.get(i).next()) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    @Override
-    public void skip(int count) throws HyracksDataException {
-        for (int i = 0; count > 0 && i < readers.size(); i++) {
-            readers.get(i).skip(count);
-        }
     }
 }

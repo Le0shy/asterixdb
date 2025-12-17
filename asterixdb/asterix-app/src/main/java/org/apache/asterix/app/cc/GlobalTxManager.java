@@ -186,9 +186,25 @@ public class GlobalTxManager implements IGlobalTxManager {
     public void rollback() throws Exception {
         Set<FileReference> txnLogFileRefs = ioManager.list(ioManager.resolve(StorageConstants.GLOBAL_TXN_DIR_NAME));
         for (FileReference txnLogFileRef : txnLogFileRefs) {
-            IGlobalTransactionContext context = new GlobalTransactionContext(txnLogFileRef, ioManager);
-            txnContextRepository.put(context.getJobId(), context);
-            sendJobRollbackMessages(context);
+            try {
+                IGlobalTransactionContext context = new GlobalTransactionContext(txnLogFileRef, ioManager);
+                txnContextRepository.put(context.getJobId(), context);
+                sendJobRollbackMessages(context);
+            } catch (Exception e) {
+                LOGGER.error("Error rolling back transaction for {}", txnLogFileRef, e);
+                cleanup(txnLogFileRef);
+            }
+        }
+    }
+
+    private void cleanup(FileReference resourceFile) {
+        if (resourceFile.getFile().exists()) {
+            try {
+                ioManager.delete(resourceFile);
+            } catch (Throwable th) {
+                LOGGER.error("Error cleaning up corrupted resource {}", resourceFile, th);
+                ExitUtil.halt(ExitUtil.EC_FAILED_TO_DELETE_CORRUPTED_RESOURCES);
+            }
         }
     }
 
@@ -226,16 +242,15 @@ public class GlobalTxManager implements IGlobalTxManager {
     @Override
     public void notifyJobCreation(JobId jobId, JobSpecification spec, IJobCapacityController.JobSubmissionStatus status)
             throws HyracksException {
-
-    }
-
-    @Override
-    public void notifyJobStart(JobId jobId, JobSpecification spec) throws HyracksException {
         GlobalTxInfo globalTxInfo = (GlobalTxInfo) spec.getProperty(GlOBAL_TX_PROPERTY_NAME);
         if (globalTxInfo != null) {
             beginTransaction(jobId, globalTxInfo.getNumNodes(), globalTxInfo.getNumPartitions(),
                     globalTxInfo.getDatasetIds());
         }
+    }
+
+    @Override
+    public void notifyJobStart(JobId jobId, JobSpecification spec) throws HyracksException {
     }
 
     @Override

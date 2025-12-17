@@ -88,6 +88,14 @@ public final class ParallelCacher implements IParallelCacher {
     }
 
     @Override
+    public synchronized Set<UncachedFileReference> getUncachedFiles() {
+        Set<UncachedFileReference> uncached = new HashSet<>();
+        uncached.addAll(uncachedDataFiles.values());
+        uncached.addAll(uncachedMetadataFiles.values());
+        return uncached;
+    }
+
+    @Override
     public Set<FileReference> getUncachedFiles(FileReference dir, FilenameFilter filter) {
         if (dir.getRelativePath().endsWith(StorageConstants.STORAGE_ROOT_DIR_NAME)) {
             return uncachedDataFiles.keySet().stream()
@@ -157,9 +165,12 @@ public final class ParallelCacher implements IParallelCacher {
 
     @Override
     public boolean remove(Collection<FileReference> deletedFiles) {
-        LOGGER.info("Deleting {}", deletedFiles);
+        if (!deletedFiles.isEmpty()) {
+            LOGGER.debug("Delete {}", deletedFiles);
+        }
+
         for (FileReference fileReference : deletedFiles) {
-            remove(fileReference);
+            doRemove(fileReference);
         }
 
         return isEmpty();
@@ -167,13 +178,8 @@ public final class ParallelCacher implements IParallelCacher {
 
     @Override
     public boolean remove(FileReference fileReference) {
-        LOGGER.info("Deleting {}", fileReference);
-        if (isDataFile(fileReference)) {
-            uncachedDataFiles.remove(fileReference);
-        } else {
-            uncachedMetadataFiles.remove(fileReference);
-        }
-
+        LOGGER.debug("Delete {}", fileReference);
+        doRemove(fileReference);
         return isEmpty();
     }
 
@@ -213,12 +219,20 @@ public final class ParallelCacher implements IParallelCacher {
         return DATA_FILTER.accept(null, fileReference.getName());
     }
 
+    private void doRemove(FileReference fileReference) {
+        if (isDataFile(fileReference)) {
+            uncachedDataFiles.remove(fileReference);
+        } else {
+            uncachedMetadataFiles.remove(fileReference);
+        }
+    }
+
     private synchronized boolean isEmpty() {
         if (!checkEmpty) {
             return false;
         }
         int totalSize = uncachedDataFiles.size() + uncachedMetadataFiles.size();
-        LOGGER.info("Current number of uncached files {}", totalSize);
+        LOGGER.debug("Current number of uncached files {}", totalSize);
         return totalSize == 0;
     }
 
@@ -247,6 +261,7 @@ public final class ParallelCacher implements IParallelCacher {
             IoUtil.create(fileReference);
             try (RandomAccessFile raf = new RandomAccessFile(fileReference.getAbsolutePath(), "rw")) {
                 raf.setLength(((UncachedFileReference) fileReference).getSize());
+                raf.getChannel().force(true);
             } catch (IOException e) {
                 throw HyracksDataException.create(e);
             }

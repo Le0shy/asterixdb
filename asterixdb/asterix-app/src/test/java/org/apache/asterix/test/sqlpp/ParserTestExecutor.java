@@ -99,8 +99,8 @@ public class ParserTestExecutor extends TestExecutor {
                 try {
                     if (queryCount >= expectedResultFileCtxs.size()
                             && !cUnit.getOutputDir().getValue().equals("none")) {
-                        throw new ComparisonException("no result file for " + canonicalize(testFile) + "; queryCount: "
-                                + queryCount + ", filectxs.size: " + expectedResultFileCtxs.size());
+                        throw ComparisonException.noResult("no result file for " + canonicalize(testFile)
+                                + "; queryCount: " + queryCount + ", filectxs.size: " + expectedResultFileCtxs.size());
                     }
 
                     // Runs the test query.
@@ -213,7 +213,7 @@ public class ParserTestExecutor extends TestExecutor {
                     Query query = (Query) st;
                     IQueryRewriter rewriter = sqlppRewriterFactory.createQueryRewriter();
                     LangRewritingContext rwContext = new LangRewritingContext(metadataProvider, functions, null,
-                            TestUtils.NOOP_WARNING_COLLECTOR, query.getVarCounter());
+                            TestUtils.NOOP_WARNING_COLLECTOR, null, query.getVarCounter());
                     rewrite(rewriter, query, rwContext);
 
                     // Tests deep copy and deep equality.

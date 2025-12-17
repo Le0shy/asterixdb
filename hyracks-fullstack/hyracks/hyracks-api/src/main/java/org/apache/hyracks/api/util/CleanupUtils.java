@@ -96,10 +96,16 @@ public class CleanupUtils {
             } catch (Throwable loggingFailure) { // NOSONAR: Ignore catching Throwable
                 // NOSONAR ignore logging failure
             }
-            if (root != null) {
-                root.addSuppressed(th);
-            }
+            ExceptionUtils.suppress(root, th);
         }
+    }
+
+    public static Throwable close(AutoCloseable[] closables, Throwable root) {
+        return close(closables, root, false);
+    }
+
+    public static Throwable closeSilently(AutoCloseable[] closables, Throwable root) {
+        return close(closables, root, true);
     }
 
     /**
@@ -112,13 +118,21 @@ public class CleanupUtils {
      *            the first exception encountered during release of resources
      * @return the root Throwable if not null or a new Throwable if any was thrown, otherwise, it returns null
      */
-    public static Throwable close(AutoCloseable[] closables, Throwable root) {
+    private static Throwable close(AutoCloseable[] closables, Throwable root, boolean silent) {
         if (closables != null) {
             for (AutoCloseable closable : closables) {
-                root = close(closable, root);
+                root = close(closable, root, silent);
             }
         }
         return root;
+    }
+
+    public static Throwable close(AutoCloseable closable, Throwable root) {
+        return close(closable, root, false);
+    }
+
+    public static Throwable closeSilently(AutoCloseable closable, Throwable root) {
+        return close(closable, root, true);
     }
 
     /**
@@ -131,16 +145,18 @@ public class CleanupUtils {
      *            the first exception encountered during release of resources
      * @return the root Throwable if not null or a new Throwable if any was thrown, otherwise, it returns null
      */
-    public static Throwable close(AutoCloseable closable, Throwable root) {
+    private static Throwable close(AutoCloseable closable, Throwable root, boolean silent) {
         if (closable != null) {
             try {
                 closable.close();
             } catch (Throwable th) { // NOSONAR Will be suppressed
-                try {
-                    LOGGER.log(ExceptionUtils.causedByInterrupt(th) ? Level.DEBUG : Level.WARN,
-                            "Failure closing a closeable resource {}", closable.getClass().getName(), th);
-                } catch (Throwable loggingFailure) { // NOSONAR: Ignore catching Throwable
-                    // NOSONAR ignore logging failure
+                if (!silent) {
+                    try {
+                        LOGGER.log(ExceptionUtils.causedByInterrupt(th) ? Level.DEBUG : Level.WARN,
+                                "Failure closing a closeable resource {}", closable.getClass().getName(), th);
+                    } catch (Throwable loggingFailure) { // NOSONAR: Ignore catching Throwable
+                        // NOSONAR ignore logging failure
+                    }
                 }
                 root = ExceptionUtils.suppress(root, th); // NOSONAR
             }

@@ -29,6 +29,7 @@ import org.apache.asterix.common.metadata.DataverseName;
 import org.apache.asterix.common.metadata.DependencyFullyQualifiedName;
 import org.apache.asterix.metadata.MetadataCache;
 import org.apache.asterix.metadata.api.IMetadataEntity;
+import org.apache.asterix.metadata.utils.Creator;
 import org.apache.asterix.om.types.TypeSignature;
 
 public class Function implements IMetadataEntity<Function> {
@@ -49,12 +50,14 @@ public class Function implements IMetadataEntity<Function> {
     private final Boolean nullCall; // null for SQL++ and AQL functions
     private final Map<String, String> resources;
     private final List<List<DependencyFullyQualifiedName>> dependencies;
+    private final Creator creator;
+    private final boolean transform;
 
     public Function(FunctionSignature signature, List<String> paramNames, List<TypeSignature> paramTypes,
             TypeSignature returnType, String functionBody, String functionKind, String language,
             String libraryDatabaseName, DataverseName libraryDataverseName, String libraryName,
             List<String> externalIdentifier, Boolean nullCall, Boolean deterministic, Map<String, String> resources,
-            List<List<DependencyFullyQualifiedName>> dependencies) {
+            List<List<DependencyFullyQualifiedName>> dependencies, Creator creator, boolean transform) {
         this.signature = signature;
         this.paramNames = paramNames;
         this.paramTypes = paramTypes;
@@ -72,6 +75,8 @@ public class Function implements IMetadataEntity<Function> {
         this.dependencies = dependencies == null
                 ? Arrays.asList(Collections.emptyList(), Collections.emptyList(), Collections.emptyList())
                 : dependencies;
+        this.creator = creator;
+        this.transform = transform;
     }
 
     public FunctionSignature getSignature() {
@@ -159,6 +164,14 @@ public class Function implements IMetadataEntity<Function> {
 
     public List<List<DependencyFullyQualifiedName>> getDependencies() {
         return dependencies;
+    }
+
+    public Creator getCreator() {
+        return creator;
+    }
+
+    public boolean isTransform() {
+        return transform;
     }
 
     @Override

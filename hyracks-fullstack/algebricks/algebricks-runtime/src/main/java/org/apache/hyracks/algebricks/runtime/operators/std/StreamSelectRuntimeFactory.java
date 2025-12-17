@@ -20,16 +20,17 @@ package org.apache.hyracks.algebricks.runtime.operators.std;
 
 import java.io.DataOutput;
 import java.nio.ByteBuffer;
+import java.util.Arrays;
 
 import org.apache.hyracks.algebricks.data.IBinaryBooleanInspector;
 import org.apache.hyracks.algebricks.data.IBinaryBooleanInspectorFactory;
-import org.apache.hyracks.algebricks.runtime.base.IEvaluatorContext;
 import org.apache.hyracks.algebricks.runtime.base.IScalarEvaluator;
 import org.apache.hyracks.algebricks.runtime.base.IScalarEvaluatorFactory;
 import org.apache.hyracks.algebricks.runtime.evaluators.EvaluatorContext;
 import org.apache.hyracks.algebricks.runtime.operators.base.AbstractOneInputOneOutputOneFieldFramePushRuntime;
 import org.apache.hyracks.algebricks.runtime.operators.base.AbstractOneInputOneOutputOneFramePushRuntime;
 import org.apache.hyracks.algebricks.runtime.operators.base.AbstractOneInputOneOutputRuntimeFactory;
+import org.apache.hyracks.api.context.IEvaluatorContext;
 import org.apache.hyracks.api.context.IHyracksTaskContext;
 import org.apache.hyracks.api.dataflow.value.IMissingWriter;
 import org.apache.hyracks.api.dataflow.value.IMissingWriterFactory;
@@ -63,7 +64,7 @@ public class StreamSelectRuntimeFactory extends AbstractOneInputOneOutputRuntime
 
     @Override
     public String toString() {
-        return "stream-select " + cond.toString();
+        return "stream-select " + cond.toString() + " project: " + Arrays.toString(projectionList);
     }
 
     @Override
@@ -158,11 +159,23 @@ public class StreamSelectRuntimeFactory extends AbstractOneInputOneOutputRuntime
         }
 
         protected void retainMissingTuple(int t) throws HyracksDataException {
-            for (int i = 0; i < tRef.getFieldCount(); i++) {
-                if (i == missingPlaceholderVariableIndex) {
+            if (projectionList == null) {
+                for (int i = 0; i < tRef.getFieldCount(); i++) {
+                    if (i == missingPlaceholderVariableIndex) {
+                        appendField(missingTupleBuilder.getByteArray(), 0, missingTupleBuilder.getSize());
+                    } else {
+                        appendField(tAccess, t, i);
+                    }
+                }
+                return;
+            }
+
+            for (int i = 0; i < projectionList.length; i++) {
+                int index = projectionList[i];
+                if (index == missingPlaceholderVariableIndex) {
                     appendField(missingTupleBuilder.getByteArray(), 0, missingTupleBuilder.getSize());
                 } else {
-                    appendField(tAccess, t, i);
+                    appendField(tAccess, t, index);
                 }
             }
         }

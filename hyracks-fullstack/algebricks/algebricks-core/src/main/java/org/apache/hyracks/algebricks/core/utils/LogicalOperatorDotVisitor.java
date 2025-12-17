@@ -112,6 +112,9 @@ public class LogicalOperatorDotVisitor implements ILogicalOperatorVisitor<String
         stringBuilder.setLength(0);
         stringBuilder.append("running-aggregate ").append(str(op.getVariables())).append(" <- ");
         printExprList(op.getExpressions());
+        if (op.isProjectPushed()) {
+            stringBuilder.append(" project: ").append(str(op.getProjectVariables()));
+        }
         appendSchema(op, showDetails);
         appendAnnotations(op, showDetails);
         appendPhysicalOperatorInfo(op, showDetails);
@@ -221,6 +224,10 @@ public class LogicalOperatorDotVisitor implements ILogicalOperatorVisitor<String
         stringBuilder.setLength(0);
         stringBuilder.append("assign ").append(str(op.getVariables())).append(" <- ");
         printExprList(op.getExpressions());
+        if (op.isProjectPushed()) {
+            stringBuilder.append(" project: ").append(str(op.getProjectVariables()));
+        }
+
         appendSchema(op, showDetails);
         appendAnnotations(op, showDetails);
         appendPhysicalOperatorInfo(op, showDetails);
@@ -268,6 +275,9 @@ public class LogicalOperatorDotVisitor implements ILogicalOperatorVisitor<String
     public String visitSelectOperator(SelectOperator op, Boolean showDetails) {
         stringBuilder.setLength(0);
         stringBuilder.append("select (").append(op.getCondition().getValue().toString()).append(")");
+        if (op.isProjectPushed()) {
+            stringBuilder.append(" project: ").append(str(op.getProjectVariables()));
+        }
         appendSchema(op, showDetails);
         appendAnnotations(op, showDetails);
         appendPhysicalOperatorInfo(op, showDetails);
@@ -343,6 +353,9 @@ public class LogicalOperatorDotVisitor implements ILogicalOperatorVisitor<String
             stringBuilder.append(" at ").append(op.getPositionalVariable());
         }
         stringBuilder.append(" <- ").append(op.getExpressionRef().getValue().toString());
+        if (op.isProjectPushed()) {
+            stringBuilder.append(" project: ").append(str(op.getProjectVariables()));
+        }
         appendSchema(op, showDetails);
         appendAnnotations(op, showDetails);
         appendPhysicalOperatorInfo(op, showDetails);

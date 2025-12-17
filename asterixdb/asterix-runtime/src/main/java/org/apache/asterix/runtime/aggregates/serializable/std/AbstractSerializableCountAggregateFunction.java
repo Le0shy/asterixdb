@@ -28,9 +28,9 @@ import org.apache.asterix.om.base.ANull;
 import org.apache.asterix.om.types.ATypeTag;
 import org.apache.asterix.om.types.BuiltinType;
 import org.apache.asterix.om.types.EnumDeserializer;
-import org.apache.hyracks.algebricks.runtime.base.IEvaluatorContext;
 import org.apache.hyracks.algebricks.runtime.base.IScalarEvaluator;
 import org.apache.hyracks.algebricks.runtime.base.IScalarEvaluatorFactory;
+import org.apache.hyracks.api.context.IEvaluatorContext;
 import org.apache.hyracks.api.dataflow.value.ISerializerDeserializer;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
 import org.apache.hyracks.api.exceptions.SourceLocation;
@@ -81,7 +81,7 @@ public abstract class AbstractSerializableCountAggregateFunction extends Abstrac
         if (typeTag == ATypeTag.MISSING || typeTag == ATypeTag.NULL) {
             processNull(state, start);
         } else {
-            cnt++;
+            cnt = processValue(typeTag, cnt);
         }
         BufferSerDeUtil.writeBoolean(metNull, state, start + MET_NULL_OFFSET);
         BufferSerDeUtil.writeLong(cnt, state, start + COUNT_OFFSET);
@@ -110,5 +110,9 @@ public abstract class AbstractSerializableCountAggregateFunction extends Abstrac
 
     protected void processNull(byte[] state, int start) {
         BufferSerDeUtil.writeBoolean(true, state, start + MET_NULL_OFFSET);
+    }
+
+    protected long processValue(ATypeTag tag, long cnt) {
+        return cnt + 1;
     }
 }

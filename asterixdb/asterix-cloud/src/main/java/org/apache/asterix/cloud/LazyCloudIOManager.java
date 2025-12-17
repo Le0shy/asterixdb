@@ -53,6 +53,7 @@ import org.apache.hyracks.api.io.IFileHandle;
 import org.apache.hyracks.api.io.IIOBulkOperation;
 import org.apache.hyracks.api.io.IODeviceHandle;
 import org.apache.hyracks.api.util.IoUtil;
+import org.apache.hyracks.cloud.util.CloudRetryableRequestUtil;
 import org.apache.hyracks.control.nc.io.IOManager;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -112,7 +113,7 @@ final class LazyCloudIOManager extends AbstractCloudIOManager {
             }
         }
 
-        // Keep uncached files list (i.e., files exists in cloud only)
+        // Keep uncached files list (i.e., files exist in cloud only)
         cloudFiles.removeAll(localFiles);
         int remainingUncachedFiles = cloudFiles.size();
         boolean canReplaceAccessor = replacer != InitialCloudAccessor.NO_OP_REPLACER;
@@ -120,7 +121,7 @@ final class LazyCloudIOManager extends AbstractCloudIOManager {
             // Everything is cached, no need to invoke cloud-based accessor for read operations
             accessor = new LocalAccessor(cloudClient, bucket, localIoManager);
         } else {
-            LOGGER.debug("The number of uncached files: {}. Uncached files: {}", remainingUncachedFiles, cloudFiles);
+            LOGGER.info("The number of uncached files: {}. Uncached files: {}", remainingUncachedFiles, cloudFiles);
             // Get list of FileReferences from the list of cloud (i.e., resolve each path's string to FileReference)
             List<FileReference> uncachedFiles = resolve(cloudFiles);
             // Create a parallel downloader using the given cloudClient
@@ -136,6 +137,11 @@ final class LazyCloudIOManager extends AbstractCloudIOManager {
         }
     }
 
+    @Override
+    protected Set<UncachedFileReference> getUncachedFiles() {
+        return accessor.getUncachedFiles();
+    }
+
     private ILazyAccessor createAccessor(ParallelCacher cacher, boolean canReplaceAccessor) {
         if (canReplaceAccessor) {
             return new ReplaceableCloudAccessor(cloudClient, bucket, localIoManager, partitions, replacer, cacher);
@@ -147,12 +153,12 @@ final class LazyCloudIOManager extends AbstractCloudIOManager {
             boolean metadataNode, int metadataPartition) throws HyracksDataException {
         String partitionDir = PARTITION_DIR_PREFIX + metadataPartition;
         if (metadataNode && uncachedFiles.stream().anyMatch(f -> f.getRelativePath().contains(partitionDir))) {
-            LOGGER.debug("Downloading metadata partition {}, Current uncached files: {}", metadataPartition,
+            LOGGER.info("Downloading metadata partition {}, Current uncached files: {}", metadataPartition,
                     uncachedFiles);
             FileReference metadataDir = resolve(STORAGE_ROOT_DIR_NAME + File.separator + partitionDir);
             downloader.downloadDirectories(Collections.singleton(metadataDir));
             uncachedFiles.removeIf(f -> f.getRelativePath().contains(partitionDir));
-            LOGGER.debug("Finished downloading metadata partition. Current uncached files: {}", uncachedFiles);
+            LOGGER.info("Finished downloading metadata partition. Current uncached files: {}", uncachedFiles);
         }
     }
 
@@ -174,7 +180,7 @@ final class LazyCloudIOManager extends AbstractCloudIOManager {
 
     @Override
     public Set<FileReference> list(FileReference dir, FilenameFilter filter) throws HyracksDataException {
-        return accessor.doList(dir, filter);
+        return CloudRetryableRequestUtil.run(() -> accessor.doList(dir, filter));
     }
 
     @Override
@@ -189,18 +195,18 @@ final class LazyCloudIOManager extends AbstractCloudIOManager {
 
     @Override
     public byte[] readAllBytes(FileReference fileRef) throws HyracksDataException {
-        return accessor.doReadAllBytes(fileRef);
+        return CloudRetryableRequestUtil.run(() -> accessor.doReadAllBytes(fileRef));
     }
 
     @Override
     public void delete(FileReference fileRef) throws HyracksDataException {
-        accessor.doDelete(fileRef);
+        CloudRetryableRequestUtil.run(() -> CloudRetryableRequestUtil.run(() -> accessor.doDelete(fileRef)));
         log("DELETE", fileRef);
     }
 
     @Override
     public void overwrite(FileReference fileRef, byte[] bytes) throws HyracksDataException {
-        accessor.doOverwrite(fileRef, bytes);
+        CloudRetryableRequestUtil.run(() -> accessor.doOverwrite(fileRef, bytes));
         log("WRITE", fileRef);
     }
 

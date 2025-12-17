@@ -18,6 +18,15 @@
  */
 package org.apache.asterix.formats.nontagged;
 
+import static org.apache.asterix.common.utils.CSVConstants.KEY_DELIMITER;
+import static org.apache.asterix.common.utils.CSVConstants.KEY_ESCAPE;
+import static org.apache.asterix.common.utils.CSVConstants.KEY_FORCE_QUOTE;
+import static org.apache.asterix.common.utils.CSVConstants.KEY_NULL_STR;
+import static org.apache.asterix.common.utils.CSVConstants.KEY_QUOTE;
+
+import java.util.Collections;
+import java.util.Map;
+
 import org.apache.asterix.dataflow.data.nontagged.printers.adm.ShortWithoutTypeInfoPrinterFactory;
 import org.apache.asterix.dataflow.data.nontagged.printers.csv.ABooleanPrinterFactory;
 import org.apache.asterix.dataflow.data.nontagged.printers.csv.ACirclePrinterFactory;
@@ -52,12 +61,28 @@ import org.apache.asterix.om.types.IAType;
 import org.apache.hyracks.algebricks.common.exceptions.NotImplementedException;
 import org.apache.hyracks.algebricks.data.IPrinterFactory;
 import org.apache.hyracks.algebricks.data.IPrinterFactoryProvider;
+import org.apache.hyracks.api.exceptions.SourceLocation;
 
 public class CSVPrinterFactoryProvider implements IPrinterFactoryProvider {
+    private final ARecordType itemType;
+    private final Map<String, String> configuration;
+    private final Map<String, String> formatConfigs;
+    private final SourceLocation sourceLocation;
 
-    public static final CSVPrinterFactoryProvider INSTANCE = new CSVPrinterFactoryProvider();
+    public static final CSVPrinterFactoryProvider INSTANCE =
+            new CSVPrinterFactoryProvider(null, Collections.emptyMap(), null, null);
 
-    private CSVPrinterFactoryProvider() {
+    public static CSVPrinterFactoryProvider createInstance(ARecordType itemType, Map<String, String> configuration,
+            Map<String, String> formatConfigs, SourceLocation sourceLocation) {
+        return new CSVPrinterFactoryProvider(itemType, configuration, formatConfigs, sourceLocation);
+    }
+
+    private CSVPrinterFactoryProvider(ARecordType itemType, Map<String, String> configuration,
+            Map<String, String> formatConfigs, SourceLocation sourceLocation) {
+        this.itemType = itemType;
+        this.configuration = configuration;
+        this.formatConfigs = formatConfigs;
+        this.sourceLocation = sourceLocation;
     }
 
     @Override
@@ -76,7 +101,7 @@ public class CSVPrinterFactoryProvider implements IPrinterFactoryProvider {
                     return AInt64PrinterFactory.INSTANCE;
                 case MISSING:
                 case NULL:
-                    return ANullPrinterFactory.INSTANCE;
+                    return ANullPrinterFactory.createInstance(configuration.get(KEY_NULL_STR));
                 case BOOLEAN:
                     return ABooleanPrinterFactory.INSTANCE;
                 case FLOAT:
@@ -110,13 +135,15 @@ public class CSVPrinterFactoryProvider implements IPrinterFactoryProvider {
                 case RECTANGLE:
                     return ARectanglePrinterFactory.INSTANCE;
                 case STRING:
-                    return AStringPrinterFactory.INSTANCE;
+                    return AStringPrinterFactory.createInstance(configuration.get(KEY_QUOTE),
+                            configuration.get(KEY_FORCE_QUOTE), configuration.get(KEY_ESCAPE),
+                            configuration.get(KEY_DELIMITER));
                 case OBJECT:
-                    return new ARecordPrinterFactory((ARecordType) type);
+                    return new ARecordPrinterFactory((ARecordType) type, itemType, formatConfigs, configuration);
                 case ARRAY:
-                    throw new NotImplementedException("'Orderedlist' type unsupported for CSV output");
+                    throw new NotImplementedException("'OrderedList' type unsupported for CSV output");
                 case MULTISET:
-                    throw new NotImplementedException("'Unorderedlist' type unsupported for CSV output");
+                    throw new NotImplementedException("'UnorderedList' type unsupported for CSV output");
                 case UNION:
                     if (((AUnionType) type).isUnknownableType()) {
                         return new AOptionalFieldPrinterFactory((AUnionType) type);
@@ -142,7 +169,7 @@ public class CSVPrinterFactoryProvider implements IPrinterFactoryProvider {
                     break;
             }
         }
-        return AObjectPrinterFactory.INSTANCE;
+        return AObjectPrinterFactory.createInstance(itemType, formatConfigs, configuration);
 
     }
 }

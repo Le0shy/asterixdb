@@ -67,6 +67,7 @@ import org.apache.hyracks.algebricks.core.algebra.operators.physical.Preclustere
 import org.apache.hyracks.algebricks.core.algebra.operators.physical.ReplicatePOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.physical.StableSortPOperator;
 import org.apache.hyracks.algebricks.core.algebra.plan.ALogicalPlanImpl;
+import org.apache.hyracks.algebricks.core.rewriter.base.PhysicalOptimizationConfig;
 import org.apache.hyracks.api.job.resource.IClusterCapacity;
 import org.junit.Assert;
 import org.junit.Test;
@@ -78,6 +79,7 @@ public class PlanStagesGeneratorTest {
     private static final int FRAME_SIZE = 32768;
     private static final int PARALLELISM = 10;
     private static final long MAX_BUFFER_PER_CONNECTION = 1L;
+    private static final PhysicalOptimizationConfig physicalConfig = new PhysicalOptimizationConfig();
 
     @Test
     public void noBlockingPlan() throws AlgebricksException {
@@ -85,7 +87,7 @@ public class PlanStagesGeneratorTest {
         ets.setExecutionMode(UNPARTITIONED);
         ets.setPhysicalOperator(new EmptyTupleSourcePOperator());
 
-        AssignOperator assignOperator = new AssignOperator(Collections.emptyList(), null);
+        AssignOperator assignOperator = new AssignOperator(Collections.emptyList(), Collections.emptyList());
         assignOperator.setExecutionMode(UNPARTITIONED);
         assignOperator.setPhysicalOperator(new AssignPOperator());
         assignOperator.getInputs().add(new MutableObject<>(ets));
@@ -95,7 +97,7 @@ public class PlanStagesGeneratorTest {
         exchange.setPhysicalOperator(new OneToOneExchangePOperator());
         exchange.getInputs().add(new MutableObject<>(assignOperator));
 
-        DistributeResultOperator resultOperator = new DistributeResultOperator(null, null, null);
+        DistributeResultOperator resultOperator = new DistributeResultOperator(Collections.emptyList(), null, null);
         resultOperator.setExecutionMode(UNPARTITIONED);
         resultOperator.setPhysicalOperator(new DistributeResultPOperator());
         resultOperator.getInputs().add(new MutableObject<>(exchange));
@@ -137,7 +139,7 @@ public class PlanStagesGeneratorTest {
         orderOperator.setPhysicalOperator(new StableSortPOperator());
         orderOperator.getInputs().add(new MutableObject<>(groupByOperator));
 
-        DistributeResultOperator resultOperator = new DistributeResultOperator(null, null, null);
+        DistributeResultOperator resultOperator = new DistributeResultOperator(Collections.emptyList(), null, null);
         resultOperator.setExecutionMode(PARTITIONED);
         resultOperator.setPhysicalOperator(new DistributeResultPOperator());
         resultOperator.getInputs().add(new MutableObject<>(orderOperator));
@@ -218,7 +220,7 @@ public class PlanStagesGeneratorTest {
         secondJoin.getInputs().add(new MutableObject<>(exchangeOperator1));
         secondJoin.getInputs().add(new MutableObject<>(exchangeOperator2));
 
-        DistributeResultOperator resultOperator = new DistributeResultOperator(null, null, null);
+        DistributeResultOperator resultOperator = new DistributeResultOperator(Collections.emptyList(), null, null);
         resultOperator.setExecutionMode(PARTITIONED);
         resultOperator.setPhysicalOperator(new DistributeResultPOperator());
         resultOperator.getInputs().add(new MutableObject<>(secondJoin));
@@ -279,7 +281,7 @@ public class PlanStagesGeneratorTest {
         secondJoin.getInputs().add(new MutableObject<>(order1));
         secondJoin.getInputs().add(new MutableObject<>(order2));
 
-        DistributeResultOperator resultOperator = new DistributeResultOperator(null, null, null);
+        DistributeResultOperator resultOperator = new DistributeResultOperator(Collections.emptyList(), null, null);
         resultOperator.setExecutionMode(PARTITIONED);
         resultOperator.setPhysicalOperator(new DistributeResultPOperator());
         resultOperator.getInputs().add(new MutableObject<>(secondJoin));
@@ -336,7 +338,7 @@ public class PlanStagesGeneratorTest {
     private void assertRequiredMemory(List<PlanStage> stages, long expectedMemory) {
         for (PlanStage stage : stages) {
             for (ILogicalOperator op : stage.getOperators()) {
-                ((AbstractLogicalOperator) op).getPhysicalOperator().createLocalMemoryRequirements(op);
+                ((AbstractLogicalOperator) op).getPhysicalOperator().createLocalMemoryRequirements(op, physicalConfig);
             }
         }
         final IClusterCapacity clusterCapacity =

@@ -104,7 +104,8 @@ public class QueryResultApiServlet extends AbstractQueryApiServlet {
                         metadata.getJobDuration(), stats.getCount(), stats.getSize(), metadata.getProcessedObjects(), 0,
                         metadata.getTotalWarningsCount(), stats.getCompileTime(), stats.getQueueWaitTime(),
                         stats.getBufferCacheHitRatio(), stats.getBufferCachePageReadCount(),
-                        metadata.getJobAddedToQueueTime(), metadata.getJobAddedToMemoryQueueTime(),
+                        stats.getCloudReadRequestsCount(), stats.getCloudPagesReadCount(),
+                        stats.getCloudPagesPersistedCount(), metadata.getJobAddedToQueueTime(), metadata.getJobAddedToMemoryQueueTime(),
                         metadata.getJobExecutionStartTime(), metadata.getJobExecutionEndTime());
                 printer.addFooterPrinter(new MetricsPrinter(metrics, HttpUtil.getPreferredCharset(request)));
                 if (metadata.getJobProfile() != null) {
@@ -146,10 +147,13 @@ public class QueryResultApiServlet extends AbstractQueryApiServlet {
         }
         SessionConfig.PlanFormat planFormat = SessionConfig.PlanFormat.get(request.getParameter("plan-format"),
                 "plan format", SessionConfig.PlanFormat.STRING, LOGGER);
+        SessionConfig.HyracksJobFormat hyracksJobFormat =
+                SessionConfig.HyracksJobFormat.get(request.getParameter("hyracks-job-format"), "hyracks-job-format",
+                        SessionConfig.HyracksJobFormat.JSON, LOGGER);
 
         SessionOutput.ResultAppender appendHandle = (app, handle) -> app.append("{ \"").append("handle")
                 .append("\":" + " \"").append(handle).append("\" }");
-        SessionConfig sessionConfig = new SessionConfig(format, planFormat);
+        SessionConfig sessionConfig = new SessionConfig(format, planFormat, hyracksJobFormat);
 
         // If it's JSON or ADM, check for the "wrapper-array" flag. Default is
         // "true" for JSON and "false" for ADM. (Not applicable for CSV.)

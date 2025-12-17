@@ -30,6 +30,7 @@ import org.apache.asterix.lang.common.base.Expression;
 import org.apache.asterix.lang.common.base.ILangExpression;
 import org.apache.asterix.lang.common.expression.CallExpr;
 import org.apache.asterix.lang.common.rewrites.LangRewritingContext;
+import org.apache.asterix.lang.common.statement.DatasetDecl;
 import org.apache.asterix.lang.common.statement.FunctionDecl;
 import org.apache.asterix.lang.common.statement.ViewDecl;
 import org.apache.asterix.lang.common.util.ExpressionUtils;
@@ -66,27 +67,38 @@ public class SqlppLoadAccessedDataset extends AbstractSqlppSimpleExpressionVisit
             datasetName = ExpressionUtils.getStringLiteral(exprs.get(2));
 
             EntityDetails.EntityType entityType = EntityDetails.EntityType.DATASET;
-            if (exprs.size() > 3 && Boolean.TRUE.equals(ExpressionUtils.getBooleanLiteral(exprs.get(3)))) {
-                DatasetFullyQualifiedName viewDatasetName =
+            if (exprs.size() > 3) {
+                DatasetFullyQualifiedName viewOrDatasetName =
                         new DatasetFullyQualifiedName(databaseName, dataverseName, datasetName);
-                Map<DatasetFullyQualifiedName, ViewDecl> declaredViews = context.getDeclaredViews();
-                if (declaredViews.containsKey(viewDatasetName)) {
-                    return;
+                if (Boolean.TRUE.equals(ExpressionUtils.getBooleanLiteral(exprs.get(3)))) {
+                    Map<DatasetFullyQualifiedName, ViewDecl> declaredViews = context.getDeclaredViews();
+                    if (declaredViews.containsKey(viewOrDatasetName)) {
+                        return;
+                    }
+                    entityType = EntityDetails.EntityType.VIEW;
+                } else if (Boolean.FALSE.equals(ExpressionUtils.getBooleanLiteral(exprs.get(3)))) {
+                    Map<DatasetFullyQualifiedName, DatasetDecl> declaredVDatasets = context.getDeclaredDatasets();
+                    if (declaredVDatasets.containsKey(viewOrDatasetName)) {
+                        return;
+                    }
                 }
-                entityType = EntityDetails.EntityType.VIEW;
             }
 
-            context.getMetadataProvider()
-                    .addAccessedEntity(new EntityDetails(databaseName, dataverseName, datasetName, entityType));
+            if (entityType == EntityDetails.EntityType.VIEW) {
+                context.getMetadataProvider()
+                        .addAccessedEntity(EntityDetails.newView(databaseName, dataverseName, datasetName));
+            } else {
+                context.getMetadataProvider()
+                        .addAccessedEntity(EntityDetails.newDataset(databaseName, dataverseName, datasetName));
+            }
+
         } else {
             FunctionSignature signature = expression.getFunctionSignature();
             Map<FunctionSignature, FunctionDecl> declaredFunctions = context.getDeclaredFunctions();
             if (declaredFunctions.containsKey(signature)) {
                 return;
             }
-            String functionName = signature.getName() + "(" + signature.getArity() + ")";
-            context.getMetadataProvider().addAccessedEntity(new EntityDetails(signature.getDatabaseName(),
-                    signature.getDataverseName(), functionName, EntityDetails.EntityType.FUNCTION));
+            context.getMetadataProvider().addAccessedEntity(EntityDetails.newFunction(signature));
         }
     }
 }

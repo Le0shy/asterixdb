@@ -79,6 +79,7 @@ public abstract class AbstractLSMDiskComponent extends AbstractLSMComponent impl
         switch (opType) {
             case FORCE_MODIFICATION:
             case MODIFICATION:
+            case BUDGET_FREE_MODIFICATION:
             case REPLICATE:
             case SEARCH:
             case DISK_COMPONENT_SCAN:
@@ -107,6 +108,7 @@ public abstract class AbstractLSMDiskComponent extends AbstractLSMComponent impl
                 break;
             case FORCE_MODIFICATION:
             case MODIFICATION:
+            case BUDGET_FREE_MODIFICATION:
             case REPLICATE:
             case SEARCH:
             case DISK_COMPONENT_SCAN:
@@ -153,14 +155,23 @@ public abstract class AbstractLSMDiskComponent extends AbstractLSMComponent impl
     /**
      * Mark the component as valid
      *
-     * @param persist
-     *            whether the call should force data to disk before returning
+     * @param persist whether the call should force data to disk before returning
      * @throws HyracksDataException
      */
     @Override
     public void markAsValid(boolean persist, IPageWriteFailureCallback callback) throws HyracksDataException {
-        ComponentUtils.markAsValid(getMetadataHolder(), persist, callback);
-        LOGGER.debug("marked {} as valid component with id {}", getIndex(), getId());
+        try {
+            ComponentUtils.markAsValid(getMetadataHolder(), persist, callback);
+            LOGGER.debug("marked {} as valid component with id {}", getIndex(), getId());
+        } catch (Exception e) {
+            returnPages();
+            throw e;
+        }
+    }
+
+    @Override
+    public void returnPages() {
+        ComponentUtils.returnPages(getMetadataHolder());
     }
 
     @Override
@@ -234,7 +245,7 @@ public abstract class AbstractLSMDiskComponent extends AbstractLSMComponent impl
         if (withFilter && getLsmIndex().getFilterFields() != null) {
             chainedBulkLoader.addBulkLoader(createFilterBulkLoader());
         }
-        IChainedComponentBulkLoader indexBulkloader = operation.getIOOpertionType() == LSMIOOperationType.MERGE
+        IChainedComponentBulkLoader indexBulkloader = operation.getIOOperationType() == LSMIOOperationType.MERGE
                 ? createMergeIndexBulkLoader(fillFactor, verifyInput, numElementsHint, checkIfEmptyIndex, callback)
                 : createIndexBulkLoader(fillFactor, verifyInput, numElementsHint, checkIfEmptyIndex, callback);
         chainedBulkLoader.addBulkLoader(indexBulkloader);
@@ -245,7 +256,6 @@ public abstract class AbstractLSMDiskComponent extends AbstractLSMComponent impl
 
     @Override
     public String toString() {
-        return "{\"class\":" + getClass().getSimpleName() + "\", \"id\":" + componentId + ", \"index\":" + getIndex()
-                + "}";
+        return "{\"id\": " + componentId + ", index:" + getIndex() + "}";
     }
 }

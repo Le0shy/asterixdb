@@ -21,7 +21,6 @@ package org.apache.asterix.translator;
 import static org.apache.asterix.external.util.ExternalDataConstants.SUBPATH;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
@@ -158,7 +157,7 @@ public class SqlppExpressionToPlanTranslator extends LangExpressionToPlanTransla
 
     public static final String REWRITE_IN_AS_OR_OPTION = "rewrite_in_as_or";
     private static final boolean REWRITE_IN_AS_OR_OPTION_DEFAULT = true;
-
+    public static final String ARRAY_ACCESS = "array_access";
     private final Map<VarIdentifier, IAObject> externalVars;
     private final boolean translateInAsOr;
 
@@ -331,6 +330,7 @@ public class SqlppExpressionToPlanTranslator extends LangExpressionToPlanTransla
         } else {
             unnestOp = new UnnestOperator(fromVar, new MutableObject<>(pUnnestExpr.first));
         }
+        unnestOp.getAnnotations().put(ARRAY_ACCESS, fromExpr.getKind() == Kind.FIELD_ACCESSOR_EXPRESSION);
         ExternalSubpathAnnotation hint = ((AbstractExpression) fromExpr).findHint(ExternalSubpathAnnotation.class);
         if (hint != null) {
             unnestOp.getAnnotations().put(SUBPATH, hint.getSubPath());
@@ -586,6 +586,7 @@ public class SqlppExpressionToPlanTranslator extends LangExpressionToPlanTransla
                             outerUnnestMissingValue)
                     : new UnnestOperator(rightVar, new MutableObject<>(pUnnestExpr.first));
         }
+        unnestOp.getAnnotations().put(ARRAY_ACCESS, rightExpr.getKind() == Kind.FIELD_ACCESSOR_EXPRESSION);
         ExternalSubpathAnnotation hint = ((AbstractExpression) rightExpr).findHint(ExternalSubpathAnnotation.class);
         if (hint != null) {
             unnestOp.getAnnotations().put(SUBPATH, hint.getSubPath());
@@ -912,14 +913,10 @@ public class SqlppExpressionToPlanTranslator extends LangExpressionToPlanTransla
     }
 
     private Expression translateProjectVarStar(Expression projectionExpr, SourceLocation sourceLoc) {
-        // var.* -> if_missing_or_null(to_object(var), {})
-        CallExpr toObjectExpr = new CallExpr(new FunctionSignature(BuiltinFunctions.TO_OBJECT),
+        CallExpr toObjectExpr = new CallExpr(new FunctionSignature(BuiltinFunctions.TO_OBJECT_VAR_STR),
                 Collections.singletonList(projectionExpr));
         toObjectExpr.setSourceLocation(sourceLoc);
-        CallExpr ifMissingOrNullExpr = new CallExpr(new FunctionSignature(BuiltinFunctions.IF_MISSING_OR_NULL),
-                Arrays.asList(toObjectExpr, new RecordConstructor(Collections.emptyList())));
-        ifMissingOrNullExpr.setSourceLocation(sourceLoc);
-        return ifMissingOrNullExpr;
+        return toObjectExpr;
     }
 
     private static boolean includeInSelectStar(VariableExpr varExpr) {

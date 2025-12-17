@@ -937,4 +937,6 @@ public interface IMetadataManager extends IMetadataBootstrap {
             String feedName) throws AlgebricksException;
 
     long getMaxTxnId();
+
+    List<Dataset> getAllDatasets(MetadataTransactionContext ctx) throws AlgebricksException;
 }

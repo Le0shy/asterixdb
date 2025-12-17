@@ -19,6 +19,8 @@
 
 package org.apache.asterix.metadata.entities;
 
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -42,6 +44,7 @@ import org.apache.asterix.common.ioopcallbacks.LSMIndexIOOperationCallbackFactor
 import org.apache.asterix.common.ioopcallbacks.LSMIndexPageWriteCallbackFactory;
 import org.apache.asterix.common.metadata.DatasetFullyQualifiedName;
 import org.apache.asterix.common.metadata.DataverseName;
+import org.apache.asterix.common.metadata.DependencyFullyQualifiedName;
 import org.apache.asterix.common.metadata.IDataset;
 import org.apache.asterix.common.metadata.MetadataUtil;
 import org.apache.asterix.common.transactions.IRecoveryManager.ResourceType;
@@ -60,6 +63,7 @@ import org.apache.asterix.metadata.dataset.DatasetFormatInfo;
 import org.apache.asterix.metadata.declared.ArrayBTreeResourceFactoryProvider;
 import org.apache.asterix.metadata.declared.BTreeResourceFactoryProvider;
 import org.apache.asterix.metadata.declared.MetadataProvider;
+import org.apache.asterix.metadata.utils.Creator;
 import org.apache.asterix.metadata.utils.DatasetUtil;
 import org.apache.asterix.metadata.utils.IndexUtil;
 import org.apache.asterix.metadata.utils.InvertedIndexResourceFactoryProvider;
@@ -163,15 +167,16 @@ public class Dataset implements IMetadataEntity<Dataset>, IDataset {
     private final String compressionScheme;
     private final DatasetFullyQualifiedName datasetFullyQualifiedName;
     private final DatasetFormatInfo datasetFormatInfo;
+    private final Creator creator;
 
     public Dataset(String databaseName, DataverseName dataverseName, String datasetName, String recordTypeDatabaseName,
             DataverseName recordTypeDataverseName, String recordTypeName, String nodeGroupName, String compactionPolicy,
             Map<String, String> compactionPolicyProperties, IDatasetDetails datasetDetails, Map<String, String> hints,
-            DatasetType datasetType, int datasetId, int pendingOp) {
+            DatasetType datasetType, int datasetId, int pendingOp, Creator creator) {
         this(databaseName, dataverseName, datasetName, recordTypeDatabaseName, recordTypeDataverseName, recordTypeName,
                 null, /*metaTypeDataverseName*/null, /*metaTypeName*/null, nodeGroupName, compactionPolicy,
                 compactionPolicyProperties, datasetDetails, hints, datasetType, datasetId, pendingOp,
-                CompressionManager.NONE, DatasetFormatInfo.SYSTEM_DEFAULT);
+                CompressionManager.NONE, DatasetFormatInfo.SYSTEM_DEFAULT, creator);
     }
 
     public Dataset(String databaseName, DataverseName dataverseName, String datasetName, String itemTypeDatabaseName,
@@ -179,11 +184,11 @@ public class Dataset implements IMetadataEntity<Dataset>, IDataset {
             DataverseName metaItemTypeDataverseName, String metaItemTypeName, String nodeGroupName,
             String compactionPolicy, Map<String, String> compactionPolicyProperties, IDatasetDetails datasetDetails,
             Map<String, String> hints, DatasetType datasetType, int datasetId, int pendingOp, String compressionScheme,
-            DatasetFormatInfo datasetFormatInfo) {
+            DatasetFormatInfo datasetFormatInfo, Creator creator) {
         this(databaseName, dataverseName, datasetName, itemTypeDatabaseName, itemTypeDataverseName, itemTypeName,
                 metaItemTypeDatabaseName, metaItemTypeDataverseName, metaItemTypeName, nodeGroupName, compactionPolicy,
                 compactionPolicyProperties, datasetDetails, hints, datasetType, datasetId, pendingOp, 0L,
-                compressionScheme, datasetFormatInfo);
+                compressionScheme, datasetFormatInfo, creator);
     }
 
     public Dataset(Dataset dataset) {
@@ -192,7 +197,7 @@ public class Dataset implements IMetadataEntity<Dataset>, IDataset {
                 dataset.metaTypeDataverseName, dataset.metaTypeName, dataset.nodeGroupName,
                 dataset.compactionPolicyFactory, dataset.compactionPolicyProperties, dataset.datasetDetails,
                 dataset.hints, dataset.datasetType, dataset.datasetId, dataset.pendingOp, dataset.rebalanceCount,
-                dataset.compressionScheme, dataset.datasetFormatInfo);
+                dataset.compressionScheme, dataset.datasetFormatInfo, dataset.creator);
     }
 
     public Dataset(String databaseName, DataverseName dataverseName, String datasetName, String itemTypeDatabaseName,
@@ -200,7 +205,7 @@ public class Dataset implements IMetadataEntity<Dataset>, IDataset {
             DataverseName metaItemTypeDataverseName, String metaItemTypeName, String nodeGroupName,
             String compactionPolicy, Map<String, String> compactionPolicyProperties, IDatasetDetails datasetDetails,
             Map<String, String> hints, DatasetType datasetType, int datasetId, int pendingOp, long rebalanceCount,
-            String compressionScheme, DatasetFormatInfo datasetFormatInfo) {
+            String compressionScheme, DatasetFormatInfo datasetFormatInfo, Creator creator) {
         this.databaseName = Objects.requireNonNull(databaseName);
         this.dataverseName = dataverseName;
         this.datasetName = datasetName;
@@ -222,6 +227,7 @@ public class Dataset implements IMetadataEntity<Dataset>, IDataset {
         this.compressionScheme = compressionScheme;
         this.datasetFullyQualifiedName = new DatasetFullyQualifiedName(databaseName, dataverseName, datasetName);
         this.datasetFormatInfo = datasetFormatInfo;
+        this.creator = creator;
     }
 
     public String getDatabaseName() {
@@ -296,6 +302,10 @@ public class Dataset implements IMetadataEntity<Dataset>, IDataset {
 
     public long getRebalanceCount() {
         return rebalanceCount;
+    }
+
+    public Creator getCreator() {
+        return creator;
     }
 
     public boolean hasMetaPart() {
@@ -392,7 +402,7 @@ public class Dataset implements IMetadataEntity<Dataset>, IDataset {
                             getMetaItemTypeDataverseName(), getMetaItemTypeName(), getNodeGroupName(),
                             getCompactionPolicy(), getCompactionPolicyProperties(), getDatasetDetails(), getHints(),
                             getDatasetType(), getDatasetId(), MetadataUtil.PENDING_DROP_OP, getCompressionScheme(),
-                            getDatasetFormatInfo()));
+                            getDatasetFormatInfo(), creator));
 
             MetadataManager.INSTANCE.commitTransaction(mdTxnCtx.getValue());
             bActiveTxn.setValue(false);
@@ -400,7 +410,7 @@ public class Dataset implements IMetadataEntity<Dataset>, IDataset {
 
             // #. run the jobs
             for (JobSpecification jobSpec : jobsToExecute) {
-                JobUtils.runJob(hcc, jobSpec, true);
+                JobUtils.runJobIfActive(hcc, jobSpec, true);
             }
 
             mdTxnCtx.setValue(MetadataManager.INSTANCE.beginTransaction());
@@ -853,7 +863,7 @@ public class Dataset implements IMetadataEntity<Dataset>, IDataset {
                 this.metaTypeDataverseName, this.metaTypeName, targetNodeGroupName, this.compactionPolicyFactory,
                 this.compactionPolicyProperties, this.datasetDetails, this.hints, this.datasetType,
                 DatasetIdFactory.generateAlternatingDatasetId(this.datasetId), this.pendingOp, this.rebalanceCount + 1,
-                this.compressionScheme, this.datasetFormatInfo);
+                this.compressionScheme, this.datasetFormatInfo, creator);
     }
 
     // Gets an array of partition numbers for this dataset.
@@ -882,4 +892,23 @@ public class Dataset implements IMetadataEntity<Dataset>, IDataset {
     public ILSMTupleFilterCallbackFactory getTupleFilterCallbackFactory() {
         return NoOpLSMTupleFilterCallbackFactory.INSTANCE;
     }
+
+    public static List<DependencyKind> DEPENDENCIES_SCHEMA =
+            Arrays.asList(DependencyKind.DATASET, DependencyKind.FUNCTION, DependencyKind.TYPE, DependencyKind.SYNONYM);
+
+    public static List<List<DependencyFullyQualifiedName>> createDependencies(
+            List<DependencyFullyQualifiedName> datasetDependencies,
+            List<DependencyFullyQualifiedName> functionDependencies,
+            List<DependencyFullyQualifiedName> typeDependencies,
+            List<DependencyFullyQualifiedName> synonymDependencies) {
+        List<List<DependencyFullyQualifiedName>> depList = new ArrayList<>(DEPENDENCIES_SCHEMA.size());
+        depList.add(datasetDependencies);
+        depList.add(functionDependencies);
+        depList.add(typeDependencies);
+        if (!synonymDependencies.isEmpty()) {
+            depList.add(synonymDependencies);
+        }
+        return depList;
+    }
+
 }

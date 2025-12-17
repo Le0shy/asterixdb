@@ -47,6 +47,7 @@ import org.apache.hyracks.api.job.IOperatorDescriptorRegistry;
 import org.apache.hyracks.api.job.JobId;
 import org.apache.hyracks.api.job.profiling.IOperatorStats;
 import org.apache.hyracks.api.job.profiling.NoOpOperatorStats;
+import org.apache.hyracks.api.util.CleanupUtils;
 import org.apache.hyracks.dataflow.common.comm.io.ArrayTupleBuilder;
 import org.apache.hyracks.dataflow.common.comm.io.FrameTupleAccessor;
 import org.apache.hyracks.dataflow.common.comm.io.FrameTupleAppender;
@@ -139,11 +140,6 @@ public class OptimizedHybridHashJoinOperatorDescriptor extends AbstractOperatorD
     private final boolean isLeftOuter;
     private final IMissingWriterFactory[] nonMatchWriterFactories;
 
-    //Flags added for test purpose
-    private boolean skipInMemoryHJ = false;
-    private boolean forceNLJ = false;
-    private boolean forceRoleReversal = false;
-
     private static final Logger LOGGER = LogManager.getLogger();
 
     public OptimizedHybridHashJoinOperatorDescriptor(IOperatorDescriptorRegistry spec, int memSizeInFrames,
@@ -232,9 +228,6 @@ public class OptimizedHybridHashJoinOperatorDescriptor extends AbstractOperatorD
         private int numOfPartitions;
         private OptimizedHybridHashJoin hybridHJ;
 
-        public BuildAndPartitionTaskState() {
-        }
-
         private BuildAndPartitionTaskState(JobId jobId, TaskId taskId) {
             super(jobId, taskId);
         }
@@ -295,7 +288,7 @@ public class OptimizedHybridHashJoinOperatorDescriptor extends AbstractOperatorD
                 @Override
                 public void open() throws HyracksDataException {
                     if (memSizeInFrames <= 2) { //Dedicated buffers: One buffer to read and two buffers for output
-                        throw new HyracksDataException("Not enough memory is assigend for Hybrid Hash Join.");
+                        throw new HyracksDataException("Not enough memory is assigned for Hybrid Hash Join.");
                     }
                     state.memForJoin = memSizeInFrames - 2;
                     state.numOfPartitions =
@@ -307,8 +300,9 @@ public class OptimizedHybridHashJoinOperatorDescriptor extends AbstractOperatorD
 
                     state.hybridHJ.initBuild();
                     if (LOGGER.isTraceEnabled()) {
-                        LOGGER.trace("OptimizedHybridHashJoin is starting the build phase with " + state.numOfPartitions
-                                + " partitions using " + state.memForJoin + " frames for memory.");
+                        LOGGER.trace(
+                                "OptimizedHybridHashJoin is starting the build phase with {} partitions using {} frames for memory.",
+                                state.numOfPartitions, state.memForJoin);
                     }
                 }
 
@@ -323,9 +317,6 @@ public class OptimizedHybridHashJoinOperatorDescriptor extends AbstractOperatorD
                         if (!failed) {
                             state.hybridHJ.closeBuild();
                             ctx.setStateObject(state);
-                            if (LOGGER.isTraceEnabled()) {
-                                LOGGER.trace("OptimizedHybridHashJoin closed its build phase");
-                            }
                         } else {
                             state.hybridHJ.clearBuildTempFiles();
                         }
@@ -413,10 +404,6 @@ public class OptimizedHybridHashJoinOperatorDescriptor extends AbstractOperatorD
                     writer.open();
                     state.hybridHJ.initProbe(probComp);
                     state.hybridHJ.setOperatorStats(stats);
-
-                    if (LOGGER.isDebugEnabled()) {
-                        LOGGER.debug("OptimizedHybridHashJoin is starting the probe phase.");
-                    }
                 }
 
                 @Override
@@ -427,7 +414,7 @@ public class OptimizedHybridHashJoinOperatorDescriptor extends AbstractOperatorD
                 @Override
                 public void fail() throws HyracksDataException {
                     failed = true;
-                    if (state.hybridHJ != null) {
+                    if (state != null && state.hybridHJ != null) {
                         state.hybridHJ.fail();
                     }
                     writer.fail();
@@ -438,14 +425,16 @@ public class OptimizedHybridHashJoinOperatorDescriptor extends AbstractOperatorD
                     if (failed) {
                         try {
                             // Clear temp files if fail() was called.
-                            state.hybridHJ.clearBuildTempFiles();
-                            state.hybridHJ.clearProbeTempFiles();
+                            if (state != null && state.hybridHJ != null) {
+                                state.hybridHJ.clearBuildTempFiles();
+                                state.hybridHJ.clearProbeTempFiles();
+                            }
                         } finally {
                             writer.close(); // writer should always be closed.
                         }
-                        logProbeComplete();
                         return;
                     }
+                    Throwable ex = null;
                     try {
                         try {
                             state.hybridHJ.completeProbe(writer);
@@ -476,35 +465,27 @@ public class OptimizedHybridHashJoinOperatorDescriptor extends AbstractOperatorD
                             joinPartitionPair(bReader, pReader, bSize, pSize, 1);
                         }
                     } catch (Exception e) {
+                        ex = e;
                         if (state.hybridHJ != null) {
                             state.hybridHJ.fail();
                         }
                         // Since writer.nextFrame() is called in the above "try" body, we have to call writer.fail()
                         // to send the failure signal to the downstream, when there is a throwable thrown.
-                        writer.fail();
+                        CleanupUtils.fail(writer, ex);
                         // Clear temp files as this.fail() nor this.close() will no longer be called after close().
                         state.hybridHJ.clearBuildTempFiles();
                         state.hybridHJ.clearProbeTempFiles();
-                        // Re-throw the whatever is caught.
-                        throw e;
                     } finally {
-                        try {
-                            logProbeComplete();
-                        } finally {
-                            writer.close();
-                        }
+                        ex = CleanupUtils.close(writer, ex);
+                    }
+                    if (ex != null) {
+                        throw HyracksDataException.create(ex);
                     }
                 }
 
                 @Override
                 public void setOperatorStats(IOperatorStats stats) {
                     this.stats = stats;
-                }
-
-                private void logProbeComplete() {
-                    if (LOGGER.isDebugEnabled()) {
-                        LOGGER.debug("OptimizedHybridHashJoin closed its probe phase");
-                    }
                 }
 
                 //The buildSideReader should be always the original buildSideReader, so should the probeSideReader
@@ -525,11 +506,11 @@ public class OptimizedHybridHashJoinOperatorDescriptor extends AbstractOperatorD
                         stats.getLevel().set(level);
                     }
 
-                    if (LOGGER.isDebugEnabled()) {
-                        LOGGER.debug("\n>>>Joining Partition Pairs (thread_id " + Thread.currentThread().getId()
-                                + ") (pid " + ") - (level " + level + ")" + " - BuildSize:\t" + buildPartSize
-                                + "\tProbeSize:\t" + probePartSize + " - MemForJoin " + (state.memForJoin)
-                                + "  - LeftOuter is " + isLeftOuter);
+                    if (LOGGER.isTraceEnabled()) {
+                        LOGGER.trace(
+                                "\n>>>Joining Partition Pairs (thread_id {}) (pid ) - (level {}) - BuildSize:\t{}\tProbeSize:\t{} - MemForJoin {}  - LeftOuter is {}",
+                                Thread.currentThread().getId(), level, buildPartSize, probePartSize, state.memForJoin,
+                                isLeftOuter);
                     }
 
                     // Calculate the expected hash table size for the both side.
@@ -539,17 +520,15 @@ public class OptimizedHybridHashJoinOperatorDescriptor extends AbstractOperatorD
                             SerializableHashTable.getExpectedTableFrameCount(probeSizeInTuple, frameSize);
 
                     //Apply in-Mem HJ if possible
-                    if (!skipInMemoryHJ && ((buildPartSize + expectedHashTableSizeForBuildInFrame < state.memForJoin)
+                    if (((buildPartSize + expectedHashTableSizeForBuildInFrame < state.memForJoin)
                             || (probePartSize + expectedHashTableSizeForProbeInFrame < state.memForJoin
                                     && !isLeftOuter))) {
 
                         int tabSize = -1;
-                        if (!forceRoleReversal && (isLeftOuter || (buildPartSize < probePartSize))) {
+                        if ((isLeftOuter || (buildPartSize < probePartSize))) {
                             //Case 1.1 - InMemHJ (without Role-Reversal)
-                            if (LOGGER.isDebugEnabled()) {
-                                LOGGER.debug("\t>>>Case 1.1 (IsLeftOuter || buildSize<probe) AND ApplyInMemHJ - [Level "
-                                        + level + "]");
-                            }
+                            LOGGER.trace("\t>>>Case 1.1 (IsLeftOuter || buildSize<probe) AND ApplyInMemHJ - [Level {}]",
+                                    level);
                             tabSize = buildSizeInTuple;
                             if (tabSize == 0) {
                                 throw new HyracksDataException(
@@ -559,10 +538,9 @@ public class OptimizedHybridHashJoinOperatorDescriptor extends AbstractOperatorD
                             applyInMemHashJoin(buildKeys, probeKeys, tabSize, buildRd, probeRd, buildHpc, probeHpc,
                                     buildSideReader, probeSideReader, probComp); // checked-confirmed
                         } else { //Case 1.2 - InMemHJ with Role Reversal
-                            if (LOGGER.isDebugEnabled()) {
-                                LOGGER.debug("\t>>>Case 1.2. (NoIsLeftOuter || probe<build) AND ApplyInMemHJ"
-                                        + "WITH RoleReversal - [Level " + level + "]");
-                            }
+                            LOGGER.trace(
+                                    "\t>>>Case 1.2. (NoIsLeftOuter || probe<build) AND ApplyInMemHJWITH RoleReversal - [Level {}]",
+                                    level);
                             tabSize = probeSizeInTuple;
                             if (tabSize == 0) {
                                 throw new HyracksDataException(
@@ -575,25 +553,18 @@ public class OptimizedHybridHashJoinOperatorDescriptor extends AbstractOperatorD
                     }
                     //Apply (Recursive) HHJ
                     else {
-                        if (LOGGER.isDebugEnabled()) {
-                            LOGGER.debug("\t>>>Case 2. ApplyRecursiveHHJ - [Level " + level + "]");
-                        }
-                        if (!forceRoleReversal && (isLeftOuter || buildPartSize < probePartSize)) {
+                        LOGGER.trace("\t>>>Case 2. ApplyRecursiveHHJ - [Level {}]", level);
+                        if ((isLeftOuter || buildPartSize < probePartSize)) {
                             //Case 2.1 - Recursive HHJ (without Role-Reversal)
-                            if (LOGGER.isDebugEnabled()) {
-                                LOGGER.debug(
-                                        "\t\t>>>Case 2.1 - RecursiveHHJ WITH (isLeftOuter || build<probe) - [Level "
-                                                + level + "]");
-                            }
+                            LOGGER.trace(
+                                    "\t\t>>>Case 2.1 - RecursiveHHJ WITH (isLeftOuter || build<probe) - [Level {}]",
+                                    level);
                             applyHybridHashJoin((int) buildPartSize, PROBE_REL, BUILD_REL, probeKeys, buildKeys,
                                     probeRd, buildRd, probeHpc, buildHpc, probeSideReader, buildSideReader, level,
                                     beforeMax, probComp);
 
                         } else { //Case 2.2 - Recursive HHJ (with Role-Reversal)
-                            if (LOGGER.isDebugEnabled()) {
-                                LOGGER.debug(
-                                        "\t\t>>>Case 2.2. - RecursiveHHJ WITH RoleReversal - [Level " + level + "]");
-                            }
+                            LOGGER.trace("\t\t>>>Case 2.2. - RecursiveHHJ WITH RoleReversal - [Level {}]", level);
 
                             applyHybridHashJoin((int) probePartSize, BUILD_REL, PROBE_REL, buildKeys, probeKeys,
                                     buildRd, probeRd, buildHpc, probeHpc, buildSideReader, probeSideReader, level,
@@ -657,12 +628,11 @@ public class OptimizedHybridHashJoinOperatorDescriptor extends AbstractOperatorD
                         int afterMax = Math.max(maxAfterBuildSize, maxAfterProbeSize);
 
                         BitSet rPStatus = rHHj.getPartitionStatus();
-                        if (!forceNLJ && (afterMax < (NLJ_SWITCH_THRESHOLD * beforeMax))) {
+                        if ((afterMax < (NLJ_SWITCH_THRESHOLD * beforeMax))) {
                             //Case 2.1.1 - Keep applying HHJ
-                            if (LOGGER.isDebugEnabled()) {
-                                LOGGER.debug("\t\t>>>Case 2.1.1 - KEEP APPLYING RecursiveHHJ WITH "
-                                        + "(isLeftOuter || build<probe) - [Level " + level + "]");
-                            }
+                            LOGGER.trace(
+                                    "\t\t>>>Case 2.1.1 - KEEP APPLYING RecursiveHHJ WITH (isLeftOuter || build<probe) - [Level {}]",
+                                    level);
                             for (int rPid = rPStatus.nextSetBit(0); rPid >= 0; rPid = rPStatus.nextSetBit(rPid + 1)) {
                                 RunFileReader rbrfw = rHHj.getBuildRFReader(rPid);
                                 RunFileReader rprfw = rHHj.getProbeRFReader(rPid);
@@ -691,10 +661,9 @@ public class OptimizedHybridHashJoinOperatorDescriptor extends AbstractOperatorD
                             }
 
                         } else { //Case 2.1.2 - Switch to NLJ
-                            if (LOGGER.isDebugEnabled()) {
-                                LOGGER.debug("\t\t>>>Case 2.1.2 - SWITCHED to NLJ RecursiveHHJ WITH "
-                                        + "(isLeftOuter || build<probe) - [Level " + level + "]");
-                            }
+                            LOGGER.trace(
+                                    "\t\t>>>Case 2.1.2 - SWITCHED to NLJ RecursiveHHJ WITH (isLeftOuter || build<probe) - [Level {}]",
+                                    level);
                             for (int rPid = rPStatus.nextSetBit(0); rPid >= 0; rPid = rPStatus.nextSetBit(rPid + 1)) {
                                 RunFileReader rbrfw = rHHj.getBuildRFReader(rPid);
                                 RunFileReader rprfw = rHHj.getProbeRFReader(rPid);

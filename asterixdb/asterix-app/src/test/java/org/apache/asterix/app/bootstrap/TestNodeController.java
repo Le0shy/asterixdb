@@ -53,6 +53,7 @@ import org.apache.asterix.metadata.entities.Dataset;
 import org.apache.asterix.metadata.entities.Dataverse;
 import org.apache.asterix.metadata.entities.Index;
 import org.apache.asterix.metadata.entities.NoOpLSMTupleFilterCallbackFactory;
+import org.apache.asterix.metadata.utils.Creator;
 import org.apache.asterix.metadata.utils.DatasetUtil;
 import org.apache.asterix.metadata.utils.SplitsAndConstraintsUtil;
 import org.apache.asterix.om.types.ARecordType;
@@ -275,7 +276,7 @@ public class TestNodeController {
                     ctx.getTaskAttemptId().getTaskId().getPartition(), indexHelperFactory, pkIndexHelperFactory,
                     primaryIndexInfo.primaryIndexInsertFieldsPermutations, recordDesc, modOpCallbackFactory,
                     searchOpCallbackFactory, primaryKeyIndexes.length, filterFields, null, tuplePartitionerFactory,
-                    partitionsMap);
+                    partitionsMap, IndexOperation.UPSERT);
             // For now, this assumes a single secondary index. recordDesc is always <pk-record-meta>
             // for the index, we will have to create an assign operator that extract the sk
             // then the secondary LSMInsertDeleteOperatorNodePushable
@@ -500,7 +501,7 @@ public class TestNodeController {
         PrimaryIndexInfo primaryIndexInfo = new PrimaryIndexInfo(dataset, primaryKeyTypes, recordType, metaType,
                 mergePolicy.first, mergePolicy.second, filterFields, primaryKeyIndexes, primaryKeyIndicators);
         Dataverse dataverse = new Dataverse(dataset.getDatabaseName(), dataset.getDataverseName(),
-                NonTaggedDataFormat.class.getName(), MetadataUtil.PENDING_NO_OP);
+                NonTaggedDataFormat.class.getName(), MetadataUtil.PENDING_NO_OP, Creator.DEFAULT_CREATOR);
         Namespace namespace = new Namespace(dataverse.getDatabaseName(), dataverse.getDataverseName());
         MetadataProvider mdProvider = MetadataProvider.create(
                 (ICcApplicationContext) ExecutionTestUtil.integrationUtil.cc.getApplicationContext(), namespace);
@@ -528,7 +529,7 @@ public class TestNodeController {
         MetadataManager.INSTANCE.commitTransaction(mdTxnCtx);
         Dataverse dataverse =
                 new Dataverse(primaryIndexInfo.dataset.getDatabaseName(), primaryIndexInfo.dataset.getDataverseName(),
-                        NonTaggedDataFormat.class.getName(), MetadataUtil.PENDING_NO_OP);
+                        NonTaggedDataFormat.class.getName(), MetadataUtil.PENDING_NO_OP, Creator.DEFAULT_CREATOR);
         Namespace namespace = new Namespace(dataverse.getDatabaseName(), dataverse.getDataverseName());
         MetadataProvider mdProvider = MetadataProvider.create(
                 (ICcApplicationContext) ExecutionTestUtil.integrationUtil.cc.getApplicationContext(), namespace);
@@ -746,7 +747,7 @@ public class TestNodeController {
             }
             index = Index.createPrimaryIndex(dataset.getDatabaseName(), dataset.getDataverseName(),
                     dataset.getDatasetName(), keyFieldNames, primaryKeyIndicators, keyFieldTypes,
-                    MetadataUtil.PENDING_NO_OP);
+                    MetadataUtil.PENDING_NO_OP, dataset.getCreator());
             List<String> nodes = Collections.singletonList(ExecutionTestUtil.integrationUtil.ncs[0].getId());
             CcApplicationContext appCtx =
                     (CcApplicationContext) ExecutionTestUtil.integrationUtil.cc.getApplicationContext();

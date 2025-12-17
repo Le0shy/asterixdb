@@ -35,9 +35,9 @@ import org.apache.asterix.om.util.container.IObjectPool;
 import org.apache.asterix.om.util.container.ListObjectPool;
 import org.apache.asterix.om.util.container.ObjectFactories;
 import org.apache.asterix.runtime.evaluators.common.ListAccessor;
-import org.apache.hyracks.algebricks.runtime.base.IEvaluatorContext;
 import org.apache.hyracks.algebricks.runtime.base.IScalarEvaluator;
 import org.apache.hyracks.algebricks.runtime.base.IScalarEvaluatorFactory;
+import org.apache.hyracks.api.context.IEvaluatorContext;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
 import org.apache.hyracks.api.exceptions.SourceLocation;
 import org.apache.hyracks.data.std.api.IMutableValueStorage;
@@ -56,7 +56,7 @@ public abstract class AbstractArrayProcessArraysEval implements IScalarEvaluator
     private final IObjectPool<IPointable, Void> pointablePool;
     private final IObjectPool<IMutableValueStorage, Void> storageAllocator;
     private final IAType[] argTypes;
-    private final CastTypeEvaluator caster;
+    private final TypeCaster caster;
     private OrderedListBuilder orderedListBuilder;
     private UnorderedListBuilder unorderedListBuilder;
 
@@ -68,7 +68,7 @@ public abstract class AbstractArrayProcessArraysEval implements IScalarEvaluator
         storageAllocator = new ListObjectPool<>(ObjectFactories.STORAGE_FACTORY);
         finalResult = new ArrayBackedValueStorage();
         listAccessor = new ListAccessor();
-        caster = new CastTypeEvaluator();
+        caster = new TypeCaster(sourceLoc);
         tempList = new VoidPointable();
         listsArgs = new IPointable[args.length];
         listsEval = new IScalarEvaluator[args.length];
@@ -111,9 +111,7 @@ public abstract class AbstractArrayProcessArraysEval implements IScalarEvaluator
                         if (outList == null) {
                             outList = (AbstractCollectionType) DefaultOpenFieldType.getDefaultOpenFieldType(listTag);
                         }
-
-                        caster.resetAndAllocate(outList, argTypes[i], listsEval[i]);
-                        caster.cast(tempList, listsArgs[i]);
+                        caster.allocateAndCast(tempList, argTypes[i], listsArgs[i], outList);
                     }
                 }
             }

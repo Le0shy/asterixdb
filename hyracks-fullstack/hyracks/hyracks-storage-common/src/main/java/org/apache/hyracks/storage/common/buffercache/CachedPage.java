@@ -23,6 +23,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
+import org.apache.hyracks.storage.common.file.BufferedFileHandle;
+
 /**
  * @author yingyib
  */
@@ -60,7 +62,19 @@ public class CachedPage implements ICachedPageInternal {
     }
 
     public int incrementAndGetPinCount() {
-        return pinCount.incrementAndGet();
+        int count = pinCount.incrementAndGet();
+        if (count <= 0) {
+            throw new IllegalStateException("incrementAndGet: Invalid pinCount: " + count + " in page: " + this);
+        }
+        return count;
+    }
+
+    public int decrementAndGetPinCount() {
+        int count = pinCount.decrementAndGet();
+        if (count < 0) {
+            throw new IllegalStateException("decrementAndGet: Invalid pinCount: " + count + " in page: " + this);
+        }
+        return count;
     }
 
     public CachedPage(int cpid, ByteBuffer buffer, IPageReplacementStrategy pageReplacementStrategy) {
@@ -208,5 +222,11 @@ public class CachedPage implements ICachedPageInternal {
     @Override
     public int getCompressedPageSize() {
         return compressedSize;
+    }
+
+    @Override
+    public String toString() {
+        return "CachedPage:[page:" + BufferedFileHandle.getPageId(dpid) + ", compressedPageOffset:" + compressedOffset
+                + ", compressedSize:" + compressedSize + "]";
     }
 }

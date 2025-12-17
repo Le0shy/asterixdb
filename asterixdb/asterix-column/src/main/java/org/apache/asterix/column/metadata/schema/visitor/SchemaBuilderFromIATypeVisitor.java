@@ -22,12 +22,12 @@ import static org.apache.asterix.om.typecomputer.impl.TypeComputeUtils.getActual
 
 import java.util.List;
 
-import org.apache.asterix.column.metadata.FieldNamesDictionary;
 import org.apache.asterix.column.metadata.schema.AbstractSchemaNode;
 import org.apache.asterix.column.metadata.schema.ObjectSchemaNode;
 import org.apache.asterix.column.metadata.schema.collection.AbstractCollectionSchemaNode;
 import org.apache.asterix.column.metadata.schema.primitive.MissingFieldSchemaNode;
 import org.apache.asterix.column.operation.lsm.flush.FlushColumnMetadata;
+import org.apache.asterix.om.dictionary.IFieldNamesDictionary;
 import org.apache.asterix.om.types.ARecordType;
 import org.apache.asterix.om.types.AUnionType;
 import org.apache.asterix.om.types.AbstractCollectionType;
@@ -133,7 +133,7 @@ public class SchemaBuilderFromIATypeVisitor implements IATypeVisitor<Void, Abstr
             throws HyracksDataException {
         IAType[] fieldTypes = recordType.getFieldTypes();
         String[] fieldNames = recordType.getFieldNames();
-        FieldNamesDictionary dictionary = columnMetadata.getFieldNamesDictionary();
+        IFieldNamesDictionary dictionary = columnMetadata.getFieldNamesDictionary();
 
         if (isProcessingPrimaryKeys() && !fieldNames[fieldIndex].equals(currentPrimaryKeyPath.get(currentPathIndex))) {
             // Still processing PKs, do not add any fields to the children until all PKs are processed

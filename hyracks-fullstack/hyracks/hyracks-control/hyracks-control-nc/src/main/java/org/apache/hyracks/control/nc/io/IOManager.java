@@ -40,6 +40,7 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Predicate;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.hyracks.api.exceptions.ErrorCode;
@@ -67,6 +68,7 @@ public class IOManager implements IIOManager {
      */
     private static final Logger LOGGER = LogManager.getLogger();
     private static final String WORKSPACE_FILE_SUFFIX = ".waf";
+    private static final String STORAGE_ROOT_DIR_NAME = "storage";
     private static final FilenameFilter WORKSPACE_FILES_FILTER = (dir, name) -> name.endsWith(WORKSPACE_FILE_SUFFIX);
     /*
      * Finals
@@ -76,7 +78,7 @@ public class IOManager implements IIOManager {
     private final ExecutorService executor;
     private final BlockingQueue<IoRequest> submittedRequests;
     private final BlockingQueue<IoRequest> freeRequests;
-    private final List<IODeviceHandle> ioDevices;
+    protected final List<IODeviceHandle> ioDevices;
     private final List<IODeviceHandle> workspaces;
     private final IFileDeviceResolver deviceComputer;
     /*
@@ -380,7 +382,7 @@ public class IOManager implements IIOManager {
     }
 
     private File getWorkspaceFolder(IODeviceHandle dev) {
-        return new File(dev.getMount(), dev.getWorkspace());
+        return Path.of(dev.getMount().getPath(), dev.getWorkspace()).normalize().toFile();
     }
 
     @Override
@@ -473,7 +475,7 @@ public class IOManager implements IIOManager {
     public long getTotalDiskUsage() {
         long totalSize = 0;
         for (IODeviceHandle handle : ioDevices) {
-            totalSize += FileUtils.sizeOfDirectory(handle.getMount());
+            totalSize += IoUtil.sizeOfDirectory(handle.getMount().toPath());
         }
         return totalSize;
     }
@@ -489,8 +491,12 @@ public class IOManager implements IIOManager {
 
             @Override
             public int write(ByteBuffer src) throws IOException {
+                int origPos = src.position();
                 int written = IOManager.this.syncWrite(fHandle, position, src);
                 position += written;
+                if (src.position() < origPos + written) {
+                    src.position(origPos + written);
+                }
                 return written;
             }
 
@@ -599,6 +605,36 @@ public class IOManager implements IIOManager {
     @Override
     public void performBulkOperation(IIOBulkOperation bulkOperation) throws HyracksDataException {
         ((AbstractBulkOperation) bulkOperation).performOperation();
+    }
+
+    @Override
+    public long getSize(Predicate<String> relativePathFilter) {
+        long totalSize = 0;
+
+        // get cached files (read from disk)
+        for (IODeviceHandle deviceHandle : getIODevices()) {
+            FileReference storageRoot = deviceHandle.createFileRef(STORAGE_ROOT_DIR_NAME);
+
+            Set<FileReference> deviceFiles;
+            try {
+                deviceFiles = list(storageRoot, IoUtil.NO_OP_FILTER);
+            } catch (Throwable th) {
+                LOGGER.info("Failed to get local storage files for root {}", storageRoot.getRelativePath(), th);
+                continue;
+            }
+
+            for (FileReference fileReference : deviceFiles) {
+                try {
+                    if (relativePathFilter.test(fileReference.getRelativePath())) {
+                        totalSize += fileReference.getFile().length();
+                    }
+                } catch (Throwable th) {
+                    LOGGER.info("Encountered issue for local storage file {}", fileReference.getRelativePath(), th);
+                }
+            }
+        }
+
+        return totalSize;
     }
 
     public void setSpaceMaker(IDiskSpaceMaker spaceMaker) {

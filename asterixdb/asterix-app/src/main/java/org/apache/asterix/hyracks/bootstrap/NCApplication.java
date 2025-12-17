@@ -61,7 +61,6 @@ import org.apache.asterix.common.api.INcApplicationContext;
 import org.apache.asterix.common.api.IPropertiesFactory;
 import org.apache.asterix.common.api.IReceptionistFactory;
 import org.apache.asterix.common.config.AsterixExtension;
-import org.apache.asterix.common.config.CompilerProperties;
 import org.apache.asterix.common.config.ExtensionProperties;
 import org.apache.asterix.common.config.ExternalProperties;
 import org.apache.asterix.common.config.GlobalConfig;
@@ -80,6 +79,7 @@ import org.apache.asterix.common.transactions.Checkpoint;
 import org.apache.asterix.common.transactions.IRecoveryManager;
 import org.apache.asterix.common.transactions.IRecoveryManager.SystemState;
 import org.apache.asterix.common.transactions.IRecoveryManagerFactory;
+import org.apache.asterix.common.utils.IdentifierUtil;
 import org.apache.asterix.common.utils.PrintUtil;
 import org.apache.asterix.common.utils.Servlets;
 import org.apache.asterix.common.utils.StorageConstants;
@@ -149,9 +149,7 @@ public class NCApplication extends BaseNCApplication {
             throw new IllegalArgumentException("Unrecognized argument(s): " + Arrays.toString(args));
         }
         nodeId = this.ncServiceCtx.getNodeId();
-        if (LOGGER.isInfoEnabled()) {
-            LOGGER.info("Starting Asterix node controller: " + nodeId);
-        }
+        LOGGER.info("Starting {} node controller: {}", IdentifierUtil.productName(), nodeId);
         final NodeControllerService controllerService = (NodeControllerService) ncServiceCtx.getControllerService();
 
         if (System.getProperty("java.rmi.server.hostname") == null) {
@@ -160,11 +158,9 @@ public class NCApplication extends BaseNCApplication {
         }
         MetadataBuiltinFunctions.init();
 
-        boolean isDbResolutionEnabled =
-                ncServiceCtx.getAppConfig().getBoolean(CompilerProperties.Option.COMPILER_ENABLE_DB_RESOLUTION);
         boolean cloudDeployment = ncServiceCtx.getAppConfig().getBoolean(CLOUD_DEPLOYMENT);
-        boolean useDatabaseResolution = cloudDeployment && isDbResolutionEnabled;
-        NamespaceResolver namespaceResolver = new NamespaceResolver(useDatabaseResolution);
+        boolean useDatabaseResolution = cloudDeployment;
+        INamespaceResolver namespaceResolver = createNamespaceResolver(useDatabaseResolution);
         NamespacePathResolver namespacePathResolver = new NamespacePathResolver(useDatabaseResolution);
         ncExtensionManager = new NCExtensionManager(new ArrayList<>(getExtensions()), cloudDeployment,
                 namespaceResolver, ncServiceCtx);
@@ -199,6 +195,10 @@ public class NCApplication extends BaseNCApplication {
         }
         webManager = new WebManager();
         performLocalCleanUp();
+    }
+
+    protected INamespaceResolver createNamespaceResolver(boolean useDatabaseResolution) {
+        return new NamespaceResolver(useDatabaseResolution);
     }
 
     protected INcApplicationContext createNCApplicationContext(INCServiceContext ncServiceCtx,
@@ -279,9 +279,7 @@ public class NCApplication extends BaseNCApplication {
         if (!stopInitiated) {
             runtimeContext.setShuttingdown(true);
             stopInitiated = true;
-            if (LOGGER.isInfoEnabled()) {
-                LOGGER.info("Stopping Asterix node controller: " + nodeId);
-            }
+            LOGGER.info("Stopping {} node controller: {}", IdentifierUtil.productName(), nodeId);
 
             webManager.stop();
 
@@ -334,7 +332,7 @@ public class NCApplication extends BaseNCApplication {
     @Override
     public NodeCapacity getCapacity() {
         StorageProperties storageProperties = runtimeContext.getStorageProperties();
-        final long memorySize = storageProperties.getJobExecutionMemoryBudget();
+        final long memorySize = storageProperties.getJobExecutionMemoryBudget(runtimeContext);
         int allCores = Runtime.getRuntime().availableProcessors();
         return new NodeCapacity(memorySize, allCores);
     }
@@ -372,7 +370,7 @@ public class NCApplication extends BaseNCApplication {
         return nodeStatus == NodeStatus.IDLE && (primaryCc == null || primaryCc.equals(registeredCc));
     }
 
-    private SystemState getCurrentSystemState() {
+    private SystemState getCurrentSystemState() throws HyracksDataException {
         final NodeProperties nodeProperties = runtimeContext.getNodeProperties();
         IRecoveryManager recoveryMgr = runtimeContext.getTransactionSubsystem().getRecoveryManager();
         SystemState state = recoveryMgr.getSystemState();

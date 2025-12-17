@@ -1,34 +1,64 @@
+distribute result [$$12]
 -- DISTRIBUTE_RESULT  |UNPARTITIONED|
+  exchange
   -- ONE_TO_ONE_EXCHANGE  |UNPARTITIONED|
-    -- STREAM_PROJECT  |UNPARTITIONED|
-      -- ASSIGN  |UNPARTITIONED|
-        -- AGGREGATE  |UNPARTITIONED|
-          -- SEQUENTIAL_MERGE_EXCHANGE  |PARTITIONED|
+    assign [$$12] <- [ordered-list-constructor($$19)] project: [$$12]
+    -- ASSIGN  |UNPARTITIONED|
+      aggregate [$$19] <- [listify($$16)]
+      -- AGGREGATE  |UNPARTITIONED|
+        exchange
+        -- SEQUENTIAL_MERGE_EXCHANGE  |PARTITIONED|
+          assign [$$16] <- [{"v": $$v}] project: [$$16]
+          -- ASSIGN  |PARTITIONED|
+            project ([$$v])
             -- STREAM_PROJECT  |PARTITIONED|
-              -- ASSIGN  |PARTITIONED|
-                -- STREAM_PROJECT  |PARTITIONED|
-                  -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-                    -- STABLE_SORT [$$20(ASC), $$19(ASC)]  |PARTITIONED|
-                      -- RANGE_PARTITION_EXCHANGE [$$20(ASC), $$19(ASC)]  |PARTITIONED|
-                        -- FORWARD  |PARTITIONED|
+              exchange
+              -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
+                order (ASC, $$21) (ASC, $$20)
+                -- STABLE_SORT [$$21(ASC), $$20(ASC)]  |PARTITIONED|
+                  exchange
+                  -- RANGE_PARTITION_EXCHANGE [$$21(ASC), $$20(ASC)]  |PARTITIONED|
+                    forward: shared-variable = $$26
+                    -- FORWARD  |PARTITIONED|
+                      exchange
+                      -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
+                        replicate
+                        -- REPLICATE  |PARTITIONED|
+                          exchange
                           -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-                            -- REPLICATE  |PARTITIONED|
+                            assign [$$21] <- [$$v.getField(1)]
+                            -- ASSIGN  |PARTITIONED|
+                              exchange
                               -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-                                -- ASSIGN  |PARTITIONED|
+                                data-scan []<-[$$20, $$v] <- test.TestDS
+                                -- DATASOURCE_SCAN  |PARTITIONED|
+                                  exchange
                                   -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-                                    -- DATASOURCE_SCAN (test.TestDS)  |PARTITIONED|
-                                      -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-                                        -- EMPTY_TUPLE_SOURCE  |PARTITIONED|
-                          -- BROADCAST_EXCHANGE  |PARTITIONED|
-                            -- AGGREGATE  |UNPARTITIONED|
-                              -- RANDOM_MERGE_EXCHANGE  |PARTITIONED|
-                                -- AGGREGATE  |PARTITIONED|
-                                  -- STREAM_PROJECT  |PARTITIONED|
+                                    empty-tuple-source
+                                    -- EMPTY_TUPLE_SOURCE  |PARTITIONED|
+                      exchange
+                      -- BROADCAST_EXCHANGE  |PARTITIONED|
+                        aggregate [$$26] <- [agg-range-map($$23, $$24, $$25)]
+                        -- AGGREGATE  |UNPARTITIONED|
+                          exchange
+                          -- RANDOM_MERGE_EXCHANGE  |PARTITIONED|
+                            aggregate [$$23, $$24, $$25] <- [agg-local-sampling($$21, $$20), agg-null-writer($$21), agg-null-writer($$20)]
+                            -- AGGREGATE  |PARTITIONED|
+                              project ([$$21, $$20])
+                              -- STREAM_PROJECT  |PARTITIONED|
+                                exchange
+                                -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
+                                  replicate
+                                  -- REPLICATE  |PARTITIONED|
+                                    exchange
                                     -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-                                      -- REPLICATE  |PARTITIONED|
+                                      assign [$$21] <- [$$v.getField(1)]
+                                      -- ASSIGN  |PARTITIONED|
+                                        exchange
                                         -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-                                          -- ASSIGN  |PARTITIONED|
+                                          data-scan []<-[$$20, $$v] <- test.TestDS
+                                          -- DATASOURCE_SCAN  |PARTITIONED|
+                                            exchange
                                             -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-                                              -- DATASOURCE_SCAN (test.TestDS)  |PARTITIONED|
-                                                -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-                                                  -- EMPTY_TUPLE_SOURCE  |PARTITIONED|
+                                              empty-tuple-source
+                                              -- EMPTY_TUPLE_SOURCE  |PARTITIONED|

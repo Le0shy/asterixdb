@@ -33,7 +33,7 @@ import org.apache.asterix.common.storage.ResourceReference;
 import org.apache.asterix.common.utils.StorageConstants;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
 import org.apache.hyracks.api.io.FileReference;
-import org.apache.hyracks.api.util.IoUtil;
+import org.apache.hyracks.api.io.IIOManager;
 import org.apache.hyracks.data.std.primitive.LongPointable;
 import org.apache.hyracks.data.std.util.ArrayBackedValueStorage;
 import org.apache.hyracks.storage.am.common.api.IMetadataPageManager;
@@ -69,6 +69,7 @@ public class LSMIOOperationCallback implements ILSMIOOperationCallback {
     public static final long INVALID_LSN = -1L;
     private final ArrayBackedValueStorage buffer = new ArrayBackedValueStorage(Long.BYTES);
     private final IIndexCheckpointManagerProvider indexCheckpointManagerProvider;
+    protected final IIOManager ioManager;
     protected final DatasetInfo dsInfo;
     protected final ILSMIndex lsmIndex;
     private final int partition;
@@ -78,11 +79,12 @@ public class LSMIOOperationCallback implements ILSMIOOperationCallback {
     private final Deque<ILSMComponentId> componentIds = new ArrayDeque<>();
 
     public LSMIOOperationCallback(DatasetInfo dsInfo, ILSMIndex lsmIndex, ILSMComponentId componentId,
-            IIndexCheckpointManagerProvider indexCheckpointManagerProvider) {
+            IIndexCheckpointManagerProvider indexCheckpointManagerProvider, IIOManager ioManager) {
         this.dsInfo = dsInfo;
         this.lsmIndex = lsmIndex;
         this.indexCheckpointManagerProvider = indexCheckpointManagerProvider;
         this.partition = ResourceReference.ofIndex(lsmIndex.getIndexIdentifier()).getPartitionNum();
+        this.ioManager = ioManager;
         componentIds.add(componentId);
     }
 
@@ -90,9 +92,9 @@ public class LSMIOOperationCallback implements ILSMIOOperationCallback {
     public void beforeOperation(ILSMIOOperation operation) throws HyracksDataException {
         if (isMerge(operation)) {
             FileReference operationMaskFilePath = getOperationMaskFilePath(operation);
-            // if a merge operation is attempted after a failure, its mask file may already exists
-            if (!operationMaskFilePath.getFile().exists()) {
-                IoUtil.create(operationMaskFilePath);
+            // if a merge operation is attempted after a failure, its mask file may already exist
+            if (!ioManager.exists(operationMaskFilePath)) {
+                ioManager.create(operationMaskFilePath);
             } else {
                 LOGGER.warn("merge operation mask file {} already exists", operationMaskFilePath);
             }
@@ -104,15 +106,15 @@ public class LSMIOOperationCallback implements ILSMIOOperationCallback {
         if (operation.getStatus() == LSMIOOperationStatus.FAILURE) {
             return;
         }
-        if (operation.getIOOpertionType() == LSMIOOperationType.LOAD) {
+        if (operation.getIOOperationType() == LSMIOOperationType.LOAD) {
             Map<String, Object> map = operation.getParameters();
             putComponentIdIntoMetadata(operation.getNewComponent(), (LSMComponentId) map.get(KEY_FLUSHED_COMPONENT_ID));
-        } else if (operation.getIOOpertionType() == LSMIOOperationType.FLUSH) {
+        } else if (operation.getIOOperationType() == LSMIOOperationType.FLUSH) {
             Map<String, Object> map = operation.getParameters();
             putLSNIntoMetadata(operation.getNewComponent(), (Long) map.get(KEY_FLUSH_LOG_LSN));
             putComponentIdIntoMetadata(operation.getNewComponent(),
                     ((FlushOperation) operation).getFlushingComponent().getId());
-        } else if (operation.getIOOpertionType() == LSMIOOperationType.MERGE) {
+        } else if (operation.getIOOperationType() == LSMIOOperationType.MERGE) {
             List<ILSMDiskComponent> mergedComponents = operation.getAccessor().getOpContext().getComponentsToBeMerged();
             putLSNIntoMetadata(operation.getNewComponent(), mergedComponents);
             putComponentIdIntoMetadata(operation.getNewComponent(), mergedComponents);
@@ -128,14 +130,26 @@ public class LSMIOOperationCallback implements ILSMIOOperationCallback {
         if (operation.getStatus() == LSMIOOperationStatus.FAILURE) {
             return;
         }
-        if (operation.getIOOpertionType() != LSMIOOperationType.LOAD
+        if (operation.getIOOperationType() != LSMIOOperationType.LOAD
                 && operation.getAccessor().getOpContext().getOperation() == IndexOperation.DELETE_COMPONENTS) {
             deleteComponentsFromCheckpoint(operation);
-        } else if (operation.getIOOpertionType() == LSMIOOperationType.FLUSH
-                || operation.getIOOpertionType() == LSMIOOperationType.LOAD) {
+        } else if (operation.getIOOperationType() == LSMIOOperationType.FLUSH
+                || operation.getIOOperationType() == LSMIOOperationType.LOAD) {
             addComponentToCheckpoint(operation);
         } else if (isMerge(operation)) {
-            IoUtil.delete(getOperationMaskFilePath(operation));
+            ioManager.delete(getOperationMaskFilePath(operation));
+        }
+    }
+
+    @Override
+    public void afterFailure(ILSMIOOperation operation) {
+        dsInfo.incrementFailedIoOp(operation.getIOOperationType());
+        if (isMerge(operation)) {
+            try {
+                ioManager.delete(getOperationMaskFilePath(operation));
+            } catch (HyracksDataException e) {
+                operation.getFailure().addSuppressed(e);
+            }
         }
     }
 
@@ -144,7 +158,7 @@ public class LSMIOOperationCallback implements ILSMIOOperationCallback {
         FileReference target = operation.getTarget();
         Map<String, Object> map = operation.getParameters();
         final Long lsn =
-                operation.getIOOpertionType() == LSMIOOperationType.FLUSH ? (Long) map.get(KEY_FLUSH_LOG_LSN) : 0L;
+                operation.getIOOperationType() == LSMIOOperationType.FLUSH ? (Long) map.get(KEY_FLUSH_LOG_LSN) : 0L;
         final LSMComponentId id = (LSMComponentId) map.get(KEY_FLUSHED_COMPONENT_ID);
         final ResourceReference ref = ResourceReference.of(target.getAbsolutePath());
         final long componentSequence = IndexComponentFileReference.of(ref.getName()).getSequenceEnd();
@@ -153,7 +167,7 @@ public class LSMIOOperationCallback implements ILSMIOOperationCallback {
 
     protected void deleteComponentsFromCheckpoint(ILSMIOOperation operation) throws HyracksDataException {
         // component was deleted... if a flush, do nothing.. if a merge, must update the checkpoint file
-        if (operation.getIOOpertionType() == LSMIOOperationType.MERGE) {
+        if (operation.getIOOperationType() == LSMIOOperationType.MERGE) {
             // Get component id of the last disk component
             LSMComponentId mostRecentComponentId =
                     getMostRecentComponentId(operation.getAccessor().getOpContext().getComponentsToBeMerged());
@@ -161,8 +175,8 @@ public class LSMIOOperationCallback implements ILSMIOOperationCallback {
             FileReference target = operation.getTarget();
             final ResourceReference ref = ResourceReference.of(target.getAbsolutePath());
             indexCheckpointManagerProvider.get(ref).setLastComponentId(mostRecentComponentId.getMaxId());
-        } else if (operation.getIOOpertionType() != LSMIOOperationType.FLUSH) {
-            throw new IllegalStateException("Unexpected IO operation: " + operation.getIOOpertionType());
+        } else if (operation.getIOOperationType() != LSMIOOperationType.FLUSH) {
+            throw new IllegalStateException("Unexpected IO operation: " + operation.getIOOperationType());
         }
     }
 
@@ -258,8 +272,8 @@ public class LSMIOOperationCallback implements ILSMIOOperationCallback {
 
     @Override
     public synchronized void scheduled(ILSMIOOperation operation) throws HyracksDataException {
-        dsInfo.declareActiveIOOperation(operation.getIOOpertionType(), partition);
-        if (operation.getIOOpertionType() == LSMIOOperationType.FLUSH) {
+        dsInfo.declareActiveIOOperation(operation.getIOOperationType(), partition);
+        if (operation.getIOOperationType() == LSMIOOperationType.FLUSH) {
             pendingFlushes++;
             FlushOperation flush = (FlushOperation) operation;
             Map<String, Object> map = operation.getAccessor().getOpContext().getParameters();
@@ -273,7 +287,7 @@ public class LSMIOOperationCallback implements ILSMIOOperationCallback {
 
     @Override
     public synchronized void completed(ILSMIOOperation operation) {
-        if (operation.getIOOpertionType() == LSMIOOperationType.FLUSH) {
+        if (operation.getIOOperationType() == LSMIOOperationType.FLUSH) {
             pendingFlushes--;
             if (operation.getStatus() == LSMIOOperationStatus.SUCCESS) {
                 Map<String, Object> map = operation.getAccessor().getOpContext().getParameters();
@@ -281,7 +295,7 @@ public class LSMIOOperationCallback implements ILSMIOOperationCallback {
                         pendingFlushes == 0 ? firstLsnForCurrentMemoryComponent : (Long) map.get(KEY_FLUSH_LOG_LSN);
             }
         }
-        dsInfo.undeclareActiveIOOperation(operation.getIOOpertionType(), partition);
+        dsInfo.undeclareActiveIOOperation(operation.getIOOperationType(), partition);
     }
 
     public synchronized boolean hasPendingFlush() {
@@ -300,7 +314,7 @@ public class LSMIOOperationCallback implements ILSMIOOperationCallback {
     }
 
     protected boolean isMerge(ILSMIOOperation operation) {
-        return operation.getIOOpertionType() == LSMIOOperationType.MERGE
+        return operation.getIOOperationType() == LSMIOOperationType.MERGE
                 && operation.getAccessor().getOpContext().getOperation() != IndexOperation.DELETE_COMPONENTS;
     }
 

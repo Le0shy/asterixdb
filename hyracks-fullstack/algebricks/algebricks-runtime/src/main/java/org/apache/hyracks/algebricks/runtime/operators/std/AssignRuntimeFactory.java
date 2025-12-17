@@ -21,13 +21,13 @@ package org.apache.hyracks.algebricks.runtime.operators.std;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 
-import org.apache.hyracks.algebricks.runtime.base.IEvaluatorContext;
 import org.apache.hyracks.algebricks.runtime.base.IScalarEvaluator;
 import org.apache.hyracks.algebricks.runtime.base.IScalarEvaluatorFactory;
 import org.apache.hyracks.algebricks.runtime.evaluators.EvaluatorContext;
 import org.apache.hyracks.algebricks.runtime.operators.base.AbstractOneInputOneOutputOneFramePushRuntime;
 import org.apache.hyracks.algebricks.runtime.operators.base.AbstractOneInputOneOutputRuntimeFactory;
 import org.apache.hyracks.api.comm.IFrameTupleAccessor;
+import org.apache.hyracks.api.context.IEvaluatorContext;
 import org.apache.hyracks.api.context.IHyracksTaskContext;
 import org.apache.hyracks.api.exceptions.ErrorCode;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
@@ -92,7 +92,9 @@ public class AssignRuntimeFactory extends AbstractOneInputOneOutputRuntimeFactor
             }
             sb.append(evalFactories[i].toString());
         }
-        sb.append("]");
+        sb.append("] ");
+        sb.append(" project: ");
+        sb.append(Arrays.toString(projectionList));
         return sb.toString();
     }
 

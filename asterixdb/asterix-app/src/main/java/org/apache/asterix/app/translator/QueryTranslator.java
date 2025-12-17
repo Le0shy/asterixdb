@@ -22,7 +22,9 @@ import static org.apache.asterix.common.api.IIdentifierMapper.Modifier.PLURAL;
 import static org.apache.asterix.common.utils.IdentifierUtil.dataset;
 import static org.apache.asterix.common.utils.IdentifierUtil.dataverse;
 import static org.apache.asterix.lang.common.statement.CreateFullTextFilterStatement.FIELD_TYPE_STOPWORDS;
-import static org.apache.asterix.metadata.entities.SchedulerConfigMetadataEntity.*;
+import static org.apache.asterix.metadata.entities.SchedulerConfigMetadataEntity.SCHEDULER_CONFIG_MINIMUM_LENGTH;
+import static org.apache.asterix.metadata.entities.SchedulerConfigMetadataEntity.SCHEDULER_DEFAULT_CONFIG_NAME;
+import static org.apache.asterix.metadata.entities.SchedulerConfigMetadataEntity.SCHEDULER_STATE;
 
 import java.io.FileInputStream;
 import java.io.InputStream;
@@ -49,6 +51,8 @@ import org.apache.asterix.active.ActivityState;
 import org.apache.asterix.active.EntityId;
 import org.apache.asterix.active.IActiveEntityEventsListener;
 import org.apache.asterix.active.NoRetryPolicyFactory;
+import org.apache.asterix.algebra.base.ILangExpressionToPlanTranslator;
+import org.apache.asterix.algebra.base.ILangExpressionToPlanTranslatorFactory;
 import org.apache.asterix.algebra.extension.ExtensionStatement;
 import org.apache.asterix.api.common.APIFramework;
 import org.apache.asterix.api.http.server.AbstractQueryApiServlet;
@@ -120,10 +124,61 @@ import org.apache.asterix.lang.common.expression.TypeExpression;
 import org.apache.asterix.lang.common.expression.TypeReferenceExpression;
 import org.apache.asterix.lang.common.expression.VariableExpr;
 import org.apache.asterix.lang.common.rewrites.LangRewritingContext;
-import org.apache.asterix.lang.common.statement.*;
+import org.apache.asterix.lang.common.statement.AdapterDropStatement;
+import org.apache.asterix.lang.common.statement.AnalyzeDropStatement;
+import org.apache.asterix.lang.common.statement.AnalyzeStatement;
+import org.apache.asterix.lang.common.statement.CompactStatement;
+import org.apache.asterix.lang.common.statement.ConnectFeedStatement;
+import org.apache.asterix.lang.common.statement.CopyFromStatement;
+import org.apache.asterix.lang.common.statement.CopyToStatement;
+import org.apache.asterix.lang.common.statement.CreateAdapterStatement;
+import org.apache.asterix.lang.common.statement.CreateDatabaseStatement;
+import org.apache.asterix.lang.common.statement.CreateDataverseStatement;
+import org.apache.asterix.lang.common.statement.CreateFeedPolicyStatement;
+import org.apache.asterix.lang.common.statement.CreateFeedStatement;
+import org.apache.asterix.lang.common.statement.CreateFullTextConfigStatement;
+import org.apache.asterix.lang.common.statement.CreateFullTextFilterStatement;
+import org.apache.asterix.lang.common.statement.CreateFunctionStatement;
+import org.apache.asterix.lang.common.statement.CreateIndexStatement;
+import org.apache.asterix.lang.common.statement.CreateLibraryStatement;
+import org.apache.asterix.lang.common.statement.CreateSynonymStatement;
+import org.apache.asterix.lang.common.statement.CreateViewStatement;
+import org.apache.asterix.lang.common.statement.DatabaseDropStatement;
+import org.apache.asterix.lang.common.statement.DatasetDecl;
+import org.apache.asterix.lang.common.statement.DataverseDecl;
+import org.apache.asterix.lang.common.statement.DataverseDropStatement;
+import org.apache.asterix.lang.common.statement.DeleteStatement;
+import org.apache.asterix.lang.common.statement.DisconnectFeedStatement;
+import org.apache.asterix.lang.common.statement.DropDatasetStatement;
+import org.apache.asterix.lang.common.statement.ExternalDetailsDecl;
+import org.apache.asterix.lang.common.statement.FeedDropStatement;
+import org.apache.asterix.lang.common.statement.FeedPolicyDropStatement;
+import org.apache.asterix.lang.common.statement.FullTextConfigDropStatement;
+import org.apache.asterix.lang.common.statement.FullTextFilterDropStatement;
+import org.apache.asterix.lang.common.statement.FunctionDecl;
+import org.apache.asterix.lang.common.statement.FunctionDropStatement;
+import org.apache.asterix.lang.common.statement.IndexDropStatement;
+import org.apache.asterix.lang.common.statement.InsertStatement;
+import org.apache.asterix.lang.common.statement.InternalDetailsDecl;
+import org.apache.asterix.lang.common.statement.LibraryDropStatement;
+import org.apache.asterix.lang.common.statement.LoadStatement;
+import org.apache.asterix.lang.common.statement.NodeGroupDropStatement;
+import org.apache.asterix.lang.common.statement.NodegroupDecl;
+import org.apache.asterix.lang.common.statement.Query;
+import org.apache.asterix.lang.common.statement.SetStatement;
+import org.apache.asterix.lang.common.statement.StartFeedStatement;
+import org.apache.asterix.lang.common.statement.StopFeedStatement;
+import org.apache.asterix.lang.common.statement.SynonymDropStatement;
+import org.apache.asterix.lang.common.statement.TruncateDatasetStatement;
+import org.apache.asterix.lang.common.statement.TypeDecl;
+import org.apache.asterix.lang.common.statement.TypeDropStatement;
+import org.apache.asterix.lang.common.statement.UpsertStatement;
+import org.apache.asterix.lang.common.statement.ViewDecl;
+import org.apache.asterix.lang.common.statement.ViewDropStatement;
 import org.apache.asterix.lang.common.struct.Identifier;
 import org.apache.asterix.lang.common.struct.VarIdentifier;
 import org.apache.asterix.lang.common.util.FunctionUtil;
+import org.apache.asterix.lang.common.util.LangDatasetUtil;
 import org.apache.asterix.lang.common.util.ViewUtil;
 import org.apache.asterix.lang.sqlpp.rewrites.SqlppQueryRewriter;
 import org.apache.asterix.metadata.IDatasetDetails;
@@ -134,9 +189,29 @@ import org.apache.asterix.metadata.dataset.DatasetFormatInfo;
 import org.apache.asterix.metadata.dataset.hints.DatasetHints;
 import org.apache.asterix.metadata.dataset.hints.DatasetHints.DatasetNodegroupCardinalityHint;
 import org.apache.asterix.metadata.declared.MetadataProvider;
-import org.apache.asterix.metadata.entities.*;
+import org.apache.asterix.metadata.entities.CompactionPolicy;
+import org.apache.asterix.metadata.entities.Database;
+import org.apache.asterix.metadata.entities.Dataset;
+import org.apache.asterix.metadata.entities.DatasourceAdapter;
+import org.apache.asterix.metadata.entities.Datatype;
+import org.apache.asterix.metadata.entities.Dataverse;
+import org.apache.asterix.metadata.entities.EntityDetails;
+import org.apache.asterix.metadata.entities.ExternalDatasetDetails;
+import org.apache.asterix.metadata.entities.Feed;
+import org.apache.asterix.metadata.entities.FeedConnection;
+import org.apache.asterix.metadata.entities.FeedPolicyEntity;
+import org.apache.asterix.metadata.entities.FullTextConfigMetadataEntity;
+import org.apache.asterix.metadata.entities.FullTextFilterMetadataEntity;
+import org.apache.asterix.metadata.entities.Function;
+import org.apache.asterix.metadata.entities.Index;
+import org.apache.asterix.metadata.entities.InternalDatasetDetails;
+import org.apache.asterix.metadata.entities.Library;
+import org.apache.asterix.metadata.entities.NodeGroup;
+import org.apache.asterix.metadata.entities.Synonym;
+import org.apache.asterix.metadata.entities.ViewDetails;
 import org.apache.asterix.metadata.feeds.FeedMetadataUtil;
 import org.apache.asterix.metadata.functions.ExternalFunctionCompilerUtil;
+import org.apache.asterix.metadata.utils.Creator;
 import org.apache.asterix.metadata.utils.DatasetUtil;
 import org.apache.asterix.metadata.utils.IndexUtil;
 import org.apache.asterix.metadata.utils.KeyFieldTypeUtil;
@@ -151,6 +226,7 @@ import org.apache.asterix.om.types.BuiltinTypeMap;
 import org.apache.asterix.om.types.IAType;
 import org.apache.asterix.om.types.TypeSignature;
 import org.apache.asterix.om.utils.RecordUtil;
+import org.apache.asterix.optimizer.rules.visitor.FunctionCardinalityInferenceVisitor;
 import org.apache.asterix.runtime.fulltext.AbstractFullTextFilterDescriptor;
 import org.apache.asterix.runtime.fulltext.FullTextConfigDescriptor;
 import org.apache.asterix.runtime.fulltext.StopwordsFullTextFilterDescriptor;
@@ -188,6 +264,9 @@ import org.apache.hyracks.algebricks.common.exceptions.AlgebricksException;
 import org.apache.hyracks.algebricks.common.utils.Pair;
 import org.apache.hyracks.algebricks.common.utils.Triple;
 import org.apache.hyracks.algebricks.core.algebra.base.Counter;
+import org.apache.hyracks.algebricks.core.algebra.base.ILogicalOperator;
+import org.apache.hyracks.algebricks.core.algebra.base.ILogicalPlan;
+import org.apache.hyracks.algebricks.core.algebra.base.LogicalOperatorTag;
 import org.apache.hyracks.algebricks.core.algebra.expressions.AbstractFunctionCallExpression.FunctionKind;
 import org.apache.hyracks.algebricks.core.algebra.functions.FunctionIdentifier;
 import org.apache.hyracks.algebricks.core.algebra.util.OperatorPropertiesUtil;
@@ -204,6 +283,7 @@ import org.apache.hyracks.api.job.JobSpecification;
 import org.apache.hyracks.api.job.profiling.IOperatorStats;
 import org.apache.hyracks.api.result.IResultSet;
 import org.apache.hyracks.api.result.ResultSetId;
+import org.apache.hyracks.api.util.ExceptionUtils;
 import org.apache.hyracks.control.cc.ClusterControllerService;
 import org.apache.hyracks.control.cc.job.WorkloadManager;
 import org.apache.hyracks.control.cc.scheduler.DeleteGroupInfo;
@@ -243,7 +323,7 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
     protected final APIFramework apiFramework;
     protected final IRewriterFactory rewriterFactory;
     protected final ExecutorService executorService;
-    protected final EnumSet<JobFlag> jobFlags = EnumSet.noneOf(JobFlag.class);
+    protected final EnumSet<JobFlag> jobFlags = EnumSet.of(JobFlag.ENSURE_RUNNABLE);
     protected final IMetadataLockManager lockManager;
     protected final IMetadataLockUtil lockUtil;
     protected final IResponsePrinter responsePrinter;
@@ -340,24 +420,6 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
                         break;
                     case CREATE_FULL_TEXT_CONFIG:
                         handleCreateFullTextConfigStatement(metadataProvider, stmt);
-                        break;
-                    case CREATE_SCHEDULER_CONFIG:
-                        handleCreateSchedulerConfigStatement(metadataProvider, stmt);
-                        break;
-                    case DROP_SCHEDULER_CONFIG:
-                        handleSchedulerConfigDropStatement(metadataProvider, stmt);
-                        break;
-                    case UPSERT_QGROUP:
-                        handleUpsertQGroup(metadataProvider, stmt);
-                        break;
-                    case DELETE_QGROUP:
-                        handleDeleteQGroup(metadataProvider, stmt);
-                        break;
-                    case ENABLE_SCHEDULER_CONFIG:
-                        handleEnableSchedulerConfig(metadataProvider, stmt);
-                        break;
-                    case UPDATE_SCHEDULER:
-                        handleUpdateSchedulerConfig(metadataProvider, stmt);
                         break;
                     case TYPE_DECL:
                         handleCreateTypeStatement(metadataProvider, stmt);
@@ -1711,344 +1773,6 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
             FullTextConfigMetadataEntity configMetadataEntity = new FullTextConfigMetadataEntity(configDescriptor);
 
             MetadataManager.INSTANCE.addFullTextConfig(mdTxnCtx, configMetadataEntity);
-            MetadataManager.INSTANCE.commitTransaction(mdTxnCtx);
-        } catch (Exception e) {
-            abort(e, e, mdTxnCtx);
-            throw e;
-        }
-    }
-
-    public void handleCreateSchedulerConfigStatement(MetadataProvider metadataProvider, Statement stmt)
-            throws Exception {
-        validateWorkloadManagerEnabled(stmt);
-        /* create config statement */
-        CreateSchedulerConfigStatement stmtCreateConfig = (CreateSchedulerConfigStatement) stmt;
-
-        /* validate length of config name */
-        String configName = stmtCreateConfig.getConfigName();
-        if (configName.length() < SCHEDULER_CONFIG_MINIMUM_LENGTH) {
-            throw new CompilationException(ErrorCode.SCHEDULER_CONFIG_NAME_INVALID,
-                    stmtCreateConfig.getSourceLocation(), configName);
-        }
-
-        long defaultPriority = stmtCreateConfig.getDefaultPriority();
-        double shortMemoryPercent = stmtCreateConfig.getShortMemoryPercent();
-        long shortCPUQuota = stmtCreateConfig.getShortCPUQuota();
-        Map<Long, List<String>> queryGroups = stmtCreateConfig.getQueryGroups();
-
-        if (isCompileOnly()) {
-            return;
-        }
-        lockUtil.createSchedulerConfigBegin(lockManager, metadataProvider.getLocks(), configName);
-        try {
-            doCreateSchedulerConfig(metadataProvider, stmtCreateConfig, configName, defaultPriority, shortMemoryPercent,
-                    shortCPUQuota, queryGroups);
-        } finally {
-            metadataProvider.getLocks().unlock();
-        }
-    }
-
-    protected void doCreateSchedulerConfig(MetadataProvider metadataProvider,
-            CreateSchedulerConfigStatement stmtCreateConfig, String configName, long defaultPriority,
-            double shortMemoryPercent, long shortCPUQuota, Map<Long, List<String>> queryGroups) throws Exception {
-        /* Begins a metadata transaction to ensure atomic updates. */
-        MetadataTransactionContext mdTxnCtx = MetadataManager.INSTANCE.beginTransaction();
-        metadataProvider.setMetadataTxnContext(mdTxnCtx);
-
-        /*
-            Checks if the scheduler config already exists:
-            If IF NOT EXISTS is specified and also the config already exists, it skips creation instead of failing.
-            Otherwise, it throws an error (SCHEDULER_CONFIG_ALREADY_EXISTS).
-        */
-
-        try {
-            SchedulerConfigMetadataEntity existingConfig =
-                    MetadataManager.INSTANCE.getSchedulerConfig(mdTxnCtx, configName);
-            if (existingConfig != null) {
-                if (stmtCreateConfig.getIfNotExists()) {
-                    MetadataManager.INSTANCE.commitTransaction(mdTxnCtx);
-                    return;
-                } else {
-                    throw new CompilationException(ErrorCode.SCHEDULER_CONFIG_ALREADY_EXISTS,
-                            stmtCreateConfig.getSourceLocation(), configName);
-                }
-            }
-            /*
-                Creates a scheduler configuration (SchedulerConfigDescriptor).
-                Inserts the configuration into the metadata.
-                Commits the transaction.
-            */
-
-            SchedulerConfigRecordDescriptor configDescriptor = new SchedulerConfigRecordDescriptor(configName,
-                    defaultPriority, shortMemoryPercent, shortCPUQuota, queryGroups);
-            SchedulerConfigMetadataEntity configMetadataEntity = new SchedulerConfigMetadataEntity(configDescriptor);
-
-            MetadataManager.INSTANCE.addSchedulerConfig(mdTxnCtx, configMetadataEntity);
-            MetadataManager.INSTANCE.commitTransaction(mdTxnCtx);
-        } catch (Exception e) {
-            abort(e, e, mdTxnCtx);
-            throw e;
-        }
-    }
-
-    protected void handleSchedulerConfigDropStatement(MetadataProvider metadataProvider, Statement stmt)
-            throws AlgebricksException, RemoteException {
-        validateWorkloadManagerEnabled(stmt);
-        SchedulerConfigDropStatement stmtConfigDrop = (SchedulerConfigDropStatement) stmt;
-        String configName = stmtConfigDrop.getConfigName();
-
-        if (isCompileOnly()) {
-            return;
-        }
-        lockUtil.dropSchedulerConfigBegin(lockManager, metadataProvider.getLocks(), configName);
-        try {
-            doDropSchedulerConfig(metadataProvider, stmtConfigDrop);
-        } finally {
-            metadataProvider.getLocks().unlock();
-        }
-    }
-
-    private void doDropSchedulerConfig(MetadataProvider metadataProvider, SchedulerConfigDropStatement stmtConfigDrop)
-            throws RemoteException, AlgebricksException {
-
-        MetadataTransactionContext mdTxnCtx = MetadataManager.INSTANCE.beginTransaction();
-        metadataProvider.setMetadataTxnContext(mdTxnCtx);
-        String schedulerConfigName = stmtConfigDrop.getConfigName();
-
-        try {
-            String currentlyEnabledConfig = getCurrentlyEnabledSchedulerConfig(mdTxnCtx);
-            if (schedulerConfigName.equals(currentlyEnabledConfig)) {
-                throw new CompilationException(ErrorCode.SCHEDULER_CONFIG_IS_ENABLED,
-                        stmtConfigDrop.getSourceLocation(), schedulerConfigName);
-            }
-
-            SchedulerConfigMetadataEntity configMetadataEntity =
-                    MetadataManager.INSTANCE.getSchedulerConfig(mdTxnCtx, schedulerConfigName);
-            if (configMetadataEntity == null) {
-                if (stmtConfigDrop.getIfExists()) {
-                    MetadataManager.INSTANCE.commitTransaction(mdTxnCtx);
-                    return;
-                } else {
-                    throw new CompilationException(ErrorCode.SCHEDULER_CONFIG_NOT_FOUND,
-                            stmtConfigDrop.getSourceLocation(), schedulerConfigName);
-                }
-            }
-
-            MetadataManager.INSTANCE.dropSchedulerConfig(mdTxnCtx, schedulerConfigName);
-            MetadataManager.INSTANCE.commitTransaction(mdTxnCtx);
-        } catch (Exception e) {
-            abort(e, e, mdTxnCtx);
-            throw e;
-        }
-    }
-
-    protected void handleUpsertQGroup(MetadataProvider metadataProvider, Statement stmt)
-            throws AlgebricksException, RemoteException {
-        validateWorkloadManagerEnabled(stmt);
-        UpsertQGroupStatement stmtUpsert = (UpsertQGroupStatement) stmt;
-        String configName = stmtUpsert.getConfigName();
-
-        if (isCompileOnly()) {
-            return;
-        }
-        lockUtil.updateSchedulerConfigBegin(lockManager, metadataProvider.getLocks(), configName);
-        try {
-            doUpsertQGroup(metadataProvider, stmtUpsert);
-        } finally {
-            metadataProvider.getLocks().unlock();
-        }
-    }
-
-    private void doUpsertQGroup(MetadataProvider metadataProvider, UpsertQGroupStatement stmtUpsert)
-            throws RemoteException, AlgebricksException {
-        MetadataTransactionContext mdTxnCtx = MetadataManager.INSTANCE.beginTransaction();
-        metadataProvider.setMetadataTxnContext(mdTxnCtx);
-        String schedulerConfigName = stmtUpsert.getConfigName();
-
-        try {
-            SchedulerConfigMetadataEntity configMetadataEntity =
-                    MetadataManager.INSTANCE.getSchedulerConfig(mdTxnCtx, schedulerConfigName);
-
-            String currentEnabledConfig = getCurrentlyEnabledSchedulerConfig(mdTxnCtx);
-            if (configMetadataEntity == null) {
-                throw new CompilationException(ErrorCode.SCHEDULER_CONFIG_NOT_FOUND, stmtUpsert.getSourceLocation(),
-                        schedulerConfigName);
-            }
-            configMetadataEntity.upsertQueryGroup(stmtUpsert.getUpsertQueryGroups());
-            MetadataManager.INSTANCE.dropSchedulerConfig(mdTxnCtx, schedulerConfigName);
-            MetadataManager.INSTANCE.addSchedulerConfig(mdTxnCtx, configMetadataEntity);
-            MetadataManager.INSTANCE.commitTransaction(mdTxnCtx);
-
-            if (stmtUpsert.getConfigName().equals(currentEnabledConfig)) {
-                deliverInfoToWorkloadManger(new UpsertGroupInfo(stmtUpsert.getUpsertQueryGroups()));
-            }
-        } catch (Exception e) {
-            abort(e, e, mdTxnCtx);
-            throw e;
-        }
-    }
-
-    protected void handleDeleteQGroup(MetadataProvider metadataProvider, Statement stmt)
-            throws AlgebricksException, RemoteException {
-        validateWorkloadManagerEnabled(stmt);
-        DeleteQGroupStatement stmtDelete = (DeleteQGroupStatement) stmt;
-        String configName = stmtDelete.getConfigName();
-
-        if (isCompileOnly()) {
-            return;
-        }
-        lockUtil.createSchedulerConfigBegin(lockManager, metadataProvider.getLocks(), configName);
-        try {
-            doDeleteQGroup(metadataProvider, stmtDelete);
-        } finally {
-            metadataProvider.getLocks().unlock();
-        }
-    }
-
-    private void doDeleteQGroup(MetadataProvider metadataProvider, DeleteQGroupStatement stmtDelete)
-            throws RemoteException, AlgebricksException {
-        MetadataTransactionContext mdTxnCtx = MetadataManager.INSTANCE.beginTransaction();
-        metadataProvider.setMetadataTxnContext(mdTxnCtx);
-        String schedulerConfigName = stmtDelete.getConfigName();
-
-        try {
-            SchedulerConfigMetadataEntity configMetadataEntity =
-                    MetadataManager.INSTANCE.getSchedulerConfig(mdTxnCtx, schedulerConfigName);
-            String currentEnabledConfig = getCurrentlyEnabledSchedulerConfig(mdTxnCtx);
-
-            if (configMetadataEntity == null) {
-                throw new CompilationException(ErrorCode.SCHEDULER_CONFIG_NOT_FOUND, stmtDelete.getSourceLocation(),
-                        schedulerConfigName);
-            }
-
-            if (!configMetadataEntity.deleteQueryGroup(stmtDelete.getDeleteQueryGroups())) {
-                throw new CompilationException(ErrorCode.SCHEDULER_GROUP_NOT_FOUND, stmtDelete.getSourceLocation(),
-                        schedulerConfigName);
-            }
-
-            MetadataManager.INSTANCE.dropSchedulerConfig(mdTxnCtx, schedulerConfigName);
-            MetadataManager.INSTANCE.addSchedulerConfig(mdTxnCtx, configMetadataEntity);
-            MetadataManager.INSTANCE.commitTransaction(mdTxnCtx);
-            if (stmtDelete.getConfigName().equals(currentEnabledConfig)) {
-                deliverInfoToWorkloadManger(new DeleteGroupInfo(stmtDelete.getDeleteQueryGroups()));
-            }
-        } catch (Exception e) {
-            abort(e, e, mdTxnCtx);
-            throw e;
-        }
-    }
-
-    private String getCurrentlyEnabledSchedulerConfig(MetadataTransactionContext mdTxnCtx) throws AlgebricksException {
-        SchedulerConfigMetadataEntity configStateEntity = getSchedulerStateEntity(mdTxnCtx);
-        if (configStateEntity == null) {
-            return null;
-        }
-        return configStateEntity.getEnabled();
-    }
-
-    private SchedulerConfigMetadataEntity getSchedulerStateEntity(MetadataTransactionContext mdTxnCtx)
-            throws AlgebricksException {
-        return MetadataManager.INSTANCE.getSchedulerConfig(mdTxnCtx, SCHEDULER_STATE);
-    }
-
-    private SchedulerConfigMetadataEntity createSchedulerStateEntity(String enabledConfigName) {
-        return new SchedulerConfigMetadataEntity(
-                new SchedulerConfigStateDescriptor(SCHEDULER_STATE, enabledConfigName));
-    }
-
-    protected void handleEnableSchedulerConfig(MetadataProvider metadataProvider, Statement stmt)
-            throws AlgebricksException, RemoteException {
-        validateWorkloadManagerEnabled(stmt);
-        EnableSchedulerStatement stmtEnable = (EnableSchedulerStatement) stmt;
-        String configName = stmtEnable.getConfigName();
-
-        if (isCompileOnly()) {
-            return;
-        }
-        lockUtil.enableSchedulerConfigBegin(lockManager, metadataProvider.getLocks(), configName);
-        try {
-            doEnableSchedulerConfig(metadataProvider, stmtEnable);
-        } finally {
-            metadataProvider.getLocks().unlock();
-        }
-    }
-
-    private void doEnableSchedulerConfig(MetadataProvider metadataProvider, EnableSchedulerStatement stmtEnable)
-            throws RemoteException, AlgebricksException {
-        String schedulerConfigName = stmtEnable.getConfigName();
-        MetadataTransactionContext mdTxnCtx = MetadataManager.INSTANCE.beginTransaction();
-        metadataProvider.setMetadataTxnContext(mdTxnCtx);
-        SchedulerConfigMetadataEntity configMetadataEntity = null;
-        try {
-            /* skip validation for enabling default config */
-            if (!schedulerConfigName.equals(SCHEDULER_DEFAULT_CONFIG_NAME)) {
-                configMetadataEntity = MetadataManager.INSTANCE.getSchedulerConfig(mdTxnCtx, schedulerConfigName);
-
-                if (configMetadataEntity == null) {
-                    throw new CompilationException(ErrorCode.SCHEDULER_CONFIG_NOT_FOUND, stmtEnable.getSourceLocation(),
-                            schedulerConfigName);
-                }
-            }
-            /* set config enabled - config state record not existed */
-            SchedulerConfigMetadataEntity configStateEntity = getSchedulerStateEntity(mdTxnCtx);
-            if (configStateEntity == null) {
-                configStateEntity = createSchedulerStateEntity(schedulerConfigName);
-                MetadataManager.INSTANCE.addSchedulerConfig(mdTxnCtx, configStateEntity);
-            }
-            /* if the config has not already been enabled */
-            else if (!configStateEntity.getEnabled().equals(schedulerConfigName)) {
-                configStateEntity.setEnabled(schedulerConfigName);
-                MetadataManager.INSTANCE.dropSchedulerConfig(mdTxnCtx, SCHEDULER_STATE);
-                MetadataManager.INSTANCE.addSchedulerConfig(mdTxnCtx, configStateEntity);
-            }
-            /* commit transaction */
-            MetadataManager.INSTANCE.commitTransaction(mdTxnCtx);
-            assert configMetadataEntity != null;
-            SchedulerConfigRecordDescriptor scrd =
-                    (SchedulerConfigRecordDescriptor) configMetadataEntity.getSchedulerConfig();
-            deliverInfoToWorkloadManger(new EnableConfigInfo(scrd.getDefaultPriority(), scrd.getShortMemoryPercent(),
-                    (int) scrd.getShortCPUQuota(), scrd.getGroupToPriority()));
-        } catch (Exception e) {
-            abort(e, e, mdTxnCtx);
-            throw e;
-        }
-    }
-
-    protected void handleUpdateSchedulerConfig(MetadataProvider metadataProvider, Statement stmt)
-            throws AlgebricksException, RemoteException {
-        validateWorkloadManagerEnabled(stmt);
-        UpdateSchedulerStatement stmtUpdate = (UpdateSchedulerStatement) stmt;
-        String configName = stmtUpdate.getConfigName();
-
-        if (isCompileOnly()) {
-            return;
-        }
-        lockUtil.createSchedulerConfigBegin(lockManager, metadataProvider.getLocks(), configName);
-        try {
-            doUpdateSchedulerConfig(metadataProvider, stmtUpdate);
-        } finally {
-            metadataProvider.getLocks().unlock();
-        }
-    }
-
-    private void doUpdateSchedulerConfig(MetadataProvider metadataProvider, UpdateSchedulerStatement stmtUpdate)
-            throws RemoteException, AlgebricksException {
-        MetadataTransactionContext mdTxnCtx = MetadataManager.INSTANCE.beginTransaction();
-        metadataProvider.setMetadataTxnContext(mdTxnCtx);
-        String schedulerConfigName = stmtUpdate.getConfigName();
-        try {
-            SchedulerConfigMetadataEntity configMetadataEntity =
-                    MetadataManager.INSTANCE.getSchedulerConfig(mdTxnCtx, schedulerConfigName);
-
-            if (configMetadataEntity == null) {
-                throw new CompilationException(ErrorCode.SCHEDULER_CONFIG_NOT_FOUND, stmtUpdate.getSourceLocation(),
-                        schedulerConfigName);
-            }
-
-            configMetadataEntity.updateConfigParameters(stmtUpdate.getDefaultPriority(),
-                    stmtUpdate.getShortMemoryPercent(), stmtUpdate.getShortCPUQuota());
-            MetadataManager.INSTANCE.dropSchedulerConfig(mdTxnCtx, schedulerConfigName);
-            MetadataManager.INSTANCE.addSchedulerConfig(mdTxnCtx, configMetadataEntity);
             MetadataManager.INSTANCE.commitTransaction(mdTxnCtx);
         } catch (Exception e) {
             abort(e, e, mdTxnCtx);
@@ -5632,6 +5356,9 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
         stats.setQueueWaitTime(resultMetadata.getQueueWaitTimeInNanos());
         stats.setBufferCacheHitRatio(resultMetadata.getBufferCacheHitRatio());
         stats.setBufferCachePageReadCount(resultMetadata.getBufferCachePageReadCount());
+        stats.setCloudReadRequestsCount(resultMetadata.getCloudReadRequestsCount());
+        stats.setCloudPagesReadCount(resultMetadata.getCloudPagesReadCount());
+        stats.setCloudPagesPersistedCount(resultMetadata.getCloudPagesPersistedCount());
         stats.setAddedToQueueTime(resultMetadata.getJobAddedToQueueTime());
         stats.setAddedToTheMemoryQueueTime(resultMetadata.getJobAddedToMemoryQueueTime());
         stats.setExecutionStartTime(resultMetadata.getJobExecutionStartTime());
@@ -6083,6 +5810,11 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
         }
     }
 
+    protected void beforeTxnCommit(MetadataProvider metadataProvider, Creator creator, EntityDetails entityDetails)
+            throws AlgebricksException {
+        //no op
+    }
+
     private boolean isWorkloadMangerEnabled() {
         ClusterControllerService ccs = (ClusterControllerService) (appCtx.getServiceContext()).getControllerService();
         return ccs.getJobManager() instanceof WorkloadManager;
@@ -6099,6 +5831,8 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
         ClusterControllerService ccs = (ClusterControllerService) (appCtx.getServiceContext()).getControllerService();
         ccs.getWorkQueue().schedule(new NotifyWorkloadConfigWork(ccs, workloadConfigInfo));
     }
+
+
 
     protected enum CreateResult {
         NOOP,

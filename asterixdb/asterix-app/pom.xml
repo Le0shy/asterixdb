@@ -38,6 +38,7 @@
     <appendedResourcesDirectory>${basedir}/src/main/appended-resources</appendedResourcesDirectory>
     <sonar.sources>pom.xml,src/main/java,src/main/resources</sonar.sources>
     <pip.path>${project.build.directory}/bin/pip3</pip.path>
+    <pypip.path>${project.build.directory}/bin/python</pypip.path>
     <shiv.path>${project.build.directory}/bin/shiv</shiv.path>
     <asterix-test-datagenerator-maven-plugin.version>${project.version}</asterix-test-datagenerator-maven-plugin.version>
   </properties>
@@ -184,7 +185,7 @@
             <configuration>
               <includeClassifiers>testlib</includeClassifiers>
               <outputDirectory>target/data/externallib</outputDirectory>
-              <overwrite>true</overwrite>
+              <overWriteIfNewer>true</overWriteIfNewer>
               <stripVersion>true</stripVersion>
             </configuration>
           </execution>
@@ -282,6 +283,7 @@
                 <argument>${project.build.directory}${file.separator}TweetSent.pyz</argument>
                 <argument>--site-packages</argument>
                 <argument>${project.build.directory}${file.separator}..${file.separator}src${file.separator}test${file.separator}resources${file.separator}TweetSent</argument>
+                <argument>--prefer-binary</argument>
                 <argument>scikit-learn</argument>
               </arguments>
               <environmentVariables>
@@ -308,8 +310,6 @@
                 <argument>15055</argument>
                 <argument>--location</argument>
                 <argument>${project.build.directory}/azurite</argument>
-                <argument>--debug</argument>
-                <argument>${project.build.directory}/azurite/logs/azurite-debug.log</argument>
               </arguments>
               <async>true</async>
               <outputFile>${project.build.directory}/azurite/logs/azurite.log</outputFile>
@@ -326,7 +326,7 @@
               <workingDirectory>${project.build.directory}/fake-gcs-server</workingDirectory>
               <arguments>
                 <argument>-port</argument>
-                <argument>4443</argument>
+                <argument>24443</argument>
                 <argument>-scheme</argument>
                 <argument>http</argument>
                 <argument>-host</argument>
@@ -337,6 +337,73 @@
                 <argument>${project.build.directory}/fake-gcs-server/storage</argument>
               </arguments>
               <async>true</async>
+            </configuration>
+          </execution>
+          <execution>
+            <id>clone-ch2</id>
+            <phase>${prepare-env.stage}</phase>
+            <goals>
+              <goal>exec</goal>
+            </goals>
+            <configuration>
+              <executable>git</executable>
+              <arguments>
+                <argument>clone</argument>
+                <argument>https://github.com/couchbaselabs/ch2.git</argument>
+                <argument>${project.build.directory}/ch2</argument>
+              </arguments>
+            </configuration>
+          </execution>
+          <execution>
+            <id>numpy-install</id>
+            <phase>${prepare-env.stage}</phase>
+            <goals>
+              <goal>exec</goal>
+            </goals>
+            <configuration>
+              <executable>${pip.path}</executable>
+              <workingDirectory>${project.build.directory}</workingDirectory>
+              <arguments>
+                <argument>install</argument>
+                <argument>--prefer-binary</argument>
+                <argument>-r </argument>
+                <argument>ch2/requirements.txt</argument>
+              </arguments>
+              <environmentVariables>
+                <VIRTUALENV>${project.build.directory}</VIRTUALENV>
+                <PATH>${project.build.directory}${path.separator}${env.PATH}${file.separator}bin</PATH>
+              </environmentVariables>
+            </configuration>
+          </execution>
+          <execution>
+            <id>ch2-datagen</id>
+            <phase>${prepare-env.stage}</phase>
+            <goals>
+              <goal>exec</goal>
+            </goals>
+            <configuration>
+              <executable>${pypip.path}</executable>
+              <workingDirectory>${project.build.directory}/ch2/ch2driver/pytpcc</workingDirectory>
+              <arguments>
+                <argument>tpcc.py</argument>
+                <argument>nestcollectionsdocgen</argument>
+                <argument>--warehouses</argument>
+                <argument>1</argument>
+                <argument>--tclients</argument>
+                <argument>1</argument>
+                <argument>--no-execute</argument>
+                <argument>--bulkload-batch-size</argument>
+                <argument>100000000</argument>
+                <argument>--docgen-load</argument>
+                <argument>--datagenSeed</argument>
+                <argument>12345</argument>
+                <argument>--config</argument>
+                <argument>${project.basedir}/src/test/resources/ch2_docgen.conf</argument>
+              </arguments>
+              <environmentVariables>
+                <VIRTUALENV>${project.build.directory}</VIRTUALENV>
+                <PATH>${project.build.directory}${path.separator}${env.PATH}${file.separator}bin</PATH>
+              </environmentVariables>
             </configuration>
           </execution>
         </executions>
@@ -423,34 +490,12 @@
         </executions>
       </plugin>
       <plugin>
-        <groupId>com.github.eirslett</groupId>
-        <artifactId>frontend-maven-plugin</artifactId>
-        <version>1.13.4</version>
-        <configuration>
-          <nodeVersion>v14.15.4</nodeVersion>
-          <npmVersion>6.14.11</npmVersion>
-          <workingDirectory>target/npm</workingDirectory>
-          <installDirectory>target/npm</installDirectory>
-        </configuration>
-        <executions>
-          <execution>
-            <id>install node and yarn</id>
-            <goals>
-              <goal>install-node-and-npm</goal>
-            </goals>
-            <phase>${azurite.npm.install.stage}</phase>
-          </execution>
-          <execution>
-            <id>azurite blob</id>
-            <phase>${azurite.install.stage}</phase>
-            <goals>
-              <goal>npm</goal>
-            </goals>
-            <configuration>
-              <arguments>install azurite</arguments>
-            </configuration>
-          </execution>
-        </executions>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-failsafe-plugin</artifactId>
       </plugin>
     </plugins>
     <pluginManagement>
@@ -513,76 +558,180 @@
     <profile>
       <id>asterix-gerrit-asterix-app</id>
       <properties>
-        <test.excludes>**/CloudStorageTest.java,**/CloudStorageGCSTest.java,**/SqlppExecutionWithCancellationTest.java,**/DmlTest.java,**/RepeatedTest.java,**/SqlppExecutionTest.java,**/SqlppExecutionColumnTest.java,**/*StaticPartitioning*Test.java,**/*Ssl*Test.java,**/Podman*.java,**/*AnalyzedExecutionTest.java,**/SqlppProfiledExecutionTest.java,**/CloudPythonTest.java</test.excludes>
+        <test.excludes>
+          **/CloudStorageTest.java,**/CloudStorageCancellationTest.java,**/CloudStorageGCSTest.java,**/CloudStorageUnstableTest.java,
+          **/SqlppExecutionWithCancellationTest.java,**/DmlTest.java,**/RepeatedTest.java,**/SqlppExecutionTest.java,
+          **/SqlppExecutionColumnTest.java,**/*StaticPartitioning*Test.java,**/*Ssl*Test.java,**/Podman*.java,
+          **/*AnalyzedExecutionTest.java,**/SqlppProfiledExecutionTest.java,**/CloudPythonTest.java,
+          **/CloudStorageAzTest.java,**/AzureBlobStorageExternalDatasetTest.java,**/GCSCloudStorageUnstableTest,
+          **/AzureBlobStorageExternalDatasetOnePartitionTest.java,**/SqlppSinglePointLookupExecutionTest.java,
+          **/Atomic*.java, **/AwsS3*.java, **/*SqlppHdfs*.java, **/*RQGTest.java, **/*RQJTest.java
+        </test.excludes>
         <itest.excludes>**/*.java</itest.excludes>
+      </properties>
+    </profile>
+    <profile>
+      <id>asterix-gerrit-asterix-app-sql-execution</id>
+      <properties>
+        <test.includes>**/SqlppProfiledExecutionTest.java,**/SqlppExecutionTest.java</test.includes>
+        <itest.includes>
+          **/SqlppExecution*IT.java,**/ExternalPythonFunctionIT.java,**/CloudPythonTest.java
+        </itest.includes>
+        <failIfNoTests>false</failIfNoTests>
       </properties>
       <build>
         <plugins>
           <plugin>
             <groupId>org.apache.maven.plugins</groupId>
             <artifactId>maven-surefire-plugin</artifactId>
-            <executions>
-              <execution>
-                <id>SqlppExecutionTest</id>
-                <configuration>
-                  <excludes combine.self="override"/>
-                  <argLine>
-                    -enableassertions -Xmx${test.heap.size}m
-                    -Dfile.encoding=UTF-8
-                    -Xdebug
-                    -Xrunjdwp:transport=dt_socket,server=y,address=8000,suspend=${debug.suspend.flag}
-                    -Xloggc:"${project.build.directory}/surefire-reports/SqlppExecutionTest-%p-gc.log" -XX:+PrintGC -XX:+PrintGCDateStamps -XX:GCLogFileSize=10M
-                    --add-opens=jdk.management/com.sun.management.internal=ALL-UNNAMED --add-opens=java.management/sun.management=ALL-UNNAMED --add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.nio=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED
-                  </argLine>
-                </configuration>
-                <goals>
-                  <goal>test</goal>
-                </goals>
-              </execution>
-            </executions>
+            <configuration>
+              <failIfNoTests>false</failIfNoTests>
+            </configuration>
           </plugin>
         </plugins>
       </build>
     </profile>
     <profile>
-      <id>asterix-gerrit-asterix-app-sql-execution</id>
-      <properties>
-        <test.excludes>**/*.java</test.excludes>
-        <itest.includes>**/SqlppExecution*IT.java,**/ExternalPythonFunctionIT.java,**/CloudPythonTest.java</itest.includes>
-        <failIfNoTests>false</failIfNoTests>
-      </properties>
-    </profile>
-    <profile>
       <id>asterix-gerrit-asterix-app-sql-rqg</id>
       <properties>
-        <test.excludes>**/*.java</test.excludes>
+        <test.includes>**/*RQGTest.java, **/*RQJTest.java</test.includes>
         <itest.includes>**/SqlppRQG*IT.java</itest.includes>
-        <failIfNoTests>false</failIfNoTests>
       </properties>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-surefire-plugin</artifactId>
+            <configuration>
+              <failIfNoTests>false</failIfNoTests>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
     </profile>
     <profile>
       <id>asterix-gerrit-ssl-compression</id>
       <properties>
-        <test.includes>**/*StaticPartitioning*Test.java,**/*Ssl*Test.java,**/*AnalyzedExecutionTest.java,**/SqlppExecutionColumnTest.java</test.includes>
+        <test.includes>
+          **/SqlppExecutionColumnTest.java,**/*Ssl*Test.java
+        </test.includes>
         <itest.excludes>**/*.java</itest.excludes>
-        <failIfNoTests>false</failIfNoTests>
       </properties>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-failsafe-plugin</artifactId>
+            <configuration>
+              <failIfNoTests>false</failIfNoTests>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
     </profile>
     <profile>
       <id>asterix-gerrit-verify-asterix-app</id>
       <properties>
-        <test.includes>**/SqlppProfiledExecutionTest.java</test.includes>
-        <itest.excludes>**/External*IT.java,**/SqlppExecution*IT.java,**/SqlppRQG*IT.java,**/RebalanceWithCancellationIT.java</itest.excludes>
+        <test.includes>
+          **/*StaticPartitioning*Test.java,**/*AnalyzedExecutionTest.java,**/Atomic*.java
+        </test.includes>
+        <itest.excludes>**/External*IT.java,**/SqlppExecution*IT.java,**/RebalanceWithCancellationIT.java,**/SqlppRQG*IT.java</itest.excludes>
         <failIfNoTests>false</failIfNoTests>
       </properties>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-surefire-plugin</artifactId>
+            <configuration>
+              <failIfNoTests>false</failIfNoTests>
+            </configuration>
+          </plugin>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-failsafe-plugin</artifactId>
+            <configuration>
+              <failIfNoTests>false</failIfNoTests>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
     </profile>
     <profile>
       <id>asterix-gerrit-rebalance-cancellation</id>
       <properties>
         <test.excludes>**/*.java</test.excludes>
         <itest.includes>**/RebalanceWithCancellationIT.java</itest.includes>
+      </properties>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-surefire-plugin</artifactId>
+            <configuration>
+              <failIfNoTests>false</failIfNoTests>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+    <profile>
+      <id>asterix-gerrit-cloud-tests</id>
+      <properties>
+        <test.includes>
+          **/CloudStorageTest.java,
+          **/CloudStorageCancellationTest.java,
+          **/SqlppSinglePointLookupExecutionTest.java, **/AwsS3*.java
+        </test.includes>
         <failIfNoTests>false</failIfNoTests>
       </properties>
+    </profile>
+    <profile>
+      <id>asterix-gerrit-cloud-nons3-tests</id>
+      <properties>
+        <test.includes>
+          **/GCSCloudStorageUnstableTest.java,**/CloudStorageAzTest.java,**/AzureBlobStorageExternalDatasetTest.java,
+          **/AzureBlobStorageExternalDatasetOnePartitionTest.java,**/CloudStorageUnstableTest.java, **/*SqlppHdfs*.java
+        </test.includes>
+        <failIfNoTests>false</failIfNoTests>
+      </properties>
+    </profile>
+    <profile>
+        <id>azurite-tests</id>
+        <build>
+            <plugins>
+                <plugin>
+                    <groupId>com.github.eirslett</groupId>
+                    <artifactId>frontend-maven-plugin</artifactId>
+                    <version>1.13.4</version>
+                    <configuration>
+                        <nodeVersion>v14.15.4</nodeVersion>
+                        <npmVersion>6.14.11</npmVersion>
+                        <workingDirectory>target/npm</workingDirectory>
+                        <installDirectory>target/npm</installDirectory>
+                    </configuration>
+                    <executions>
+                        <execution>
+                            <id>install node and yarn</id>
+                            <goals>
+                                <goal>install-node-and-npm</goal>
+                            </goals>
+                            <phase>${azurite.npm.install.stage}</phase>
+                        </execution>
+                        <execution>
+                            <id>azurite blob</id>
+                            <phase>${azurite.install.stage}</phase>
+                            <goals>
+                                <goal>npm</goal>
+                            </goals>
+                            <configuration>
+                                <arguments>install azurite@3.31.0</arguments>
+                            </configuration>
+                        </execution>
+                    </executions>
+                </plugin>
+            </plugins>
+        </build>
     </profile>
   </profiles>
   <dependencies>
@@ -985,6 +1134,17 @@
       <groupId>software.amazon.awssdk</groupId>
       <artifactId>auth</artifactId>
     </dependency>
+    <dependency>
+      <groupId>com.adobe.testing</groupId>
+      <artifactId>s3mock</artifactId>
+      <scope>test</scope>
+      <exclusions>
+        <exclusion>
+          <groupId>org.springframework.boot</groupId>
+          <artifactId>spring-boot-starter-logging</artifactId>
+        </exclusion>
+      </exclusions>
+    </dependency>
     <!-- Mock for AWS S3 -->
     <dependency>
       <groupId>io.findify</groupId>
@@ -1018,57 +1178,15 @@
     <dependency>
       <groupId>org.apache.iceberg</groupId>
       <artifactId>iceberg-core</artifactId>
-      <version>1.1.0</version>
       <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>org.apache.iceberg</groupId>
       <artifactId>iceberg-data</artifactId>
-      <version>1.1.0</version>
-      <exclusions>
-        <exclusion>
-          <groupId>org.slf4j</groupId>
-          <artifactId>slf4j-api</artifactId>
-        </exclusion>
-        <exclusion>
-          <groupId>org.apache.parquet</groupId>
-          <artifactId>parquet-avro</artifactId>
-        </exclusion>
-        <exclusion>
-          <groupId>org.apache.iceberg</groupId>
-          <artifactId>iceberg-core</artifactId>
-        </exclusion>
-      </exclusions>
     </dependency>
     <dependency>
       <groupId>org.apache.iceberg</groupId>
       <artifactId>iceberg-parquet</artifactId>
-      <version>1.1.0</version>
-      <exclusions>
-        <exclusion>
-          <groupId>org.slf4j</groupId>
-          <artifactId>slf4j-api</artifactId>
-        </exclusion>
-        <exclusion>
-          <groupId>org.apache.parquet</groupId>
-          <artifactId>parquet-avro</artifactId>
-        </exclusion>
-        <exclusion>
-          <groupId>org.apache.iceberg</groupId>
-          <artifactId>iceberg-core</artifactId>
-        </exclusion>
-      </exclusions>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.parquet</groupId>
-      <artifactId>parquet-avro</artifactId>
-      <version>1.12.3</version>
-      <exclusions>
-        <exclusion>
-          <groupId>org.slf4j</groupId>
-          <artifactId>slf4j-api</artifactId>
-        </exclusion>
-      </exclusions>
     </dependency>
     <dependency>
       <groupId>tech.allegro.schema.json2avro</groupId>

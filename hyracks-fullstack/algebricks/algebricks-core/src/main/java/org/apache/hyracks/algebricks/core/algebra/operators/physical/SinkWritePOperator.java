@@ -26,7 +26,6 @@ import java.util.List;
 import org.apache.commons.lang3.mutable.Mutable;
 import org.apache.hyracks.algebricks.common.constraints.AlgebricksPartitionConstraint;
 import org.apache.hyracks.algebricks.common.exceptions.AlgebricksException;
-import org.apache.hyracks.algebricks.common.utils.ListSet;
 import org.apache.hyracks.algebricks.common.utils.Pair;
 import org.apache.hyracks.algebricks.core.algebra.base.IHyracksJobBuilder;
 import org.apache.hyracks.algebricks.core.algebra.base.ILogicalExpression;
@@ -42,6 +41,7 @@ import org.apache.hyracks.algebricks.core.algebra.metadata.IWriteDataSink;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.IOperatorSchema;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.WriteOperator;
 import org.apache.hyracks.algebricks.core.algebra.properties.ILocalStructuralProperty;
+import org.apache.hyracks.algebricks.core.algebra.properties.INodeDomain;
 import org.apache.hyracks.algebricks.core.algebra.properties.IPartitioningProperty;
 import org.apache.hyracks.algebricks.core.algebra.properties.IPartitioningRequirementsCoordinator;
 import org.apache.hyracks.algebricks.core.algebra.properties.IPhysicalPropertiesVector;
@@ -49,7 +49,7 @@ import org.apache.hyracks.algebricks.core.algebra.properties.LocalOrderProperty;
 import org.apache.hyracks.algebricks.core.algebra.properties.OrderColumn;
 import org.apache.hyracks.algebricks.core.algebra.properties.PhysicalRequirements;
 import org.apache.hyracks.algebricks.core.algebra.properties.StructuralPropertiesVector;
-import org.apache.hyracks.algebricks.core.algebra.properties.UnorderedPartitionedProperty;
+import org.apache.hyracks.algebricks.core.algebra.util.OperatorPropertiesUtil;
 import org.apache.hyracks.algebricks.core.jobgen.impl.JobGenContext;
 import org.apache.hyracks.algebricks.core.jobgen.impl.JobGenHelper;
 import org.apache.hyracks.algebricks.runtime.base.IPushRuntimeFactory;
@@ -95,8 +95,9 @@ public class SinkWritePOperator extends AbstractPhysicalOperator {
         IPartitioningProperty pp;
         switch (op.getExecutionMode()) {
             case PARTITIONED:
-                pp = UnorderedPartitionedProperty.of(new ListSet<>(partitionVariables),
-                        context.getComputationNodeDomain());
+                INodeDomain nodeDomain = context.getComputationNodeDomain();
+                int[][] partitionsMap = context.getMetadataProvider().getPartitionsMap(nodeDomain);
+                pp = OperatorPropertiesUtil.createUnorderedProperty(nodeDomain, partitionsMap, partitionVariables);
                 break;
             case UNPARTITIONED:
                 pp = IPartitioningProperty.UNPARTITIONED;
@@ -147,13 +148,22 @@ public class SinkWritePOperator extends AbstractPhysicalOperator {
                 JobGenHelper.variablesToAscBinaryComparatorFactories(partitionVariables, typeEnv, context);
 
         // Key expressions
+        boolean allConstants = true;
         IScalarEvaluatorFactory[] keyEvalFactories = new IScalarEvaluatorFactory[write.getKeyExpressions().size()];
         List<Mutable<ILogicalExpression>> keyExpressions = write.getKeyExpressions();
         if (!keyExpressions.isEmpty()) {
             for (int i = 0; i < keyExpressions.size(); i++) {
                 ILogicalExpression keyExpr = keyExpressions.get(i).getValue();
+                if (keyExpr.getExpressionTag() != LogicalExpressionTag.CONSTANT) {
+                    allConstants = false;
+                }
                 keyEvalFactories[i] = runtimeProvider.createEvaluatorFactory(keyExpr, typeEnv, inputSchemas, context);
             }
+        }
+
+        // key cannot be fully constant
+        if (!keyExpressions.isEmpty() && allConstants) {
+            throw AlgebricksException.create(ErrorCode.EXPRESSION_CANNOT_BE_CONSTANT, op.getSourceLocation(), "KEY");
         }
 
         RecordDescriptor recDesc =
@@ -171,7 +181,7 @@ public class SinkWritePOperator extends AbstractPhysicalOperator {
 
         } else {
             runtimeAndConstraints = mp.getWriteDatabaseWithKeyRuntime(sourceColumn, keyEvalFactories, writeDataSink,
-                    inputDesc, typeEnv.getVarType(sourceVariable));
+                    inputDesc, typeEnv.getVarType(sourceVariable), context.getWarningCollector());
         }
 
         IPushRuntimeFactory runtime = runtimeAndConstraints.first;

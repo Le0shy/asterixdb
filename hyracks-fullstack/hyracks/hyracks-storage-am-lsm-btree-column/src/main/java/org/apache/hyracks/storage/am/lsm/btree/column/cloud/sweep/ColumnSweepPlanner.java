@@ -57,6 +57,7 @@ public final class ColumnSweepPlanner {
     private final BitSet reevaluatedPlan;
     private final IntSet indexedColumns;
     private final ISweepClock clock;
+    private final int evictionPlanReevaluationThreshold;
     private int numberOfColumns;
     private long lastAccess;
     private int maxSize;
@@ -64,11 +65,10 @@ public final class ColumnSweepPlanner {
     private long[] lastAccesses;
 
     private double punchableThreshold;
-    private long lastSweepTs;
     private int numberOfSweptColumns;
     private int numberOfCloudRequests;
 
-    public ColumnSweepPlanner(int numberOfPrimaryKeys, ISweepClock clock) {
+    public ColumnSweepPlanner(int numberOfPrimaryKeys, int evictionPlanReevaluationThreshold, ISweepClock clock) {
         this.clock = clock;
         active = new AtomicBoolean(false);
         this.numberOfPrimaryKeys = numberOfPrimaryKeys;
@@ -78,6 +78,7 @@ public final class ColumnSweepPlanner {
         plan = new BitSet();
         reevaluatedPlan = new BitSet();
         punchableThreshold = INITIAL_PUNCHABLE_THRESHOLD;
+        this.evictionPlanReevaluationThreshold = evictionPlanReevaluationThreshold;
     }
 
     public boolean isActive() {
@@ -93,9 +94,11 @@ public final class ColumnSweepPlanner {
         resizeStatsArrays(numberOfColumns);
         setInitialSizes(diskComponents, sweepProjector, bufferCache);
         active.set(true);
+        // Initialize access time to the time of activating the index
+        lastAccess = clock.getCurrentTime();
     }
 
-    public void setIndexedColumns(IColumnProjectionInfo projectionInfo) {
+    public synchronized void setIndexedColumns(IColumnProjectionInfo projectionInfo) {
         indexedColumns.clear();
         for (int i = 0; i < projectionInfo.getNumberOfProjectedColumns(); i++) {
             int columnIndex = projectionInfo.getColumnIndex(i);
@@ -103,20 +106,20 @@ public final class ColumnSweepPlanner {
         }
     }
 
-    public IntSet getIndexedColumnsCopy() {
+    public synchronized IntSet getIndexedColumnsCopy() {
         return new IntOpenHashSet(indexedColumns);
     }
 
-    public synchronized void access(IColumnProjectionInfo projectionInfo, boolean hasSpace) {
-        resetPlanIfNeeded(hasSpace);
+    public synchronized void access(IColumnProjectionInfo projectionInfo) {
+        resetPlanIfNeeded();
         long accessTime = clock.getCurrentTime();
         lastAccess = accessTime;
         int numberOfColumns = projectionInfo.getNumberOfProjectedColumns();
         boolean requireCloudAccess = false;
         for (int i = 0; i < numberOfColumns; i++) {
             int columnIndex = projectionInfo.getColumnIndex(i);
+            // columnIndex can be -1 when accessing a non-existing column (i.e., not known by the schema)
             if (columnIndex >= 0) {
-                // columnIndex can be -1 when accessing a non-existing column (i.e., not known by the schema)
                 lastAccesses[columnIndex] = accessTime;
                 requireCloudAccess |= numberOfSweptColumns > 0 && plan.get(columnIndex);
             }
@@ -152,8 +155,6 @@ public final class ColumnSweepPlanner {
             punchableThreshold *= PUNCHABLE_THRESHOLD_DECREMENT;
             iter++;
         }
-        // Register the plan time
-        lastSweepTs = clock.getCurrentTime();
         // Add the number of evictable columns
         numberOfSweptColumns += numberOfEvictableColumns;
         if (numberOfEvictableColumns > 0) {
@@ -237,8 +238,8 @@ public final class ColumnSweepPlanner {
         return numberOfEvictableColumns;
     }
 
-    private void resetPlanIfNeeded(boolean hasSpace) {
-        if (!hasSpace || numberOfCloudRequests < REEVALUATE_PLAN_THRESHOLD) {
+    private void resetPlanIfNeeded() {
+        if (numberOfCloudRequests < evictionPlanReevaluationThreshold) {
             return;
         }
 
@@ -249,10 +250,10 @@ public final class ColumnSweepPlanner {
             int columnIndex = reevaluatedPlan.nextSetBit(i);
             if (!plan.get(columnIndex)) {
                 // the plan contains a stale column. Invalidate!
+                LOGGER.info("Re-planning to evict {} columns. Old plan: {} new plan: {}", numberOfEvictableColumns,
+                        plan, reevaluatedPlan);
                 plan.clear();
                 plan.or(reevaluatedPlan);
-                LOGGER.info("Re-planning to evict {} columns. The newly evictable columns are {}",
-                        numberOfEvictableColumns, plan);
                 break;
             }
         }

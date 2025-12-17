@@ -23,6 +23,7 @@ import static org.apache.asterix.test.external_dataset.aws.AwsS3ExternalDatasetT
 import static org.apache.asterix.test.external_dataset.aws.AwsS3ExternalDatasetTest.BROWSE_CONTAINER;
 import static org.apache.asterix.test.external_dataset.aws.AwsS3ExternalDatasetTest.DYNAMIC_PREFIX_AT_START_CONTAINER;
 import static org.apache.asterix.test.external_dataset.aws.AwsS3ExternalDatasetTest.FIXED_DATA_CONTAINER;
+import static org.apache.asterix.test.external_dataset.deltalake.DeltaTableGenerator.DELTA_GEN_BASEDIR;
 import static org.apache.asterix.test.external_dataset.parquet.BinaryFileConverterUtil.BINARY_GEN_BASEDIR;
 
 import java.io.BufferedWriter;
@@ -36,9 +37,12 @@ import java.nio.file.Paths;
 import java.util.Collection;
 
 import org.apache.asterix.test.external_dataset.avro.AvroFileConverterUtil;
+import org.apache.asterix.test.external_dataset.deltalake.DeltaAllTypeGenerator;
+import org.apache.asterix.test.external_dataset.deltalake.DeltaTableGenerator;
 import org.apache.asterix.test.external_dataset.parquet.BinaryFileConverterUtil;
 import org.apache.asterix.testframework.context.TestCaseContext;
 import org.apache.commons.io.FilenameUtils;
+import org.apache.hadoop.conf.Configuration;
 import org.apache.hyracks.api.util.IoUtil;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -112,6 +116,14 @@ public class ExternalDatasetTestUtils {
         // cleaning directory
         BinaryFileConverterUtil.cleanBinaryDirectory(basePath, AVRO_GEN_BASEDIR);
         AvroFileConverterUtil.convertToAvro(basePath, avroRawJsonDir, AVRO_GEN_BASEDIR);
+    }
+
+    public static void createDeltaTable() throws IOException {
+        File basePath = new File(".");
+        // cleaning directory
+        BinaryFileConverterUtil.cleanBinaryDirectory(basePath, DELTA_GEN_BASEDIR);
+        DeltaTableGenerator.prepareDeltaTableContainer(new Configuration());
+        DeltaAllTypeGenerator.createTableInsertData(new Configuration());
     }
 
     /**
@@ -191,6 +203,10 @@ public class ExternalDatasetTestUtils {
         LOGGER.info("Adding Avro files to the bucket");
         loadAvroFiles();
         LOGGER.info("Avro files added successfully");
+
+        LOGGER.info("Adding Delta Table files to the bucket");
+        loadDeltaTableFiles();
+        LOGGER.info("Delta files added successfully");
 
         LOGGER.info("Files added successfully");
     }
@@ -341,6 +357,7 @@ public class ExternalDatasetTestUtils {
 
         // Load external filter directories and files
         loadDirectory(dataBasePath, "external-filter", CSV_FILTER);
+        loadDirectory(dataBasePath, "csv-params", CSV_FILTER);
     }
 
     private static void loadTsvFiles() {
@@ -379,6 +396,7 @@ public class ExternalDatasetTestUtils {
         loadData(generatedDataBasePath, "", "heterogeneous_1.parquet", definition, definitionSegment, false, false);
         loadData(generatedDataBasePath, "", "heterogeneous_2.parquet", definition, definitionSegment, false, false);
         loadData(generatedDataBasePath, "", "parquetTypes.parquet", definition, definitionSegment, false, false);
+        loadData(generatedDataBasePath, "", "friends.parquet", definition, definitionSegment, false, false);
 
         Collection<File> files =
                 IoUtil.getMatchingFiles(Paths.get(generatedDataBasePath + "/external-filter"), PARQUET_FILTER);
@@ -402,6 +420,9 @@ public class ExternalDatasetTestUtils {
         loadData(generatedDataBasePath, "", "heterogeneous_1.avro", definition, definitionSegment, false, false);
         loadData(generatedDataBasePath, "", "heterogeneous_2.avro", definition, definitionSegment, false, false);
         loadData(generatedDataBasePath, "", "avro_type.avro", definition, definitionSegment, false, false);
+        loadData(generatedDataBasePath, "", "partition_heterogeneous.avro", definition, definitionSegment, false,
+                false);
+        loadData(generatedDataBasePath, "", "avro_logical_type.avro", definition, definitionSegment, false, false);
 
         Collection<File> files =
                 IoUtil.getMatchingFiles(Paths.get(generatedDataBasePath + "/external-filter"), AVRO_FILTER);
@@ -409,6 +430,37 @@ public class ExternalDatasetTestUtils {
             String fileName = file.getName();
             String externalFilterDefinition = file.getParent().substring(generatedDataBasePath.length() + 1) + "/";
             loadData(file.getParent(), "", fileName, "avro-data/" + externalFilterDefinition, "", false, false);
+        }
+    }
+
+    private static void loadDeltaTableFiles() {
+        String generatedDataBasePath = DELTA_GEN_BASEDIR;
+        loadDeltaDirectory(generatedDataBasePath, "/empty_delta_table", PARQUET_FILTER, "delta-data/");
+        loadDeltaDirectory(generatedDataBasePath, "/empty_delta_table/_delta_log", JSON_FILTER, "delta-data/");
+        loadDeltaDirectory(generatedDataBasePath, "/modified_delta_table", PARQUET_FILTER, "delta-data/");
+        loadDeltaDirectory(generatedDataBasePath, "/modified_delta_table/_delta_log", JSON_FILTER, "delta-data/");
+        loadDeltaDirectory(generatedDataBasePath, "/multiple_file_delta_table", PARQUET_FILTER, "delta-data/");
+        loadDeltaDirectory(generatedDataBasePath, "/multiple_file_delta_table/_delta_log", JSON_FILTER, "delta-data/");
+        loadDeltaDirectory(generatedDataBasePath, "/delta_all_type/_delta_log", JSON_FILTER, "delta-data/");
+        loadDeltaDirectory(generatedDataBasePath, "/delta_all_type", PARQUET_FILTER, "delta-data/");
+        loadDeltaDirectory(generatedDataBasePath, "/delta_file_size_nine/_delta_log", JSON_FILTER, "delta-data/");
+        loadDeltaDirectory(generatedDataBasePath, "/delta_file_size_nine", PARQUET_FILTER, "delta-data/");
+        loadDeltaDirectory(generatedDataBasePath, "/delta_file_size_one/_delta_log", JSON_FILTER, "delta-data/");
+        loadDeltaDirectory(generatedDataBasePath, "/delta_file_size_one", PARQUET_FILTER, "delta-data/");
+        loadDeltaDirectory(generatedDataBasePath, "/partitioned_delta_table", PARQUET_FILTER, "delta-data/");
+        loadDeltaDirectory(generatedDataBasePath, "/partitioned_delta_table/_delta_log", JSON_FILTER, "delta-data/");
+        loadDeltaDirectory(generatedDataBasePath, "/timestamp_partitioned_delta_table", PARQUET_FILTER, "delta-data/");
+        loadDeltaDirectory(generatedDataBasePath, "/timestamp_partitioned_delta_table/_delta_log", JSON_FILTER,
+                "delta-data/");
+    }
+
+    private static void loadDeltaDirectory(String dataBasePath, String rootPath, FilenameFilter filter,
+            String definitionPart) {
+        Collection<File> files = IoUtil.getMatchingFiles(Paths.get(dataBasePath + rootPath), filter);
+        for (File file : files) {
+            String fileName = file.getName();
+            String externalFilterDefinition = file.getParent().substring(dataBasePath.length() + 1) + "/";
+            loadData(file.getParent(), "", fileName, definitionPart + externalFilterDefinition, "", false, false);
         }
     }
 

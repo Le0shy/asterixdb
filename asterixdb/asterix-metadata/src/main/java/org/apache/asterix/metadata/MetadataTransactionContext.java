@@ -160,26 +160,26 @@ public class MetadataTransactionContext extends MetadataCache {
 
     public void dropDataset(String database, DataverseName dataverseName, String datasetName) {
         Dataset dataset = new Dataset(database, dataverseName, datasetName, null, null, null, null, null, null, null,
-                null, null, -1, MetadataUtil.PENDING_NO_OP);
+                null, null, -1, MetadataUtil.PENDING_NO_OP, null);
         droppedCache.addDatasetIfNotExists(dataset);
         logAndApply(new MetadataLogicalOperation(dataset, false));
     }
 
     public void dropIndex(String database, DataverseName dataverseName, String datasetName, String indexName) {
         Index index = new Index(database, dataverseName, datasetName, indexName, null, null, false, false,
-                MetadataUtil.PENDING_NO_OP);
+                MetadataUtil.PENDING_NO_OP, null);
         droppedCache.addIndexIfNotExists(index);
         logAndApply(new MetadataLogicalOperation(index, false));
     }
 
     public void dropDatabase(String databaseName) {
-        Database database = new Database(databaseName, false, MetadataUtil.PENDING_NO_OP);
+        Database database = new Database(databaseName, false, MetadataUtil.PENDING_NO_OP, null);
         droppedCache.addDatabaseIfNotExists(database);
         logAndApply(new MetadataLogicalOperation(database, false));
     }
 
     public void dropDataverse(String database, DataverseName dataverseName) {
-        Dataverse dataverse = new Dataverse(database, dataverseName, null, MetadataUtil.PENDING_NO_OP);
+        Dataverse dataverse = new Dataverse(database, dataverseName, null, MetadataUtil.PENDING_NO_OP, null);
         droppedCache.addDataverseIfNotExists(dataverse);
         logAndApply(new MetadataLogicalOperation(dataverse, false));
     }
@@ -198,7 +198,7 @@ public class MetadataTransactionContext extends MetadataCache {
 
     public void dropFunction(FunctionSignature signature) {
         Function function = new Function(signature, null, null, null, null, null, null, null, null, null, null, false,
-                false, null, null);
+                false, null, null, null, false);
         droppedCache.addFunctionIfNotExists(function);
         logAndApply(new MetadataLogicalOperation(function, false));
     }

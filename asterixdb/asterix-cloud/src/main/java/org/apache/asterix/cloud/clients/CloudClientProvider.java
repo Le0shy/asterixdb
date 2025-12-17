@@ -20,14 +20,20 @@ package org.apache.asterix.cloud.clients;
 
 import org.apache.asterix.cloud.clients.aws.s3.S3ClientConfig;
 import org.apache.asterix.cloud.clients.aws.s3.S3CloudClient;
+import org.apache.asterix.cloud.clients.azure.blobstorage.AzBlobStorageClientConfig;
+import org.apache.asterix.cloud.clients.azure.blobstorage.AzBlobStorageCloudClient;
 import org.apache.asterix.cloud.clients.google.gcs.GCSClientConfig;
 import org.apache.asterix.cloud.clients.google.gcs.GCSCloudClient;
 import org.apache.asterix.common.config.CloudProperties;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
+import org.apache.hyracks.cloud.util.CloudRetryableRequestUtil;
 
 public class CloudClientProvider {
+    private static final boolean UNSTABLE = isUnstable();
     public static final String S3 = "s3";
     public static final String GCS = "gs";
+    public static final String AZ_BLOB = "azblob";
+    public static final String NONE = "none";
 
     private CloudClientProvider() {
         throw new AssertionError("do not instantiate");
@@ -36,13 +42,18 @@ public class CloudClientProvider {
     public static ICloudClient getClient(CloudProperties cloudProperties, ICloudGuardian guardian)
             throws HyracksDataException {
         String storageScheme = cloudProperties.getStorageScheme();
-        if (S3.equalsIgnoreCase(storageScheme)) {
-            S3ClientConfig config = S3ClientConfig.of(cloudProperties);
-            return new S3CloudClient(config, guardian);
-        } else if (GCS.equalsIgnoreCase(storageScheme)) {
-            GCSClientConfig config = GCSClientConfig.of(cloudProperties);
-            return new GCSCloudClient(config, guardian);
-        }
-        throw new IllegalStateException("unsupported cloud storage scheme: " + storageScheme);
+        ICloudClient cloudClient = switch (storageScheme.toLowerCase()) {
+            case S3 -> new S3CloudClient(S3ClientConfig.of(cloudProperties), guardian);
+            case GCS -> new GCSCloudClient(GCSClientConfig.of(cloudProperties), guardian);
+            case AZ_BLOB -> new AzBlobStorageCloudClient(AzBlobStorageClientConfig.of(cloudProperties), guardian);
+            case NONE -> NoopCloudClient.INSTANCE;
+            default -> throw new IllegalStateException("unsupported cloud storage scheme: " + storageScheme);
+        };
+
+        return UNSTABLE ? new UnstableCloudClient(cloudClient) : cloudClient;
+    }
+
+    private static boolean isUnstable() {
+        return Boolean.getBoolean(CloudRetryableRequestUtil.CLOUD_UNSTABLE_MODE);
     }
 }

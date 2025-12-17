@@ -19,6 +19,7 @@
 package org.apache.hyracks.algebricks.rewriter.rules;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -70,11 +71,14 @@ public class InlineVariablesRule implements IAlgebraicRewriteRule {
 
     // map of variables that could be replaced by their producing expression.
     // populated during the top-down sweep of the plan.
-    private Map<LogicalVariable, ILogicalExpression> varAssignRhs = new HashMap<>();
+    private final Map<LogicalVariable, ILogicalExpression> varAssignRhs = new HashMap<>();
+    // map of variables to the operator that produces the expression.
+    // populated during the top-down sweep of the plan.
+    private final Map<LogicalVariable, ILogicalOperator> varAssignOp = new HashMap<>();
     // visitor for replacing variable reference expressions with their originating expression.
-    protected InlineVariablesVisitor inlineVisitor = new InlineVariablesVisitor(varAssignRhs);
+    protected final InlineVariablesVisitor inlineVisitor = new InlineVariablesVisitor(varAssignRhs, varAssignOp);
     // set of FunctionIdentifiers that we should not inline.
-    protected Set<FunctionIdentifier> doNotInlineFuncs = new HashSet<>();
+    protected final Set<FunctionIdentifier> doNotInlineFuncs = new HashSet<>();
     // indicates whether the rule has been run
     private boolean hasRun = false;
     // set to prevent re-visiting a subtree from the other sides. Operators with multiple outputs are the ones that
@@ -84,6 +88,7 @@ public class InlineVariablesRule implements IAlgebraicRewriteRule {
     private final List<LogicalVariable> usedVars = new ArrayList<>();
     // map of variables and the counts of how many times they were used
     private final Map<LogicalVariable, MutableInt> usedVariableCounter = new HashMap<>();
+    private final Map<LogicalVariable, Map<LogicalVariable, Integer>> totalLeafVariableCounter = new HashMap<>();
 
     @Override
     public boolean rewritePost(Mutable<ILogicalOperator> opRef, IOptimizationContext context) {
@@ -110,9 +115,11 @@ public class InlineVariablesRule implements IAlgebraicRewriteRule {
 
     protected void prepare(IOptimizationContext context) {
         varAssignRhs.clear();
+        varAssignOp.clear();
         inlineVisitor.setContext(context);
         subTreesDone.clear();
         usedVariableCounter.clear();
+        totalLeafVariableCounter.clear();
     }
 
     protected boolean performBottomUpAction(ILogicalOperator op) throws AlgebricksException {
@@ -157,6 +164,7 @@ public class InlineVariablesRule implements IAlgebraicRewriteRule {
                     }
                 }
                 varAssignRhs.put(variable, expr);
+                varAssignOp.put(variable, assignOp);
             }
         }
 
@@ -165,6 +173,21 @@ public class InlineVariablesRule implements IAlgebraicRewriteRule {
         for (Mutable<ILogicalOperator> inputOpRef : op.getInputs()) {
             if (inlineVariables(inputOpRef, context)) {
                 modified = true;
+            }
+        }
+
+        if (op.getOperatorTag() == LogicalOperatorTag.ASSIGN) {
+            AssignOperator assignOp = (AssignOperator) op;
+            computeLeafVariablesCount(assignOp);
+            List<LogicalVariable> vars = assignOp.getVariables();
+            for (LogicalVariable variable : vars) {
+                // Don't inline variables that potentially reference a large number of the same leaf variable.
+                Map<LogicalVariable, Integer> varMap = totalLeafVariableCounter.get(variable);
+                if (varMap != null && !varMap.isEmpty() && Collections.max(varMap.values()) > context
+                        .getPhysicalOptimizationConfig().getMaxVariableOccurrencesForInlining()) {
+                    varAssignRhs.remove(variable);
+                    varAssignOp.remove(variable);
+                }
             }
         }
 
@@ -181,6 +204,7 @@ public class InlineVariablesRule implements IAlgebraicRewriteRule {
                     Set<LogicalVariable> producedVars = new HashSet<>();
                     VariableUtilities.getProducedVariables(root.getValue(), producedVars);
                     varAssignRhs.keySet().removeAll(producedVars);
+                    varAssignOp.keySet().removeAll(producedVars);
                 }
             }
         }
@@ -191,6 +215,7 @@ public class InlineVariablesRule implements IAlgebraicRewriteRule {
             Set<LogicalVariable> rightLiveVars = new HashSet<>();
             VariableUtilities.getLiveVariables(op.getInputs().get(1).getValue(), rightLiveVars);
             varAssignRhs.keySet().removeAll(rightLiveVars);
+            varAssignOp.keySet().removeAll(rightLiveVars);
         }
 
         if (performBottomUpAction(op)) {
@@ -259,19 +284,47 @@ public class InlineVariablesRule implements IAlgebraicRewriteRule {
         }
     }
 
+    private void computeLeafVariablesCount(AssignOperator assignOp) {
+        List<LogicalVariable> vars = assignOp.getVariables();
+        List<Mutable<ILogicalExpression>> exprs = assignOp.getExpressions();
+        for (int i = 0; i < vars.size(); i++) {
+            LogicalVariable variable = vars.get(i);
+            ILogicalExpression expr = exprs.get(i).getValue();
+            usedVars.clear();
+            expr.getUsedVariables(usedVars);
+            Map<LogicalVariable, Integer> varMap =
+                    totalLeafVariableCounter.computeIfAbsent(variable, k -> new HashMap<>());
+            for (LogicalVariable usedVar : usedVars) {
+                if (totalLeafVariableCounter.containsKey(usedVar)) {
+                    for (Map.Entry<LogicalVariable, Integer> entry : totalLeafVariableCounter.get(usedVar).entrySet()) {
+                        varMap.put(entry.getKey(), entry.getValue() + varMap.getOrDefault(entry.getKey(), 0));
+                    }
+                } else {
+                    varMap.put(usedVar, 1);
+                }
+            }
+        }
+    }
+
     public static class InlineVariablesVisitor extends LogicalExpressionReferenceTransformVisitor
             implements ILogicalExpressionReferenceTransform {
 
         private final Map<LogicalVariable, ILogicalExpression> varAssignRhs;
+        private final Map<LogicalVariable, ILogicalOperator> varAssignOp;
         private final Set<LogicalVariable> liveVars = new HashSet<>();
         private final List<LogicalVariable> rhsUsedVars = new ArrayList<>();
         private ILogicalOperator op;
         private IOptimizationContext context;
         // If set, only replace this variable reference.
         private LogicalVariable targetVar;
+        private Set<LogicalVariable> usedResultVars = new HashSet<>();
+        private Set<LogicalVariable> docRefVars = new HashSet<>();
+        private List<LogicalVariable> opProducedVars = new ArrayList<>();
 
-        public InlineVariablesVisitor(Map<LogicalVariable, ILogicalExpression> varAssignRhs) {
+        public InlineVariablesVisitor(Map<LogicalVariable, ILogicalExpression> varAssignRhs,
+                Map<LogicalVariable, ILogicalOperator> varAssignOp) {
             this.varAssignRhs = varAssignRhs;
+            this.varAssignOp = varAssignOp;
         }
 
         public void setTargetVariable(LogicalVariable targetVar) {
@@ -285,6 +338,14 @@ public class InlineVariablesRule implements IAlgebraicRewriteRule {
         public void setOperator(ILogicalOperator op) {
             this.op = op;
             liveVars.clear();
+        }
+
+        public void setUsedResultVars(Set<LogicalVariable> usedResultVars) {
+            this.usedResultVars = usedResultVars;
+        }
+
+        public void setDocRefVars(Set<LogicalVariable> docRefVars) {
+            this.docRefVars = docRefVars;
         }
 
         @Override
@@ -330,6 +391,10 @@ public class InlineVariablesRule implements IAlgebraicRewriteRule {
             }
 
             ILogicalExpression rhs = varAssignRhs.get(var);
+            ILogicalOperator rhsOp = null;
+            if (varAssignOp != null) {
+                rhsOp = varAssignOp.get(var);
+            }
             if (rhs == null) {
                 // Variable was not produced by an assign.
                 return false;
@@ -345,11 +410,58 @@ public class InlineVariablesRule implements IAlgebraicRewriteRule {
                 if (!liveVars.contains(rhsUsedVar)) {
                     return false;
                 }
+                // Do not inline an expression that contains the doc variable (e.g. $$abc) if there is a “sensitive”
+                // operator in between this op and the op that produced the expression. A "sensitive" operator is one
+                // that would be more expensive if the size of the data flowing through it is bigger.
+                if (docRefVars.contains(rhsUsedVar) && opProducedVarsInResultVars(op)
+                        && !safeToInlineVariables(op, rhsOp)) {
+                    return false;
+                }
             }
 
             // Replace variable reference with a clone of the rhs expr.
             exprRef.setValue(rhs.cloneExpression());
             return true;
+        }
+
+        private boolean opProducedVarsInResultVars(ILogicalOperator op) throws AlgebricksException {
+            opProducedVars.clear();
+            VariableUtilities.getProducedVariables(op, opProducedVars);
+            for (LogicalVariable pVar : opProducedVars) {
+                if (usedResultVars.contains(pVar)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private boolean safeToInlineVariables(ILogicalOperator op, ILogicalOperator rhsOp) throws AlgebricksException {
+            ILogicalOperator currentOp = op;
+            while (currentOp != null) {
+                if (currentOp.getOperatorTag() == LogicalOperatorTag.DATASOURCESCAN
+                        || currentOp.getOperatorTag() == LogicalOperatorTag.UNNEST_MAP) {
+                    break;
+                }
+                if (rhsOp != null && currentOp == rhsOp) {
+                    break;
+
+                }
+                if (sensitiveOpForInlining(currentOp)) {
+                    return false;
+                }
+                currentOp = currentOp.getInputs().get(0).getValue();
+            }
+            return true;
+        }
+
+        private boolean sensitiveOpForInlining(ILogicalOperator op) {
+            if (op.getInputs().size() != 1) {
+                return true;
+            }
+            return switch (op.getOperatorTag()) {
+                case ORDER, UNNEST -> true;
+                default -> false;
+            };
         }
     }
 }

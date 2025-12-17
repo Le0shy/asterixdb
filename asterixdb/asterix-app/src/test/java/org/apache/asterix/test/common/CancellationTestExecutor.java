@@ -20,6 +20,7 @@
 package org.apache.asterix.test.common;
 
 import static org.apache.asterix.api.http.server.QueryServiceRequestParameters.Parameter.CLIENT_ID;
+import static org.apache.asterix.test.common.ComparisonException.Type.DIFFERENT_RESULT;
 
 import java.io.InputStream;
 import java.net.URI;
@@ -48,10 +49,19 @@ public class CancellationTestExecutor extends TestExecutor {
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
 
+    public CancellationTestExecutor() {
+        super();
+    }
+
+    public CancellationTestExecutor(String deltaPath) {
+        super(deltaPath);
+    }
+
     @Override
     public InputStream executeQueryService(String str, TestCaseContext.OutputFormat fmt, URI uri,
-            List<TestCase.CompilationUnit.Parameter> params, boolean jsonEncoded, Charset responseCharset,
-            Predicate<Integer> responseCodeValidator, boolean cancellable) throws Exception {
+            List<TestCase.CompilationUnit.Parameter> params, List<TestCase.CompilationUnit.Placeholder> placeholders,
+            boolean jsonEncoded, Charset responseCharset, Predicate<Integer> responseCodeValidator, boolean cancellable)
+            throws Exception {
         cancellable = cancellable && !containsClientContextID(str);
         String clientContextId = UUID.randomUUID().toString();
         final List<TestCase.CompilationUnit.Parameter> newParams =
@@ -59,7 +69,7 @@ public class CancellationTestExecutor extends TestExecutor {
         Callable<InputStream> query = () -> {
             try {
                 return CancellationTestExecutor.super.executeQueryService(str, fmt, uri,
-                        constructQueryParameters(str, fmt, newParams), jsonEncoded, responseCharset,
+                        constructQueryParameters(str, fmt, newParams), placeholders, jsonEncoded, responseCharset,
                         responseCodeValidator, true);
             } catch (Exception e) {
                 e.printStackTrace();
@@ -109,6 +119,10 @@ public class CancellationTestExecutor extends TestExecutor {
         if (errorMsg.startsWith("HYR0025") || errorMsg.startsWith("ASX0041")) {
             SqlppExecutionWithCancellationTest.numCancelledQueries++;
             queryCount.increment();
+            return false;
+        } else if (e instanceof ComparisonException
+                && ((ComparisonException) e).getExceptionType() == DIFFERENT_RESULT) {
+            // for this test, ignore ComparisonException for completed requests since the goal is not to compare results
             return false;
         } else {
             System.err.println(

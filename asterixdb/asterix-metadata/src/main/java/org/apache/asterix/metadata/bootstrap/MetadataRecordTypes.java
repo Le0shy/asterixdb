@@ -19,7 +19,11 @@
 
 package org.apache.asterix.metadata.bootstrap;
 
-import org.apache.asterix.om.types.*;
+import org.apache.asterix.om.types.AOrderedListType;
+import org.apache.asterix.om.types.ARecordType;
+import org.apache.asterix.om.types.AUnionType;
+import org.apache.asterix.om.types.BuiltinType;
+import org.apache.asterix.om.types.IAType;
 
 /**
  * Contains static ARecordType's of all metadata record types.
@@ -49,6 +53,7 @@ public final class MetadataRecordTypes {
     public static final String FIELD_NAME_DEFAULT = "Default";
     public static final String FIELD_NAME_DEFINITION = "Definition";
     public static final String FIELD_NAME_DEPENDENCIES = "Dependencies";
+    public static final String FIELD_NAME_IS_TRANSFORM = "IsTransform";
     public static final String FIELD_NAME_DERIVED = "Derived";
     public static final String FIELD_NAME_DESCRIPTION = "Description";
     public static final String FIELD_NAME_EXTERNAL_DETAILS = "ExternalDetails";
@@ -125,6 +130,11 @@ public final class MetadataRecordTypes {
     public static final String FIELD_NAME_FULL_TEXT_TOKENIZER = "Tokenizer";
     public static final String FIELD_NAME_FULL_TEXT_FILTER_PIPELINE = "FullTextFilterPipeline";
     public static final String FIELD_NAME_FULL_TEXT_STOPWORD_LIST = "StopwordList";
+
+    //open field
+    public static final String FIELD_NAME_CREATOR_NAME = "Name";
+    public static final String FIELD_NAME_CREATOR_UUID = "Uuid";
+    public static final String CREATOR_ARECORD_FIELD_NAME = "Creator";
 
     public static final String FIELD_NAME_SCHEDULER_CONFIG_NAME = "SchedulerConfigName";
 

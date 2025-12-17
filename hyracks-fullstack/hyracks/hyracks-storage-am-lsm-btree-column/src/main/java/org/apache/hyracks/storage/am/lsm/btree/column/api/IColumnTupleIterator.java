@@ -79,11 +79,21 @@ public interface IColumnTupleIterator extends ILSMTreeTupleReference, Comparable
     boolean isConsumed();
 
     /**
-     * Skip a number of tuples
+     * Skip a number of tuples on page initialization
      *
-     * @param count the number of tuples that needed to be skipped
+     * @param tupleIndex
+     * @param count      the number of tuples that needed to be skipped
      */
-    void skip(int count) throws HyracksDataException;
+    void initSkip(int tupleIndex, int count) throws HyracksDataException;
+
+    /**
+     * Skips the current tuple.
+     * This is used when a tuple is marked as deleted by the cursor, prompting
+     * the filter and column to also skip it.
+     *
+     * @throws HyracksDataException if an error occurs while skipping the tuple.
+     */
+    void skipCurrentTuple() throws HyracksDataException;
 
     /**
      * Move to the next tuple

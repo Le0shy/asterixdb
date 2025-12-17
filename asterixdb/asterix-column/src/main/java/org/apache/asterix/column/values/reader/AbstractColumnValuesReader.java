@@ -31,15 +31,25 @@ import org.apache.asterix.column.values.reader.value.AbstractValueReader;
 import org.apache.asterix.om.types.ATypeTag;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
 import org.apache.hyracks.data.std.api.IValueReference;
+import org.apache.hyracks.storage.am.lsm.btree.column.error.ColumnarValueException;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.apache.parquet.bytes.BytesUtils;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
+import it.unimi.dsi.fastutil.ints.Int2ObjectArrayMap;
+
 abstract class AbstractColumnValuesReader implements IColumnValuesReader {
+    private static final Logger LOGGER = LogManager.getLogger();
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
     protected final AbstractValueReader valueReader;
     protected final int columnIndex;
-    protected final int maxLevel;
-    protected final ParquetRunLengthBitPackingHybridDecoder definitionLevels;
+    protected int maxLevel;
+    protected Int2ObjectArrayMap<ParquetRunLengthBitPackingHybridDecoder> definitionLevels;
+    protected ParquetRunLengthBitPackingHybridDecoder currentDefinitionLevels;
     protected final AbstractBytesInputStream valuesStream;
     private final boolean primaryKey;
     protected int level;
@@ -57,8 +67,11 @@ abstract class AbstractColumnValuesReader implements IColumnValuesReader {
     AbstractColumnValuesReader(AbstractValueReader valueReader, int columnIndex, int maxLevel, boolean primaryKey) {
         this.valueReader = valueReader;
         this.columnIndex = columnIndex;
-        this.maxLevel = valueReader.getTypeTag() == ATypeTag.MISSING ? Integer.MAX_VALUE : maxLevel;
-        definitionLevels = new ParquetRunLengthBitPackingHybridDecoder(ColumnValuesUtil.getBitWidth(maxLevel));
+        this.maxLevel = !primaryKey && valueReader.getTypeTag() == ATypeTag.MISSING ? Integer.MAX_VALUE : maxLevel;
+        definitionLevels = new Int2ObjectArrayMap<>();
+        definitionLevels.put(maxLevel,
+                new ParquetRunLengthBitPackingHybridDecoder(ColumnValuesUtil.getBitWidth(maxLevel)));
+        currentDefinitionLevels = definitionLevels.get(maxLevel);
         valuesStream = primaryKey ? new ByteBufferInputStream() : new MultiByteBufferInputStream();
         this.primaryKey = primaryKey;
     }
@@ -70,15 +83,24 @@ abstract class AbstractColumnValuesReader implements IColumnValuesReader {
             return;
         }
 
-        int actualLevel = definitionLevels.readInt();
-        //Check whether the level is for a null value
-        nullLevel = ColumnValuesUtil.isNull(nullBitMask, actualLevel);
-        //Clear the null bit to allow repeated value readers determine the correct delimiter for null values
-        level = ColumnValuesUtil.clearNullBit(nullBitMask, actualLevel);
+        try {
+            int actualLevel = currentDefinitionLevels.readInt();
+            //Check whether the level is for a null value
+            nullLevel = ColumnValuesUtil.isNull(nullBitMask, actualLevel);
+            //Clear the null bit to allow repeated value readers determine the correct delimiter for null values
+            level = ColumnValuesUtil.clearNullBit(nullBitMask, actualLevel);
 
-        // For logging purposes only
-        numberOfEncounteredMissing += isMissing() ? 1 : 0;
-        numberOfEncounteredNull += isNull() ? 1 : 0;
+            // For logging purposes only
+            numberOfEncounteredMissing += isMissing() ? 1 : 0;
+            numberOfEncounteredNull += isNull() ? 1 : 0;
+        } catch (Exception e) {
+            ColumnarValueException ex = new ColumnarValueException();
+            ObjectNode readerNode = ex.createNode(getClass().getSimpleName());
+            appendReaderInformation(readerNode);
+            LOGGER.error("error reading nextLevel, collected info: {}", ex.getNode());
+            ex.addSuppressed(e);
+            throw ex;
+        }
     }
 
     abstract void resetValues();
@@ -96,16 +118,28 @@ abstract class AbstractColumnValuesReader implements IColumnValuesReader {
         }
         allMissing = false;
         try {
-            nullBitMask = ColumnValuesUtil.getNullMask(BytesUtils.readZigZagVarInt(in));
+            int actualLevel = BytesUtils.readZigZagVarInt(in);
+            maxLevel = ColumnValuesUtil.clearNullBit(nullBitMask, actualLevel);
+            nullBitMask = ColumnValuesUtil.getNullMask(actualLevel);
+
+            currentDefinitionLevels = definitionLevels.get(maxLevel);
+            if (currentDefinitionLevels == null) {
+                currentDefinitionLevels =
+                        new ParquetRunLengthBitPackingHybridDecoder(ColumnValuesUtil.getBitWidth(maxLevel));
+                definitionLevels.put(maxLevel, currentDefinitionLevels);
+            }
             int defLevelsSize = BytesUtils.readZigZagVarInt(in);
             valueCount = BytesUtils.readZigZagVarInt(in);
-            definitionLevels.reset(in);
+            currentDefinitionLevels.reset(in);
             valuesStream.resetAt(defLevelsSize, in);
             int valueLength = BytesUtils.readZigZagVarInt(valuesStream);
             if (valueLength > 0) {
                 valueReader.init(valuesStream, tupleCount);
             }
         } catch (IOException e) {
+            ObjectNode infoNode = OBJECT_MAPPER.createObjectNode();
+            appendReaderInformation(infoNode);
+            LOGGER.error("error while resetting reader, collected info: {}", infoNode);
             throw HyracksDataException.create(e);
         }
         resetValues();
@@ -202,6 +236,15 @@ abstract class AbstractColumnValuesReader implements IColumnValuesReader {
         }
     }
 
+    protected final void writeLevel(IColumnValuesWriter writer) throws HyracksDataException {
+        if (isNull()) {
+            // This will prepend the nullBitMask
+            writer.writeNull(level);
+        } else {
+            writer.writeLevel(level);
+        }
+    }
+
     protected void appendCommon(ObjectNode node) {
         node.put("typeTag", getTypeTag().toString());
         node.put("columnIndex", columnIndex);
@@ -213,5 +256,7 @@ abstract class AbstractColumnValuesReader implements IColumnValuesReader {
         node.put("nullBitMask", nullBitMask);
         node.put("numberOfEncounteredMissing", numberOfEncounteredMissing);
         node.put("numberOfEncounteredNull", numberOfEncounteredNull);
+        node.put("numberOfDecodersRequired", definitionLevels.size());
+        node.put("maxLevelsEncountered", definitionLevels.keySet().toString());
     }
 }

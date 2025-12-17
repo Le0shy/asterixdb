@@ -29,8 +29,11 @@ import org.apache.asterix.common.config.CloudProperties;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
 import org.apache.hyracks.api.io.IFileHandle;
 import org.apache.hyracks.cloud.filesystem.FileSystemOperationDispatcherUtil;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 public final class HolePuncherProvider {
+    private static final Logger LOGGER = LogManager.getLogger();
     private static final IHolePuncher UNSUPPORTED = HolePuncherProvider::unsupported;
     private static final IHolePuncher LINUX = HolePuncherProvider::linuxPunchHole;
 
@@ -45,31 +48,28 @@ public final class HolePuncherProvider {
 
         if (FileSystemOperationDispatcherUtil.isLinux()) {
             return LINUX;
-        } else if (cloudProperties.isStorageDebugModeEnabled()) {
-            // Running on debug mode on a non-Linux box
-            return new DebugHolePuncher(cloudIOManager, bufferProvider);
         }
 
-        throw new UnsupportedOperationException(
-                "Hole puncher is not supported using " + FileSystemOperationDispatcherUtil.getOSName());
+        // Running a debug hole puncher on a non-Linux box
+        String osName = FileSystemOperationDispatcherUtil.getOSName();
+        LOGGER.warn("Using 'DebugHolePuncher' as the OS '{}' does not support punching holes", osName);
+        return new DebugHolePuncher(cloudIOManager, bufferProvider);
     }
 
-    private static int unsupported(IFileHandle fileHandle, long offset, long length) {
+    private static void unsupported(IFileHandle fileHandle, long offset, long length) {
         throw new UnsupportedOperationException("punchHole is not supported");
     }
 
-    private static int linuxPunchHole(IFileHandle fileHandle, long offset, long length) throws HyracksDataException {
+    private static void linuxPunchHole(IFileHandle fileHandle, long offset, long length) throws HyracksDataException {
         CloudFileHandle cloudFileHandle = (CloudFileHandle) fileHandle;
         int fileDescriptor = cloudFileHandle.getFileDescriptor();
         int blockSize = cloudFileHandle.getBlockSize();
-        int freedSpace = FileSystemOperationDispatcherUtil.punchHole(fileDescriptor, offset, length, blockSize);
+        FileSystemOperationDispatcherUtil.punchHole(fileDescriptor, offset, length, blockSize);
         try {
             cloudFileHandle.getFileChannel().force(false);
         } catch (IOException e) {
             throw HyracksDataException.create(e);
         }
-
-        return freedSpace;
     }
 
     private static final class DebugHolePuncher implements IHolePuncher {
@@ -82,9 +82,8 @@ public final class HolePuncherProvider {
         }
 
         @Override
-        public int punchHole(IFileHandle fileHandle, long offset, long length) throws HyracksDataException {
+        public void punchHole(IFileHandle fileHandle, long offset, long length) throws HyracksDataException {
             ByteBuffer buffer = acquireAndPrepareBuffer(length);
-            int totalWritten = 0;
             try {
                 long remaining = length;
                 long position = offset;
@@ -92,14 +91,11 @@ public final class HolePuncherProvider {
                     int written = cloudIOManager.localWriter(fileHandle, position, buffer);
                     position += written;
                     remaining -= written;
-                    totalWritten += written;
                     buffer.limit((int) Math.min(remaining, buffer.capacity()));
                 }
             } finally {
                 bufferProvider.recycle(buffer);
             }
-
-            return totalWritten;
         }
 
         private ByteBuffer acquireAndPrepareBuffer(long length) {

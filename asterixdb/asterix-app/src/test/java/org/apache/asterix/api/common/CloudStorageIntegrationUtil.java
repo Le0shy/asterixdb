@@ -24,11 +24,11 @@ import static org.apache.hyracks.util.file.FileUtil.joinPath;
 public class CloudStorageIntegrationUtil extends AsterixHyracksIntegrationUtil {
 
     public static final String RESOURCES_PATH = joinPath(getProjectPath().toString(), "src", "test", "resources");
-    public static final String CONFIG_FILE = joinPath(RESOURCES_PATH, "cc-cloud-storage.conf");
+    public static final String CONFIG_FILE = joinPath(RESOURCES_PATH, "cc-cloud-storage-main.conf");
 
     public static void main(String[] args) throws Exception {
         boolean cleanStart = Boolean.getBoolean("cleanup.start");
-        LocalCloudUtil.startS3CloudEnvironment(cleanStart);
+        LocalCloudUtilAdobeMock.startS3CloudEnvironment(cleanStart);
         final AsterixHyracksIntegrationUtil integrationUtil = new AsterixHyracksIntegrationUtil();
         try {
             integrationUtil.run(cleanStart, Boolean.getBoolean("cleanup.shutdown"),

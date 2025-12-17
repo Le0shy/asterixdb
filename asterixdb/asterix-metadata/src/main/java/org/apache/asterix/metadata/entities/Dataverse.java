@@ -24,6 +24,7 @@ import java.util.Objects;
 import org.apache.asterix.common.metadata.DataverseName;
 import org.apache.asterix.metadata.MetadataCache;
 import org.apache.asterix.metadata.api.IMetadataEntity;
+import org.apache.asterix.metadata.utils.Creator;
 
 /**
  * Metadata describing a dataverse.
@@ -35,12 +36,14 @@ public class Dataverse implements IMetadataEntity<Dataverse> {
     private final DataverseName dataverseName;
     private final String dataFormat;
     private final int pendingOp;
+    private final Creator creator;
 
-    public Dataverse(String databaseName, DataverseName dataverseName, String format, int pendingOp) {
+    public Dataverse(String databaseName, DataverseName dataverseName, String format, int pendingOp, Creator creator) {
         this.databaseName = Objects.requireNonNull(databaseName);
         this.dataverseName = dataverseName;
         this.dataFormat = format;
         this.pendingOp = pendingOp;
+        this.creator = creator;
     }
 
     public String getDatabaseName() {
@@ -57,6 +60,10 @@ public class Dataverse implements IMetadataEntity<Dataverse> {
 
     public int getPendingOp() {
         return pendingOp;
+    }
+
+    public Creator getCreator() {
+        return creator;
     }
 
     @Override

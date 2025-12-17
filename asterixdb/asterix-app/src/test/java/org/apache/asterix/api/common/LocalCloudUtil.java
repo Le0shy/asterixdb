@@ -29,10 +29,13 @@ import org.apache.logging.log4j.Logger;
 
 import io.findify.s3mock.S3Mock;
 import software.amazon.awssdk.auth.credentials.AnonymousCredentialsProvider;
+import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.S3ClientBuilder;
 import software.amazon.awssdk.services.s3.model.CreateBucketRequest;
+import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
+import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 
 public class LocalCloudUtil {
 
@@ -41,6 +44,7 @@ public class LocalCloudUtil {
     private static final int MOCK_SERVER_PORT = 8001;
     public static final String MOCK_SERVER_HOSTNAME = "http://127.0.0.1:" + MOCK_SERVER_PORT;
     public static final String CLOUD_STORAGE_BUCKET = "cloud-storage-container";
+    public static final String STORAGE_DUMMY_FILE = "storage/dummy.txt";
     public static final String MOCK_SERVER_REGION = "us-west-2";
     private static final String MOCK_FILE_BACKEND = joinPath("target", "s3mock");
     private static S3Mock s3MockServer;
@@ -57,6 +61,10 @@ public class LocalCloudUtil {
     }
 
     public static S3Mock startS3CloudEnvironment(boolean cleanStart) {
+        return startS3CloudEnvironment(cleanStart, false);
+    }
+
+    public static S3Mock startS3CloudEnvironment(boolean cleanStart, boolean createPlaygroundContainer) {
         if (cleanStart) {
             FileUtils.deleteQuietly(new File(MOCK_FILE_BACKEND));
         }
@@ -64,7 +72,7 @@ public class LocalCloudUtil {
         LOGGER.info("Starting S3 mock server");
         // Use file backend for debugging/inspection
         s3MockServer = new S3Mock.Builder().withPort(MOCK_SERVER_PORT).withFileBackend(MOCK_FILE_BACKEND).build();
-        shutdownSilently();
+        stopS3MockServer();
         try {
             s3MockServer.start();
         } catch (Exception ex) {
@@ -79,8 +87,28 @@ public class LocalCloudUtil {
         S3Client client = builder.build();
         client.createBucket(CreateBucketRequest.builder().bucket(CLOUD_STORAGE_BUCKET).build());
         LOGGER.info("Created bucket {} for cloud storage", CLOUD_STORAGE_BUCKET);
+
+        // create a storage container and delete stuff inside it, just to create a directory.
+        PutObjectRequest putObjectRequest =
+                PutObjectRequest.builder().bucket(CLOUD_STORAGE_BUCKET).key(STORAGE_DUMMY_FILE).build();
+
+        client.putObject(putObjectRequest, RequestBody.empty());
+        // delete dummy file to retain storage directory.
+        client.deleteObject(DeleteObjectRequest.builder().bucket(CLOUD_STORAGE_BUCKET).key(STORAGE_DUMMY_FILE).build());
+
+        // added for convenience since some non-external-based tests include an external collection test on this bucket
+        if (createPlaygroundContainer) {
+            client.createBucket(CreateBucketRequest.builder().bucket("playground").build());
+            LOGGER.info("Created bucket {}", "playground");
+        }
         client.close();
         return s3MockServer;
+    }
+
+    public static void stopS3MockServer() {
+        shutdownSilently();
+        // since they are running on same port, we need to shut down other mock server as well
+        LocalCloudUtilAdobeMock.shutdownSilently();
     }
 
     private static void shutdownSilently() {

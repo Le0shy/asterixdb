@@ -34,6 +34,7 @@ import org.apache.asterix.om.typecomputer.base.IResultTypeComputer;
 import org.apache.asterix.om.typecomputer.impl.BooleanOnlyTypeComputer;
 import org.apache.asterix.om.typecomputer.impl.BooleanOrMissingTypeComputer;
 import org.apache.asterix.om.typecomputer.impl.ClosedRecordConstructorResultType;
+import org.apache.asterix.om.typecomputer.impl.DoubleIfTypeComputer;
 import org.apache.asterix.om.typecomputer.impl.InjectFailureTypeComputer;
 import org.apache.asterix.om.typecomputer.impl.LocalAvgTypeComputer;
 import org.apache.asterix.om.typecomputer.impl.LocalMedianTypeComputer;
@@ -43,6 +44,7 @@ import org.apache.asterix.om.typecomputer.impl.OpenRecordConstructorResultType;
 import org.apache.asterix.om.typecomputer.impl.RecordAddFieldsTypeComputer;
 import org.apache.asterix.om.typecomputer.impl.RecordMergeTypeComputer;
 import org.apache.asterix.om.typecomputer.impl.RecordRemoveFieldsTypeComputer;
+import org.apache.asterix.om.typecomputer.impl.ToObjectVarStrTypeComputer;
 import org.apache.asterix.om.types.ATypeTag;
 import org.apache.asterix.om.types.AUnionType;
 import org.apache.asterix.om.types.BuiltinType;
@@ -161,19 +163,24 @@ public class TypeComputerTest {
             // Ensure the field is one of the instances of the class
             if (field.getType().equals(clazz)) {
                 LOGGER.log(Level.INFO, "Testing " + clazz.getSimpleName() + ": " + field.getName());
-
-                when(functionCallExpression.getArguments()).thenReturn(sixArgs);
-
                 instance = (IResultTypeComputer) field.get(null);
+                when(functionCallExpression.getArguments()).thenReturn(argsFor(instance, sixArgs));
                 resultType = instance.computeType(functionCallExpression, typeEnv, metadataProvider);
                 ATypeTag typeTag = resultType.getTypeTag();
 
                 // Result should be ANY, Missable or Nullable
-                Assert.assertTrue(typeTag == ATypeTag.ANY
-                        || (typeTag == ATypeTag.UNION && ((AUnionType) resultType).isNullableType()
-                                || ((AUnionType) resultType).isMissableType()));
+                Assert.assertTrue(typeTag == ATypeTag.ANY || (typeTag == ATypeTag.UNION
+                        && (((AUnionType) resultType).isNullableType() || ((AUnionType) resultType).isMissableType())));
             }
         }
+    }
+
+    private static List<Mutable<ILogicalExpression>> argsFor(IResultTypeComputer typeComputer,
+            List<Mutable<ILogicalExpression>> sixArgs) {
+        if (typeComputer.getClass() == DoubleIfTypeComputer.class) {
+            return sixArgs.subList(0, 2);
+        }
+        return sixArgs;
     }
 
     public static void prepare() {
@@ -198,6 +205,7 @@ public class TypeComputerTest {
         differentBehaviorFunctions.add(RecordMergeTypeComputer.class.getSimpleName());
         differentBehaviorFunctions.add(BooleanOrMissingTypeComputer.class.getSimpleName());
         differentBehaviorFunctions.add(LocalSingleVarStatisticsTypeComputer.class.getSimpleName());
+        differentBehaviorFunctions.add(ToObjectVarStrTypeComputer.class.getSimpleName());
     }
 
     /**

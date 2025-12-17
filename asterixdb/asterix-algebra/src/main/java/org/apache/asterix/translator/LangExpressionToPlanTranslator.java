@@ -222,8 +222,8 @@ abstract class LangExpressionToPlanTranslator
                 stmt.getDataverseName(), stmt.getDatasetName(), sourceLoc);
         List<List<String>> partitionKeys = targetDatasource.getDataset().getPrimaryKeys();
         if (dataset.hasMetaPart()) {
-            throw new CompilationException(ErrorCode.ILLEGAL_DML_OPERATION, sourceLoc, dataset.getDatasetName(),
-                    stmt.getKind() == Statement.Kind.LOAD ? "load" : "copy into");
+            throw new CompilationException(ErrorCode.ILLEGAL_DML_OPERATION, sourceLoc,
+                    stmt.getKind() == Statement.Kind.LOAD ? "load" : "copy into", dataset.getDatasetName());
         }
 
         LoadableDataSource lds;
@@ -466,7 +466,8 @@ abstract class LangExpressionToPlanTranslator
         }
 
         // Write adapter configuration
-        WriteDataSink writeDataSink = new WriteDataSink(copyTo.getAdapter(), copyTo.getProperties());
+        WriteDataSink writeDataSink = new WriteDataSink(copyTo.getAdapter(), copyTo.getProperties(),
+                copyTo.getItemType(), copyTo.getParquetSchema(), copyTo.getFormatConfigs(), expr.getSourceLocation());
 
         // writeOperator
         WriteOperator writeOperator = new WriteOperator(sourceExprRef, new MutableObject<>(fullPathExpr),
@@ -487,6 +488,16 @@ abstract class LangExpressionToPlanTranslator
         return isFileStore ? String.valueOf(ExternalWriterProvider.getSeparator(adapter)) : "";
     }
 
+    private LogicalVariable getUnnestVar(ILogicalOperator op) {
+        while (op.getOperatorTag() != LogicalOperatorTag.UNNEST && !op.getInputs().isEmpty()) {
+            op = op.getInputs().get(0).getValue();
+        }
+        if (op.getOperatorTag() == LogicalOperatorTag.UNNEST) {
+            return ((UnnestOperator) op).getVariable();
+        }
+        return null;
+    }
+
     public ILogicalPlan translate(Query expr, String outputDatasetName, ICompiledDmlStatement stmt,
             ILogicalOperator baseOp, IResultMetadata resultMetadata) throws AlgebricksException {
         MutableObject<ILogicalOperator> base = new MutableObject<>(new EmptyTupleSourceOperator());
@@ -499,8 +510,11 @@ abstract class LangExpressionToPlanTranslator
         ILogicalOperator topOp = p.first;
         List<LogicalVariable> liveVars = new ArrayList<>();
         VariableUtilities.getLiveVariables(topOp, liveVars);
-        LogicalVariable unnestVar = liveVars.get(0);
-        LogicalVariable resVar = unnestVar;
+        LogicalVariable unnestVar = getUnnestVar(topOp);
+        if (unnestVar == null) {
+            unnestVar = liveVars.get(0);
+        }
+        LogicalVariable resVar = liveVars.get(0);
 
         if (outputDatasetName == null) {
             FileSplit outputFileSplit = metadataProvider.getOutputFile();
@@ -614,8 +628,8 @@ abstract class LangExpressionToPlanTranslator
             ICompiledDmlStatement stmt) throws AlgebricksException {
         SourceLocation sourceLoc = stmt.getSourceLocation();
         if (targetDatasource.getDataset().hasMetaPart()) {
-            throw new CompilationException(ErrorCode.ILLEGAL_DML_OPERATION, sourceLoc,
-                    targetDatasource.getDataset().getDatasetName(), "delete from");
+            throw new CompilationException(ErrorCode.ILLEGAL_DML_OPERATION, sourceLoc, "delete from",
+                    targetDatasource.getDataset().getDatasetName());
         }
 
         List<String> filterField = DatasetUtil.getFilterField(targetDatasource.getDataset());
@@ -644,8 +658,8 @@ abstract class LangExpressionToPlanTranslator
             IResultMetadata resultMetadata) throws AlgebricksException {
         SourceLocation sourceLoc = stmt.getSourceLocation();
         if (!targetDatasource.getDataset().allow(topOp, DatasetUtil.OP_UPSERT)) {
-            throw new CompilationException(ErrorCode.ILLEGAL_DML_OPERATION, sourceLoc,
-                    targetDatasource.getDataset().getDatasetName(), "upsert into");
+            throw new CompilationException(ErrorCode.ILLEGAL_DML_OPERATION, sourceLoc, "upsert into",
+                    targetDatasource.getDataset().getDatasetName());
         }
         ProjectOperator project = (ProjectOperator) topOp;
         CompiledUpsertStatement compiledUpsert = (CompiledUpsertStatement) stmt;
@@ -656,8 +670,8 @@ abstract class LangExpressionToPlanTranslator
 
         if (targetDatasource.getDataset().hasMetaPart()) {
             if (returnExpression != null) {
-                throw new CompilationException(ErrorCode.ILLEGAL_DML_OPERATION, sourceLoc,
-                        targetDatasource.getDataset().getDatasetName(), "return expression");
+                throw new CompilationException(ErrorCode.ILLEGAL_DML_OPERATION, sourceLoc, "return expression",
+                        targetDatasource.getDataset().getDatasetName());
             }
             List<LogicalVariable> metaAndKeysVars;
             List<Mutable<ILogicalExpression>> metaAndKeysExprs;
@@ -767,8 +781,8 @@ abstract class LangExpressionToPlanTranslator
             ICompiledDmlStatement stmt, IResultMetadata resultMetadata) throws AlgebricksException {
         SourceLocation sourceLoc = stmt.getSourceLocation();
         if (targetDatasource.getDataset().hasMetaPart()) {
-            throw new CompilationException(ErrorCode.ILLEGAL_DML_OPERATION, sourceLoc,
-                    targetDatasource.getDataset().getDatasetName(), "insert into");
+            throw new CompilationException(ErrorCode.ILLEGAL_DML_OPERATION, sourceLoc, "insert into",
+                    targetDatasource.getDataset().getDatasetName());
         }
 
         List<String> filterField = DatasetUtil.getFilterField(targetDatasource.getDataset());
@@ -1120,7 +1134,8 @@ abstract class LangExpressionToPlanTranslator
             }
             if (!function.isExternal()) {
                 // all non-external UDFs should've been inlined by now
-                throw new CompilationException(ErrorCode.COMPILATION_ILLEGAL_STATE, sourceLoc, signature);
+                throw new CompilationException(ErrorCode.COMPILATION_ILLEGAL_STATE, sourceLoc,
+                        "UDF not inlined: " + signature);
             }
             IFunctionInfo finfo = ExternalFunctionCompilerUtil.getExternalFunctionInfo(metadataProvider, function);
             AbstractFunctionCallExpression f = new ScalarFunctionCallExpression(finfo, args);
@@ -2026,6 +2041,7 @@ abstract class LangExpressionToPlanTranslator
             case IF_EXPRESSION:
             case CASE_EXPRESSION:
             case WINDOW_EXPRESSION:
+            case LIST_SLICE_EXPRESSION:
                 return true;
             case QUANTIFIED_EXPRESSION:
                 return ((QuantifiedExpression) expr).getQuantifier() == Quantifier.SOME_AND_EVERY;

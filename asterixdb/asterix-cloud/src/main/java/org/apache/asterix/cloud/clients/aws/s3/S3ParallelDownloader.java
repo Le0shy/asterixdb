@@ -20,6 +20,7 @@ package org.apache.asterix.cloud.clients.aws.s3;
 
 import java.io.IOException;
 import java.net.URI;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -30,13 +31,16 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 
 import org.apache.asterix.cloud.clients.IParallelDownloader;
-import org.apache.asterix.cloud.clients.profiler.IRequestProfiler;
+import org.apache.asterix.cloud.clients.profiler.IRequestProfilerLimiter;
 import org.apache.commons.io.FileUtils;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
 import org.apache.hyracks.api.io.FileReference;
 import org.apache.hyracks.control.nc.io.IOManager;
 import org.apache.hyracks.util.annotations.ThreadSafe;
 
+import software.amazon.awssdk.http.SdkHttpConfigurationOption;
+import software.amazon.awssdk.http.async.SdkAsyncHttpClient;
+import software.amazon.awssdk.http.nio.netty.NettyNioAsyncHttpClient;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3AsyncClient;
 import software.amazon.awssdk.services.s3.S3AsyncClientBuilder;
@@ -50,6 +54,7 @@ import software.amazon.awssdk.transfer.s3.model.DownloadDirectoryRequest;
 import software.amazon.awssdk.transfer.s3.model.DownloadFileRequest;
 import software.amazon.awssdk.transfer.s3.model.FailedFileDownload;
 import software.amazon.awssdk.transfer.s3.model.FileDownload;
+import software.amazon.awssdk.utils.AttributeMap;
 
 @ThreadSafe
 class S3ParallelDownloader implements IParallelDownloader {
@@ -57,11 +62,13 @@ class S3ParallelDownloader implements IParallelDownloader {
     private final IOManager ioManager;
     private final S3AsyncClient s3AsyncClient;
     private final S3TransferManager transferManager;
-    private final IRequestProfiler profiler;
+    private final S3ClientConfig config;
+    private final IRequestProfilerLimiter profiler;
 
-    S3ParallelDownloader(String bucket, IOManager ioManager, S3ClientConfig config, IRequestProfiler profiler) {
+    S3ParallelDownloader(String bucket, IOManager ioManager, S3ClientConfig config, IRequestProfilerLimiter profiler) {
         this.bucket = bucket;
         this.ioManager = ioManager;
+        this.config = config;
         this.profiler = profiler;
         s3AsyncClient = createAsyncClient(config);
         transferManager = createS3TransferManager(s3AsyncClient);
@@ -70,8 +77,7 @@ class S3ParallelDownloader implements IParallelDownloader {
     @Override
     public void downloadFiles(Collection<FileReference> toDownload) throws HyracksDataException {
         try {
-            List<CompletableFuture<CompletedFileDownload>> downloads = startDownloadingFiles(toDownload);
-            waitForFileDownloads(downloads);
+            downloadFilesAndWait(toDownload);
         } catch (IOException | ExecutionException | InterruptedException e) {
             throw HyracksDataException.create(e);
         }
@@ -97,9 +103,10 @@ class S3ParallelDownloader implements IParallelDownloader {
         s3AsyncClient.close();
     }
 
-    private List<CompletableFuture<CompletedFileDownload>> startDownloadingFiles(Collection<FileReference> toDownload)
-            throws IOException {
+    private void downloadFilesAndWait(Collection<FileReference> toDownload)
+            throws IOException, ExecutionException, InterruptedException {
         List<CompletableFuture<CompletedFileDownload>> downloads = new ArrayList<>();
+        int maxPending = config.getRequestsMaxPendingHttpConnections();
         for (FileReference fileReference : toDownload) {
             // multipart download
             profiler.objectGet();
@@ -110,7 +117,7 @@ class S3ParallelDownloader implements IParallelDownloader {
             // GetObjectRequest
             GetObjectRequest.Builder requestBuilder = GetObjectRequest.builder();
             requestBuilder.bucket(bucket);
-            requestBuilder.key(fileReference.getRelativePath());
+            requestBuilder.key(config.getPrefix() + fileReference.getRelativePath());
 
             // Download object
             DownloadFileRequest.Builder builder = DownloadFileRequest.builder();
@@ -119,13 +126,18 @@ class S3ParallelDownloader implements IParallelDownloader {
 
             FileDownload fileDownload = transferManager.downloadFile(builder.build());
             downloads.add(fileDownload.completionFuture());
+            if (maxPending > 0 && downloads.size() >= maxPending) {
+                waitForFileDownloads(downloads);
+                downloads.clear();
+            }
         }
-        return downloads;
+        if (!downloads.isEmpty()) {
+            waitForFileDownloads(downloads);
+        }
     }
 
     private void waitForFileDownloads(List<CompletableFuture<CompletedFileDownload>> downloads)
             throws ExecutionException, InterruptedException {
-
         for (CompletableFuture<CompletedFileDownload> download : downloads) {
             download.get();
         }
@@ -138,7 +150,8 @@ class S3ParallelDownloader implements IParallelDownloader {
             DownloadDirectoryRequest.Builder builder = DownloadDirectoryRequest.builder();
             builder.bucket(bucket);
             builder.destination(fileReference.getFile().toPath());
-            builder.listObjectsV2RequestTransformer(l -> l.prefix(fileReference.getRelativePath()));
+            builder.listObjectsV2RequestTransformer(
+                    l -> l.prefix(config.getPrefix() + fileReference.getRelativePath()));
             DirectoryDownload directoryDownload = transferManager.downloadDirectory(builder.build());
             downloads.add(directoryDownload.completionFuture());
         }
@@ -167,24 +180,40 @@ class S3ParallelDownloader implements IParallelDownloader {
     }
 
     private static S3AsyncClient createAsyncClient(S3ClientConfig config) {
-        if (config.isLocalS3Provider()) {
-            // CRT client is not supported by S3Mock
-            return createS3AsyncClient(config);
-        } else {
-            // CRT could provide a better performance when used with an actual S3
+        // CRT client is not supported by all local S3 providers, but provides a better performance with AWS S3
+        if (!config.isLocalS3Provider()) {
             return createS3CrtAsyncClient(config);
         }
+        return createS3AsyncClient(config);
     }
 
     private static S3AsyncClient createS3AsyncClient(S3ClientConfig config) {
         S3AsyncClientBuilder builder = S3AsyncClient.builder();
         builder.credentialsProvider(config.createCredentialsProvider());
         builder.region(Region.of(config.getRegion()));
-
+        builder.forcePathStyle(config.isForcePathStyle());
+        AttributeMap.Builder customHttpConfigBuilder = AttributeMap.builder();
         if (config.getEndpoint() != null && !config.getEndpoint().isEmpty()) {
             builder.endpointOverride(URI.create(config.getEndpoint()));
         }
-
+        if (config.isDisableSslVerify()) {
+            customHttpConfigBuilder.put(SdkHttpConfigurationOption.TRUST_ALL_CERTIFICATES, true);
+        }
+        if (config.getRequestsMaxHttpConnections() > 0) {
+            customHttpConfigBuilder.put(SdkHttpConfigurationOption.MAX_CONNECTIONS,
+                    config.getRequestsMaxHttpConnections());
+        }
+        if (config.getRequestsMaxPendingHttpConnections() > 0) {
+            customHttpConfigBuilder.put(SdkHttpConfigurationOption.MAX_PENDING_CONNECTION_ACQUIRES,
+                    config.getRequestsMaxPendingHttpConnections());
+        }
+        if (config.getRequestsHttpConnectionAcquireTimeout() > 0) {
+            customHttpConfigBuilder.put(SdkHttpConfigurationOption.CONNECTION_ACQUIRE_TIMEOUT,
+                    Duration.ofSeconds(config.getRequestsHttpConnectionAcquireTimeout()));
+        }
+        SdkAsyncHttpClient nettyHttpClient =
+                NettyNioAsyncHttpClient.builder().buildWithDefaults(customHttpConfigBuilder.build());
+        builder.httpClient(nettyHttpClient);
         return builder.build();
     }
 
@@ -192,11 +221,10 @@ class S3ParallelDownloader implements IParallelDownloader {
         S3CrtAsyncClientBuilder builder = S3AsyncClient.crtBuilder();
         builder.credentialsProvider(config.createCredentialsProvider());
         builder.region(Region.of(config.getRegion()));
-
+        builder.forcePathStyle(config.isForcePathStyle());
         if (config.getEndpoint() != null && !config.getEndpoint().isEmpty()) {
             builder.endpointOverride(URI.create(config.getEndpoint()));
         }
-
         return builder.build();
     }
 

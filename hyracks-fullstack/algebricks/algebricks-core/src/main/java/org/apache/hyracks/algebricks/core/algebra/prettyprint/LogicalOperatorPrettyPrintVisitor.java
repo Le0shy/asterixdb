@@ -131,17 +131,22 @@ public class LogicalOperatorPrettyPrintVisitor extends AbstractLogicalOperatorPr
 
     private void printOperatorImpl(AbstractLogicalOperator op, int indent, boolean printInputs,
             boolean printOptimizerEstimates) throws AlgebricksException {
-        double opCard, opLocalCost, opTotalCost;
+        double opCard, opDocSize, opLocalCost, opTotalCost;
 
         op.accept(this, indent);
         if (printOptimizerEstimates) {
             opCard = getOpCardinality(op);
+            opDocSize = getOpDocSize(op);
             opLocalCost = getOpLocalCost(op);
             opTotalCost = getOpTotalCost(op);
             buffer.append(" [");
             buffer.append(CARDINALITY);
             buffer.append(": ");
             buffer.append(Double.toString(opCard));
+            buffer.append(", ");
+            buffer.append(DOCSIZE);
+            buffer.append(": ");
+            buffer.append(Double.toString(opDocSize));
             buffer.append(", ");
             buffer.append(OP_COST_LOCAL);
             buffer.append(": ");
@@ -187,6 +192,9 @@ public class LogicalOperatorPrettyPrintVisitor extends AbstractLogicalOperatorPr
     public Void visitRunningAggregateOperator(RunningAggregateOperator op, Integer indent) throws AlgebricksException {
         addIndent(indent).append("running-aggregate ").append(str(op.getVariables())).append(" <- ");
         pprintExprList(op.getExpressions(), indent);
+        if (op.isProjectPushed()) {
+            buffer.append(" project: ").append(str(op.getProjectVariables()));
+        }
         return null;
     }
 
@@ -261,6 +269,9 @@ public class LogicalOperatorPrettyPrintVisitor extends AbstractLogicalOperatorPr
     public Void visitAssignOperator(AssignOperator op, Integer indent) throws AlgebricksException {
         addIndent(indent).append("assign ").append(str(op.getVariables())).append(" <- ");
         pprintExprList(op.getExpressions(), indent);
+        if (op.isProjectPushed()) {
+            buffer.append(" project: ").append(str(op.getProjectVariables()));
+        }
         return null;
     }
 
@@ -298,7 +309,8 @@ public class LogicalOperatorPrettyPrintVisitor extends AbstractLogicalOperatorPr
                 ? " retain-untrue (" + op.getMissingPlaceholderVariable() + " <- " + op.getRetainMissingAsValue() + ")"
                 : "";
         addIndent(indent).append("select (").append(op.getCondition().getValue().accept(exprVisitor, indent))
-                .append(")").append(retainMissing);
+                .append(")").append(retainMissing)
+                .append(op.isProjectPushed() ? " project: " + str(op.getProjectVariables()) : "");
         return null;
     }
 
@@ -354,6 +366,9 @@ public class LogicalOperatorPrettyPrintVisitor extends AbstractLogicalOperatorPr
             buffer.append(" at " + op.getPositionalVariable());
         }
         buffer.append(" <- " + op.getExpressionRef().getValue().accept(exprVisitor, indent));
+        if (op.isProjectPushed()) {
+            buffer.append(" project: ").append(str(op.getProjectVariables()));
+        }
         return null;
     }
 

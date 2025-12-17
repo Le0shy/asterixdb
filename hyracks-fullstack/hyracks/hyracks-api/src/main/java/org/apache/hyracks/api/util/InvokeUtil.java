@@ -35,9 +35,12 @@ import org.apache.hyracks.util.InterruptibleAction;
 import org.apache.hyracks.util.InterruptibleSupplier;
 import org.apache.hyracks.util.Span;
 import org.apache.hyracks.util.ThrowingAction;
+import org.apache.hyracks.util.ThrowingConsumer;
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+
+import com.google.common.util.concurrent.UncheckedExecutionException;
 
 public class InvokeUtil {
 
@@ -53,7 +56,12 @@ public class InvokeUtil {
     /**
      * Executes the passed interruptible, retrying if the operation is interrupted. Once the interruptible
      * completes, the current thread will be re-interrupted, if the original operation was interrupted.
+     *
+     * @deprecated this method does not throw an exception when the action is interrupted, or when the thread
+     *             was interrupted prior to calling this method. This can lead to confusing behavior, if the caller
+     *             does not check for interrupted thread state after calling this method.
      */
+    @Deprecated
     public static void doUninterruptibly(InterruptibleAction interruptible) {
         boolean interrupted = Thread.interrupted();
         try {
@@ -211,10 +219,11 @@ public class InvokeUtil {
         }
     }
 
-    @SuppressWarnings({ "squid:S1181", "squid:S1193", "ConstantConditions" }) // catching Throwable, instanceofs
-    public static void tryWithCleanups(ThrowingAction action, ThrowingAction... cleanups) throws Exception {
+    @SuppressWarnings({ "squid:S1181", "squid:S1193", "ConstantConditions", "UnreachableCode" })
+    // catching Throwable, instanceofs, false-positive unreachable code
+    public static void tryWithCleanupsAsHyracks(ThrowingAction action, ThrowingAction... cleanups)
+            throws HyracksDataException {
         Throwable savedT = null;
-        boolean suppressedInterrupted = false;
         try {
             action.run();
         } catch (Throwable t) {
@@ -223,6 +232,137 @@ public class InvokeUtil {
             for (ThrowingAction cleanup : cleanups) {
                 try {
                     cleanup.run();
+                } catch (Throwable t) {
+                    savedT = ExceptionUtils.suppress(savedT, t);
+                }
+            }
+        }
+        if (Thread.interrupted()) {
+            savedT = ExceptionUtils.suppress(savedT, new InterruptedException());
+        }
+        if (savedT == null) {
+            return;
+        }
+        throw HyracksDataException.create(savedT);
+    }
+
+    @SuppressWarnings({ "squid:S1181", "squid:S1193", "ConstantConditions", "UnreachableCode" })
+    // catching Throwable, instanceofs, false-positive unreachable code
+    public static void tryWithCleanups(ThrowingAction action, ThrowingAction... cleanups) throws Exception {
+        Throwable savedT = null;
+        try {
+            action.run();
+        } catch (Throwable t) {
+            savedT = t;
+        } finally {
+            for (ThrowingAction cleanup : cleanups) {
+                try {
+                    cleanup.run();
+                } catch (Throwable t) {
+                    savedT = ExceptionUtils.suppress(savedT, t);
+                }
+            }
+        }
+        if (Thread.interrupted()) {
+            savedT = ExceptionUtils.suppress(savedT, new InterruptedException());
+        }
+        if (savedT == null) {
+            return;
+        }
+        if (savedT instanceof Error) {
+            throw (Error) savedT;
+        } else if (savedT instanceof Exception) {
+            throw (Exception) savedT;
+        } else {
+            throw HyracksDataException.create(savedT);
+        }
+    }
+
+    /**
+     * Runs the supplied action, and any specified cleanups. Any pending interruption will be cleared prior
+     * to running the action and all cleanups. An error will be logged if the action and/or any of the cleanups
+     * are themselves interrupted. Finally, if any action or cleanup was interrupted, or if the there was an
+     * interrupt cleared as part of running any of these activities, either an InterruptedException will be returned
+     * if the action & cleanups all ran without exception, or an InterruptedException will be suppressed into the
+     * exception if the action or any of the cleanups threw an exception. In the case where InterruptedException is
+     * suppressed, the current thread will be interrupted.
+     *
+     * @param action the action to run
+     * @param cleanups the cleanups to run after the action
+     * @return Exception if the action throws an exception or the action or any of the cleanups are interrupted, or if
+     * the current thread was interrupted before running the action or any of the cleanups.
+     */
+    @SuppressWarnings({ "squid:S1181", "squid:S1193", "ConstantConditions", "UnreachableCode" })
+    // catching Throwable, instanceofs, false-positive unreachable code
+    public static Exception tryUninterruptibleWithCleanups(Exception root, ThrowingAction action,
+            ThrowingAction... cleanups) {
+        try {
+            tryUninterruptibleWithCleanups(action, cleanups);
+        } catch (Exception e) {
+            root = ExceptionUtils.suppress(root, e);
+        }
+        return root;
+    }
+
+    /**
+     * Runs the supplied action, and any specified cleanups. Any pending interruption will be cleared prior
+     * to running the action and all cleanups. An error will be logged if the action and/or any of the cleanups
+     * are themselves interrupted. Finally, if any action or cleanup was interrupted, or if the there was an
+     * interrupt cleared as part of running any of these activities, either an InterruptedException will be thrown
+     * if the action & cleanups all ran without exception, or an InterruptedException will be suppressed into the
+     * exception if the action or any of the cleanups threw an exception. In the case where InterruptedException is
+     * suppressed, the current thread will be interrupted.
+     *
+     * @param action the action to run
+     * @param cleanups the cleanups to run after the action
+     * @throws Exception if the action throws an exception or the action or any of the cleanups are interrupted.
+     */
+    @SuppressWarnings({ "squid:S1181", "squid:S1193", "ConstantConditions", "UnreachableCode" })
+    // catching Throwable, instanceofs, false-positive unreachable code
+    public static void tryUninterruptibleWithCleanups(ThrowingAction action, ThrowingAction... cleanups)
+            throws Exception {
+        Throwable savedT = null;
+        try {
+            runUninterruptible(action);
+        } catch (Throwable t) {
+            savedT = t;
+        } finally {
+            for (ThrowingAction cleanup : cleanups) {
+                try {
+                    runUninterruptible(cleanup);
+                } catch (Throwable t) {
+                    savedT = ExceptionUtils.suppress(savedT, t);
+                }
+            }
+        }
+        if (Thread.interrupted()) {
+            savedT = ExceptionUtils.suppress(savedT, new InterruptedException());
+        }
+        if (savedT == null) {
+            return;
+        }
+        if (savedT instanceof Error) {
+            throw (Error) savedT;
+        } else if (savedT instanceof Exception) {
+            throw (Exception) savedT;
+        } else {
+            throw HyracksDataException.create(savedT);
+        }
+    }
+
+    // catching Throwable, instanceofs, false-positive unreachable code
+    public static void tryWithCleanups(ThrowingAction action, ThrowingConsumer<Throwable>... cleanups)
+            throws Exception {
+        Throwable savedT = null;
+        boolean suppressedInterrupted = false;
+        try {
+            action.run();
+        } catch (Throwable t) {
+            savedT = t;
+        } finally {
+            for (ThrowingConsumer cleanup : cleanups) {
+                try {
+                    cleanup.process(savedT);
                 } catch (Throwable t) {
                     if (savedT != null) {
                         savedT.addSuppressed(t);
@@ -285,6 +425,81 @@ public class InvokeUtil {
         }
     }
 
+    @SuppressWarnings({ "squid:S1181", "squid:S1193", "ConstantConditions" }) // catching Throwable, instanceofs
+    public static void tryHyracksWithCleanups(HyracksThrowingAction action, HyracksThrowingAction... cleanups)
+            throws HyracksDataException {
+        Throwable savedT = null;
+        boolean suppressedInterrupted = false;
+        try {
+            action.run();
+        } catch (Throwable t) {
+            savedT = t;
+        } finally {
+            for (HyracksThrowingAction cleanup : cleanups) {
+                try {
+                    cleanup.run();
+                } catch (Throwable t) {
+                    if (savedT != null) {
+                        savedT.addSuppressed(t);
+                        suppressedInterrupted = suppressedInterrupted || t instanceof InterruptedException;
+                    } else {
+                        savedT = t;
+                    }
+                }
+            }
+        }
+        if (savedT == null) {
+            return;
+        }
+        if (suppressedInterrupted) {
+            Thread.currentThread().interrupt();
+        }
+        if (savedT instanceof Error) {
+            throw (Error) savedT;
+        } else {
+            throw HyracksDataException.create(savedT);
+        }
+    }
+
+    public static void tryWithCleanupsUnchecked(Runnable action, Runnable... cleanups) {
+        Throwable savedT = null;
+        try {
+            action.run();
+        } catch (Throwable t) {
+            savedT = t;
+        } finally {
+            for (Runnable cleanup : cleanups) {
+                try {
+                    cleanup.run();
+                } catch (Throwable t) {
+                    if (savedT != null) {
+                        savedT.addSuppressed(t);
+                    } else {
+                        savedT = t;
+                    }
+                }
+            }
+        }
+        if (savedT instanceof Error) {
+            throw (Error) savedT;
+        } else if (savedT != null) {
+            throw new UncheckedExecutionException(savedT);
+        }
+    }
+
+    /**
+     * Runs the supplied action, after suspending any pending interruption. An error will be logged if
+     * the action is itself interrupted.
+     */
+    public static Exception runUninterruptible(Exception root, ThrowingAction action) {
+        try {
+            runUninterruptible(action);
+        } catch (Exception e) {
+            root = ExceptionUtils.suppress(root, e);
+        }
+        return root;
+    }
+
     /**
      * Runs the supplied action, after suspending any pending interruption. An error will be logged if
      * the action is itself interrupted.
@@ -293,16 +508,12 @@ public class InvokeUtil {
         boolean interrupted = Thread.interrupted();
         try {
             action.run();
-            if (Thread.interrupted()) {
+            if (interrupted || Thread.interrupted()) {
                 throw new InterruptedException();
             }
         } catch (InterruptedException e) {
             LOGGER.error("uninterruptible action {} was interrupted!", action, e);
-            interrupted = true;
-        } finally {
-            if (interrupted) {
-                Thread.currentThread().interrupt();
-            }
+            throw e;
         }
     }
 
@@ -355,6 +566,26 @@ public class InvokeUtil {
             }
         }
         throw HyracksDataException.create(new InterruptedException());
+    }
+
+    public static Exception unwrapUnchecked(UncheckedExecutionException e) {
+        Throwable cause = e.getCause();
+        if (cause instanceof Error err) {
+            throw err;
+        } else if (cause instanceof Exception ex) {
+            return ex;
+        } else {
+            return HyracksDataException.create(cause);
+        }
+    }
+
+    public static HyracksDataException unwrapUncheckedHyracks(UncheckedExecutionException e) {
+        Throwable cause = e.getCause();
+        if (cause instanceof Error err) {
+            throw err;
+        } else {
+            return HyracksDataException.create(cause);
+        }
     }
 
     @FunctionalInterface

@@ -18,6 +18,8 @@
  */
 package org.apache.asterix.runtime.operators;
 
+import static org.apache.hyracks.storage.am.lsm.common.api.IBatchController.KEY_BATCH_CONTROLLER;
+
 import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
@@ -58,6 +60,7 @@ import org.apache.hyracks.storage.am.common.impls.IndexAccessParameters;
 import org.apache.hyracks.storage.am.common.impls.NoOpOperationCallback;
 import org.apache.hyracks.storage.am.common.ophelpers.IndexOperation;
 import org.apache.hyracks.storage.am.common.util.ResourceReleaseUtils;
+import org.apache.hyracks.storage.am.lsm.common.api.IBatchController;
 import org.apache.hyracks.storage.am.lsm.common.api.IFrameOperationCallback;
 import org.apache.hyracks.storage.am.lsm.common.api.IFrameTupleProcessor;
 import org.apache.hyracks.storage.am.lsm.common.api.ILSMComponentId;
@@ -95,22 +98,23 @@ public class LSMPrimaryInsertOperatorNodePushable extends LSMIndexInsertUpdateDe
     private final LSMTreeIndexAccessor[] lsmAccessorForUniqunessChecks;
 
     private final IFrameOperationCallback[] frameOpCallbacks;
-    private boolean flushedPartialTuples;
     private final PermutingFrameTupleReference keyTuple;
     private final Int2ObjectMap<IntSet> partition2TuplesMap = new Int2ObjectOpenHashMap<>();
     private final IntSet processedTuples = new IntOpenHashSet();
     private final IntSet flushedTuples = new IntOpenHashSet();
     private final SourceLocation sourceLoc;
+    private boolean flushedPartialTuples;
+    private IBatchController batchController;
 
     public LSMPrimaryInsertOperatorNodePushable(IHyracksTaskContext ctx, int partition,
             IIndexDataflowHelperFactory indexHelperFactory, IIndexDataflowHelperFactory keyIndexHelperFactory,
             int[] fieldPermutation, RecordDescriptor inputRecDesc,
             IModificationOperationCallbackFactory modCallbackFactory,
             ISearchOperationCallbackFactory searchCallbackFactory, int numOfPrimaryKeys, int[] filterFields,
-            SourceLocation sourceLoc, ITuplePartitionerFactory tuplePartitionerFactory, int[][] partitionsMap)
-            throws HyracksDataException {
-        super(ctx, partition, indexHelperFactory, fieldPermutation, inputRecDesc, IndexOperation.UPSERT,
-                modCallbackFactory, null, tuplePartitionerFactory, partitionsMap);
+            SourceLocation sourceLoc, ITuplePartitionerFactory tuplePartitionerFactory, int[][] partitionsMap,
+            IndexOperation op) throws HyracksDataException {
+        super(ctx, partition, indexHelperFactory, fieldPermutation, inputRecDesc, op, modCallbackFactory, null,
+                tuplePartitionerFactory, partitionsMap);
         this.sourceLoc = sourceLoc;
         this.frameOpCallbacks = new IFrameOperationCallback[partitions.length];
         this.searchCallbacks = new ISearchOperationCallback[partitions.length];
@@ -160,47 +164,59 @@ public class LSMPrimaryInsertOperatorNodePushable extends LSMIndexInsertUpdateDe
                         // already processed; skip
                         return;
                     }
-                    keyTuple.reset(accessor, index);
-                    searchPred.reset(keyTuple, keyTuple, true, true, keySearchCmp, keySearchCmp);
-                    boolean duplicate = false;
+                    switch (op) {
+                        case INSERT:
+                        case UPSERT:
+                            keyTuple.reset(accessor, index);
+                            searchPred.reset(keyTuple, keyTuple, true, true, keySearchCmp, keySearchCmp);
+                            boolean duplicate = false;
 
-                    lsmAccessorForUniqunessCheck.search(cursor, searchPred);
-                    try {
-                        if (cursor.hasNext()) {
-                            // duplicate, skip
-                            if (searchCallback instanceof LockThenSearchOperationCallback) {
-                                ((LockThenSearchOperationCallback) searchCallback).release();
+                            lsmAccessorForUniqunessCheck.search(cursor, searchPred);
+                            try {
+                                if (cursor.hasNext()) {
+                                    // duplicate, skip
+                                    if (searchCallback instanceof LockThenSearchOperationCallback) {
+                                        ((LockThenSearchOperationCallback) searchCallback).release();
+                                    }
+                                    duplicate = true;
+                                }
+                            } finally {
+                                cursor.close();
                             }
-                            duplicate = true;
-                        }
-                    } finally {
-                        cursor.close();
-                    }
-                    if (!duplicate) {
-                        beforeModification(tuple);
-                        ((ILSMIndexAccessor) indexAccessor).forceUpsert(tuple);
-                        if (lsmAccessorForKeyIndex != null) {
-                            lsmAccessorForKeyIndex.forceUpsert(keyTuple);
-                        }
-                    } else {
-                        // we should flush previous inserted records so that these transactions can commit
-                        flushPartialFrame();
-                        // feed requires this nested exception to remove duplicated tuples
-                        // TODO: a better way to treat duplicates?
-                        throw HyracksDataException.create(ErrorCode.ERROR_PROCESSING_TUPLE,
-                                HyracksDataException.create(ErrorCode.DUPLICATE_KEY), sourceLoc, index);
+                            if (!duplicate) {
+                                beforeModification(tuple);
+                                ((ILSMIndexAccessor) indexAccessor).forceUpsert(tuple);
+                                if (lsmAccessorForKeyIndex != null) {
+                                    lsmAccessorForKeyIndex.forceUpsert(keyTuple);
+                                }
+                            } else {
+                                // we should flush previous inserted records so that these transactions can commit
+                                flushPartialFrame();
+                                // feed requires this nested exception to remove duplicated tuples
+                                // TODO: a better way to treat duplicates?
+                                throw HyracksDataException.create(ErrorCode.ERROR_PROCESSING_TUPLE,
+                                        HyracksDataException.create(ErrorCode.DUPLICATE_KEY), sourceLoc, index);
+                            }
+                            break;
+                        case DELETE:
+                            ((ILSMIndexAccessor) indexAccessor).forceDelete(tuple);
+                            break;
+                        default:
+                            throw HyracksDataException.create(ErrorCode.INVALID_OPERATOR_OPERATION, sourceLoc,
+                                    op.toString(), LSMPrimaryInsertOperatorNodePushable.class.getSimpleName());
+
                     }
                     processedTuples.add(index);
                 }
 
                 @Override
                 public void start() throws HyracksDataException {
-                    ((LSMTreeIndexAccessor) indexAccessor).getCtx().setOperation(IndexOperation.UPSERT);
+                    ((LSMTreeIndexAccessor) indexAccessor).getCtx().setOperation(op);
                 }
 
                 @Override
                 public void finish() throws HyracksDataException {
-                    ((LSMTreeIndexAccessor) indexAccessor).getCtx().setOperation(IndexOperation.UPSERT);
+                    ((LSMTreeIndexAccessor) indexAccessor).getCtx().setOperation(op);
                 }
 
                 @Override
@@ -219,8 +235,6 @@ public class LSMPrimaryInsertOperatorNodePushable extends LSMIndexInsertUpdateDe
         try {
             INcApplicationContext appCtx =
                     (INcApplicationContext) ctx.getJobletContext().getServiceContext().getApplicationContext();
-            writer.open();
-            writerOpen = true;
             for (int i = 0; i < partitions.length; i++) {
                 IIndexDataflowHelper indexHelper = indexHelpers[i];
                 indexHelpersOpen[i] = true;
@@ -266,12 +280,15 @@ public class LSMPrimaryInsertOperatorNodePushable extends LSMIndexInsertUpdateDe
                 LSMIndexUtil.checkAndSetFirstLSN((AbstractLSMIndex) index,
                         appCtx.getTransactionSubsystem().getLogManager());
             }
+            writer.open();
+            writerOpen = true;
             createTupleProcessors(sourceLoc);
             keySearchCmp =
                     BTreeUtils.getSearchMultiComparator(((ITreeIndex) indexes[0]).getComparatorFactories(), frameTuple);
             searchPred = new RangePredicate(frameTuple, frameTuple, true, true, keySearchCmp, keySearchCmp, null, null);
             appender = new FrameTupleAppender(new VSizeFrame(ctx), true);
             frameTuple = new FrameTupleReference();
+            batchController = TaskUtil.getOrDefault(KEY_BATCH_CONTROLLER, ctx, StandardBatchController.INSTANCE);
         } catch (Throwable e) { // NOSONAR: Re-thrown
             throw HyracksDataException.create(e);
         }
@@ -293,7 +310,8 @@ public class LSMPrimaryInsertOperatorNodePushable extends LSMIndexInsertUpdateDe
             LSMTreeIndexAccessor lsmAccessor = (LSMTreeIndexAccessor) indexAccessors[pIdx];
             IFrameOperationCallback frameOpCallback = frameOpCallbacks[pIdx];
             IFrameTupleProcessor processor = processors[pIdx];
-            lsmAccessor.batchOperate(accessor, tuple, processor, frameOpCallback, p2tuplesMapEntry.getValue());
+            lsmAccessor.batchOperate(accessor, tuple, processor, frameOpCallback, batchController,
+                    p2tuplesMapEntry.getValue());
         }
 
         writeBuffer.ensureFrameSize(buffer.capacity());

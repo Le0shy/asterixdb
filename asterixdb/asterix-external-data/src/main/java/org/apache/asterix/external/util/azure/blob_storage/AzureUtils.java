@@ -115,6 +115,8 @@ public class AzureUtils {
 
         // Client builder
         BlobServiceClientBuilder builder = new BlobServiceClientBuilder();
+        builder.httpLogOptions(AzureConstants.HTTP_LOG_OPTIONS);
+
         int timeout = appCtx.getExternalProperties().getAzureRequestTimeout();
         RequestRetryOptions requestRetryOptions = new RequestRetryOptions(null, null, timeout, null, null, null);
         builder.retryOptions(requestRetryOptions);
@@ -123,7 +125,11 @@ public class AzureUtils {
         if (endpoint == null) {
             throw new CompilationException(PARAMETERS_REQUIRED, ENDPOINT_FIELD_NAME);
         }
-        builder.endpoint(endpoint);
+        try {
+            builder.endpoint(endpoint);
+        } catch (Exception ex) {
+            throw new CompilationException(ErrorCode.EXTERNAL_SOURCE_ERROR, ex, getMessageOrToString(ex));
+        }
 
         // Shared Key
         if (accountName != null || accountKey != null) {
@@ -276,7 +282,11 @@ public class AzureUtils {
         if (endpoint == null) {
             throw new CompilationException(PARAMETERS_REQUIRED, ENDPOINT_FIELD_NAME);
         }
-        builder.endpoint(endpoint);
+        try {
+            builder.endpoint(endpoint);
+        } catch (Exception ex) {
+            throw new CompilationException(ErrorCode.EXTERNAL_SOURCE_ERROR, ex, getMessageOrToString(ex));
+        }
 
         // Shared Key
         if (accountName != null || accountKey != null) {
@@ -476,7 +486,7 @@ public class AzureUtils {
             ListPathsOptions listOptions = new ListPathsOptions();
             boolean recursive = Boolean.parseBoolean(configuration.get(RECURSIVE_FIELD_NAME));
             listOptions.setRecursive(recursive);
-            listOptions.setPath(getPrefix(configuration, false));
+            listOptions.setPath(getPrefix(configuration, false, false));
             PagedIterable<PathItem> pathItems = fileSystemClient.listPaths(listOptions, null);
 
             // Collect the paths to files only

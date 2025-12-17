@@ -19,22 +19,28 @@
 package org.apache.asterix.external.util;
 
 import static org.apache.asterix.common.metadata.MetadataConstants.DEFAULT_DATABASE;
+import static org.apache.asterix.common.utils.CSVConstants.KEY_DELIMITER;
+import static org.apache.asterix.common.utils.CSVConstants.KEY_EMPTY_STRING_AS_NULL;
+import static org.apache.asterix.common.utils.CSVConstants.KEY_ESCAPE;
+import static org.apache.asterix.common.utils.CSVConstants.KEY_FORCE_QUOTE;
+import static org.apache.asterix.common.utils.CSVConstants.KEY_HEADER;
+import static org.apache.asterix.common.utils.CSVConstants.KEY_QUOTE;
 import static org.apache.asterix.external.util.ExternalDataConstants.DEFINITION_FIELD_NAME;
-import static org.apache.asterix.external.util.ExternalDataConstants.KEY_DELIMITER;
-import static org.apache.asterix.external.util.ExternalDataConstants.KEY_ESCAPE;
 import static org.apache.asterix.external.util.ExternalDataConstants.KEY_EXCLUDE;
 import static org.apache.asterix.external.util.ExternalDataConstants.KEY_EXTERNAL_SCAN_BUFFER_SIZE;
 import static org.apache.asterix.external.util.ExternalDataConstants.KEY_INCLUDE;
 import static org.apache.asterix.external.util.ExternalDataConstants.KEY_PATH;
-import static org.apache.asterix.external.util.ExternalDataConstants.KEY_QUOTE;
 import static org.apache.asterix.external.util.ExternalDataConstants.KEY_RECORD_END;
 import static org.apache.asterix.external.util.ExternalDataConstants.KEY_RECORD_START;
+import static org.apache.asterix.external.util.aws.s3.S3AuthUtils.configureAwsS3HdfsJobConf;
 import static org.apache.asterix.external.util.azure.blob_storage.AzureUtils.validateAzureBlobProperties;
 import static org.apache.asterix.external.util.azure.blob_storage.AzureUtils.validateAzureDataLakeProperties;
+import static org.apache.asterix.external.util.google.gcs.GCSAuthUtils.configureHdfsJobConf;
 import static org.apache.asterix.external.util.google.gcs.GCSUtils.validateProperties;
 import static org.apache.asterix.om.utils.ProjectionFiltrationTypeUtil.ALL_FIELDS_TYPE;
 import static org.apache.asterix.om.utils.ProjectionFiltrationTypeUtil.EMPTY_TYPE;
 import static org.apache.asterix.runtime.evaluators.functions.StringEvaluatorUtils.RESERVED_REGEX_CHARS;
+import static org.apache.hyracks.api.util.ExceptionUtils.getMessageOrToString;
 import static org.msgpack.core.MessagePack.Code.ARRAY16;
 
 import java.io.ByteArrayOutputStream;
@@ -48,6 +54,8 @@ import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.TimeZone;
 import java.util.function.BiPredicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -72,10 +80,12 @@ import org.apache.asterix.external.input.record.reader.abstracts.AbstractExterna
 import org.apache.asterix.external.library.JavaLibrary;
 import org.apache.asterix.external.library.msgpack.MessagePackUtils;
 import org.apache.asterix.external.util.ExternalDataConstants.ParquetOptions;
+import org.apache.asterix.external.util.aws.s3.S3AuthUtils;
 import org.apache.asterix.external.util.aws.s3.S3Constants;
 import org.apache.asterix.external.util.aws.s3.S3Utils;
 import org.apache.asterix.external.util.azure.blob_storage.AzureConstants;
 import org.apache.asterix.external.util.google.gcs.GCSConstants;
+import org.apache.asterix.external.util.google.gcs.GCSUtils;
 import org.apache.asterix.om.types.ARecordType;
 import org.apache.asterix.om.types.ATypeTag;
 import org.apache.asterix.om.types.AUnionType;
@@ -86,6 +96,7 @@ import org.apache.asterix.runtime.evaluators.common.NumberUtils;
 import org.apache.asterix.runtime.projection.ExternalDatasetProjectionFiltrationInfo;
 import org.apache.asterix.runtime.projection.FunctionCallInformation;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.mapred.JobConf;
 import org.apache.hyracks.algebricks.common.exceptions.AlgebricksException;
 import org.apache.hyracks.algebricks.common.exceptions.NotImplementedException;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
@@ -107,11 +118,22 @@ import org.apache.iceberg.FileScanTask;
 import org.apache.iceberg.Table;
 import org.apache.iceberg.hadoop.HadoopTables;
 import org.apache.iceberg.io.CloseableIterable;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+import io.delta.kernel.defaults.engine.DefaultEngine;
+import io.delta.kernel.engine.Engine;
+import io.delta.kernel.exceptions.KernelEngineException;
+import io.delta.kernel.exceptions.KernelException;
 
 public class ExternalDataUtils {
+
+    private static final Set<String> validTimeZones = Set.of(TimeZone.getAvailableIDs());
     private static final Map<ATypeTag, IValueParserFactory> valueParserFactoryMap = new EnumMap<>(ATypeTag.class);
     private static final int DEFAULT_MAX_ARGUMENT_SZ = 1024 * 1024;
     private static final int HEADER_FUDGE = 64;
+
+    private static final Logger LOGGER = LogManager.getLogger();
 
     static {
         valueParserFactoryMap.put(ATypeTag.INTEGER, IntegerParserFactory.INSTANCE);
@@ -143,7 +165,10 @@ public class ExternalDataUtils {
         return quote;
     }
 
-    public static char validateGetEscape(Map<String, String> configuration) throws HyracksDataException {
+    public static char validateGetEscape(Map<String, String> configuration, String format) throws HyracksDataException {
+        if (ExternalDataConstants.FORMAT_CSV.equals(format)) {
+            return validateCharOrDefault(configuration, KEY_ESCAPE, ExternalDataConstants.CSV_ESCAPE);
+        }
         return validateCharOrDefault(configuration, KEY_ESCAPE, ExternalDataConstants.ESCAPE);
     }
 
@@ -259,7 +284,7 @@ public class ExternalDataUtils {
     }
 
     public static boolean hasHeader(Map<String, String> configuration) {
-        return isTrue(configuration, ExternalDataConstants.KEY_HEADER);
+        return isTrue(configuration, KEY_HEADER);
     }
 
     public static boolean isTrue(Map<String, String> configuration, String key) {
@@ -430,6 +455,7 @@ public class ExternalDataUtils {
     public static void defaultConfiguration(Map<String, String> configuration) {
         String format = configuration.get(ExternalDataConstants.KEY_FORMAT);
         if (format != null) {
+            //todo:utsav
             // default quote, escape character for quote and fields delimiter for csv and tsv format
             if (format.equals(ExternalDataConstants.FORMAT_CSV)) {
                 configuration.putIfAbsent(KEY_DELIMITER, ExternalDataConstants.DEFAULT_DELIMITER);
@@ -466,6 +492,10 @@ public class ExternalDataUtils {
         }
 
         if (configuration.containsKey(ExternalDataConstants.TABLE_FORMAT)) {
+            if (isDeltaTable(configuration)) {
+                configuration.put(ExternalDataConstants.KEY_PARSER, ExternalDataConstants.FORMAT_DELTA);
+                configuration.put(ExternalDataConstants.KEY_FORMAT, ExternalDataConstants.FORMAT_DELTA);
+            }
             prepareTableFormat(configuration);
         }
     }
@@ -475,68 +505,113 @@ public class ExternalDataUtils {
      *
      * @param configuration external data configuration
      */
+    public static boolean isDeltaTable(Map<String, String> configuration) {
+        return configuration.containsKey(ExternalDataConstants.TABLE_FORMAT)
+                && configuration.get(ExternalDataConstants.TABLE_FORMAT).equals(ExternalDataConstants.FORMAT_DELTA);
+    }
+
+    public static void validateDeltaTableProperties(Map<String, String> configuration) throws CompilationException {
+        if (!(configuration.get(ExternalDataConstants.KEY_FORMAT) == null
+                || configuration.get(ExternalDataConstants.KEY_FORMAT).equals(ExternalDataConstants.FORMAT_PARQUET))) {
+            throw new CompilationException(ErrorCode.INVALID_DELTA_TABLE_FORMAT,
+                    configuration.get(ExternalDataConstants.KEY_FORMAT));
+        }
+        if (configuration.containsKey(ExternalDataConstants.DeltaOptions.TIMEZONE)
+                && !validTimeZones.contains(configuration.get(ExternalDataConstants.DeltaOptions.TIMEZONE))) {
+            throw new CompilationException(ErrorCode.INVALID_TIMEZONE,
+                    configuration.get(ExternalDataConstants.DeltaOptions.TIMEZONE));
+        }
+    }
+
+    public static void validateDeltaTableExists(IApplicationContext appCtx, Map<String, String> configuration)
+            throws AlgebricksException {
+        String tableMetadataPath = null;
+        JobConf conf = new JobConf();
+        if (configuration.get(ExternalDataConstants.KEY_EXTERNAL_SOURCE_TYPE)
+                .equals(ExternalDataConstants.KEY_ADAPTER_NAME_AWS_S3)) {
+            configureAwsS3HdfsJobConf(appCtx, conf, configuration);
+            tableMetadataPath = S3Utils.getPath(configuration);
+        } else if (configuration.get(ExternalDataConstants.KEY_EXTERNAL_SOURCE_TYPE)
+                .equals(ExternalDataConstants.KEY_ADAPTER_NAME_GCS)) {
+            configureHdfsJobConf(conf, configuration);
+            tableMetadataPath = GCSUtils.getPath(configuration);
+        } else {
+            throw new CompilationException(ErrorCode.EXTERNAL_SOURCE_ERROR,
+                    "Delta format is not supported for the external source type: "
+                            + configuration.get(ExternalDataConstants.KEY_EXTERNAL_SOURCE_TYPE));
+        }
+        Engine engine = DefaultEngine.create(conf);
+        io.delta.kernel.Table table = io.delta.kernel.Table.forPath(engine, tableMetadataPath);
+        try {
+            table.getLatestSnapshot(engine);
+        } catch (KernelException | KernelEngineException e) {
+            LOGGER.info("Failed to get latest snapshot for table: {}", tableMetadataPath, e);
+            throw CompilationException.create(ErrorCode.EXTERNAL_SOURCE_ERROR, e, getMessageOrToString(e));
+        }
+    }
+
+    public static void prepareIcebergTableFormat(Map<String, String> configuration, Configuration conf,
+            String tableMetadataPath) throws AlgebricksException {
+        HadoopTables tables = new HadoopTables(conf);
+        Table icebergTable = tables.load(tableMetadataPath);
+
+        if (icebergTable instanceof BaseTable) {
+            BaseTable baseTable = (BaseTable) icebergTable;
+
+            if (baseTable.operations().current()
+                    .formatVersion() != ExternalDataConstants.SUPPORTED_ICEBERG_FORMAT_VERSION) {
+                throw new AsterixException(ErrorCode.UNSUPPORTED_ICEBERG_FORMAT_VERSION,
+                        "AsterixDB only supports Iceberg version up to "
+                                + ExternalDataConstants.SUPPORTED_ICEBERG_FORMAT_VERSION);
+            }
+
+            try (CloseableIterable<FileScanTask> fileScanTasks = baseTable.newScan().planFiles()) {
+
+                StringBuilder builder = new StringBuilder();
+
+                for (FileScanTask task : fileScanTasks) {
+                    builder.append(",");
+                    String path = task.file().path().toString();
+                    builder.append(path);
+                }
+
+                if (builder.length() > 0) {
+                    builder.deleteCharAt(0);
+                }
+
+                configuration.put(ExternalDataConstants.KEY_PATH, builder.toString());
+
+            } catch (IOException e) {
+                throw new AsterixException(ErrorCode.ERROR_READING_ICEBERG_METADATA, e);
+            }
+
+        } else {
+            throw new AsterixException(ErrorCode.UNSUPPORTED_ICEBERG_TABLE,
+                    "Invalid iceberg base table. Please remove metadata specifiers");
+        }
+    }
+
     public static void prepareTableFormat(Map<String, String> configuration) throws AlgebricksException {
+        Configuration conf = new Configuration();
+        String tableMetadataPath = configuration.get(ExternalDataConstants.TABLE_METADATA_LOCATION);
+
+        // If the table is in S3
+        if (configuration.get(ExternalDataConstants.KEY_READER).equals(ExternalDataConstants.KEY_ADAPTER_NAME_AWS_S3)) {
+
+            conf.set(S3Constants.HADOOP_ACCESS_KEY_ID, configuration.get(S3Constants.ACCESS_KEY_ID_FIELD_NAME));
+            conf.set(S3Constants.HADOOP_SECRET_ACCESS_KEY, configuration.get(S3Constants.SECRET_ACCESS_KEY_FIELD_NAME));
+            tableMetadataPath = S3Constants.HADOOP_S3_PROTOCOL + "://"
+                    + configuration.get(ExternalDataConstants.CONTAINER_NAME_FIELD_NAME) + '/'
+                    + configuration.get(ExternalDataConstants.DEFINITION_FIELD_NAME);
+        } else if (configuration.get(ExternalDataConstants.KEY_READER)
+                .equals(ExternalDataConstants.KEY_ADAPTER_NAME_HDFS)) {
+            conf.set(ExternalDataConstants.KEY_HADOOP_FILESYSTEM_URI,
+                    configuration.get(ExternalDataConstants.KEY_HDFS_URL));
+            tableMetadataPath = configuration.get(ExternalDataConstants.KEY_HDFS_URL) + '/' + tableMetadataPath;
+        }
         // Apache Iceberg table format
         if (configuration.get(ExternalDataConstants.TABLE_FORMAT).equals(ExternalDataConstants.FORMAT_APACHE_ICEBERG)) {
-            Configuration conf = new Configuration();
-
-            String metadata_path = configuration.get(ExternalDataConstants.ICEBERG_METADATA_LOCATION);
-
-            // If the table is in S3
-            if (configuration.get(ExternalDataConstants.KEY_READER)
-                    .equals(ExternalDataConstants.KEY_ADAPTER_NAME_AWS_S3)) {
-
-                conf.set(S3Constants.HADOOP_ACCESS_KEY_ID, configuration.get(S3Constants.ACCESS_KEY_ID_FIELD_NAME));
-                conf.set(S3Constants.HADOOP_SECRET_ACCESS_KEY,
-                        configuration.get(S3Constants.SECRET_ACCESS_KEY_FIELD_NAME));
-                metadata_path = S3Constants.HADOOP_S3_PROTOCOL + "://"
-                        + configuration.get(ExternalDataConstants.CONTAINER_NAME_FIELD_NAME) + '/'
-                        + configuration.get(ExternalDataConstants.DEFINITION_FIELD_NAME);
-            } else if (configuration.get(ExternalDataConstants.KEY_READER).equals(ExternalDataConstants.READER_HDFS)) {
-                conf.set(ExternalDataConstants.KEY_HADOOP_FILESYSTEM_URI,
-                        configuration.get(ExternalDataConstants.KEY_HDFS_URL));
-                metadata_path = configuration.get(ExternalDataConstants.KEY_HDFS_URL) + '/' + metadata_path;
-            }
-
-            HadoopTables tables = new HadoopTables(conf);
-
-            Table icebergTable = tables.load(metadata_path);
-
-            if (icebergTable instanceof BaseTable) {
-                BaseTable baseTable = (BaseTable) icebergTable;
-
-                if (baseTable.operations().current()
-                        .formatVersion() != ExternalDataConstants.SUPPORTED_ICEBERG_FORMAT_VERSION) {
-                    throw new AsterixException(ErrorCode.UNSUPPORTED_ICEBERG_FORMAT_VERSION,
-                            "AsterixDB only supports Iceberg version up to "
-                                    + ExternalDataConstants.SUPPORTED_ICEBERG_FORMAT_VERSION);
-                }
-
-                try (CloseableIterable<FileScanTask> fileScanTasks = baseTable.newScan().planFiles()) {
-
-                    StringBuilder builder = new StringBuilder();
-
-                    for (FileScanTask task : fileScanTasks) {
-                        builder.append(",");
-                        String path = task.file().path().toString();
-                        builder.append(path);
-                    }
-
-                    if (builder.length() > 0) {
-                        builder.deleteCharAt(0);
-                    }
-
-                    configuration.put(ExternalDataConstants.KEY_PATH, builder.toString());
-
-                } catch (IOException e) {
-                    throw new AsterixException(ErrorCode.ERROR_READING_ICEBERG_METADATA, e);
-                }
-
-            } else {
-                throw new AsterixException(ErrorCode.UNSUPPORTED_ICEBERG_TABLE,
-                        "Invalid iceberg base table. Please remove metadata specifiers");
-            }
-
+            prepareIcebergTableFormat(configuration, conf, tableMetadataPath);
         }
     }
 
@@ -556,7 +631,7 @@ public class ExternalDataUtils {
             }
         }
         // normalize "header" parameter
-        putToLowerIfExists(configuration, ExternalDataConstants.KEY_HEADER);
+        putToLowerIfExists(configuration, KEY_HEADER);
         // normalize "redact-warnings" parameter
         putToLowerIfExists(configuration, ExternalDataConstants.KEY_REDACT_WARNINGS);
     }
@@ -569,16 +644,24 @@ public class ExternalDataUtils {
      */
     public static void validate(Map<String, String> configuration) throws HyracksDataException {
         String format = configuration.get(ExternalDataConstants.KEY_FORMAT);
-        String header = configuration.get(ExternalDataConstants.KEY_HEADER);
+        String header = configuration.get(KEY_HEADER);
+        String forceQuote = configuration.get(KEY_FORCE_QUOTE);
+        String emptyFieldAsNull = configuration.get(KEY_EMPTY_STRING_AS_NULL);
         if (format != null && isHeaderRequiredFor(format) && header == null) {
-            throw new RuntimeDataException(ErrorCode.PARAMETERS_REQUIRED, ExternalDataConstants.KEY_HEADER);
+            throw new RuntimeDataException(ErrorCode.PARAMETERS_REQUIRED, KEY_HEADER);
         }
         if (header != null && !isBoolean(header)) {
-            throw new RuntimeDataException(ErrorCode.INVALID_REQ_PARAM_VAL, ExternalDataConstants.KEY_HEADER, header);
+            throw new RuntimeDataException(ErrorCode.INVALID_REQ_PARAM_VAL, KEY_HEADER, header);
+        }
+        if (forceQuote != null && !isBoolean(forceQuote)) {
+            throw new RuntimeDataException(ErrorCode.INVALID_REQ_PARAM_VAL, KEY_FORCE_QUOTE, forceQuote);
+        }
+        if (emptyFieldAsNull != null && !isBoolean(emptyFieldAsNull)) {
+            throw new RuntimeDataException(ErrorCode.INVALID_REQ_PARAM_VAL, KEY_EMPTY_STRING_AS_NULL, emptyFieldAsNull);
         }
         char delimiter = validateGetDelimiter(configuration);
         validateGetQuote(configuration, delimiter);
-        validateGetEscape(configuration);
+        validateGetEscape(configuration, format);
         String value = configuration.get(ExternalDataConstants.KEY_REDACT_WARNINGS);
         if (value != null && !isBoolean(value)) {
             throw new RuntimeDataException(ErrorCode.INVALID_REQ_PARAM_VAL, ExternalDataConstants.KEY_REDACT_WARNINGS,
@@ -635,7 +718,7 @@ public class ExternalDataUtils {
 
         switch (type) {
             case ExternalDataConstants.KEY_ADAPTER_NAME_AWS_S3:
-                S3Utils.validateProperties(configuration, srcLoc, collector);
+                S3AuthUtils.validateProperties(appCtx, configuration, srcLoc, collector);
                 break;
             case ExternalDataConstants.KEY_ADAPTER_NAME_AZURE_BLOB:
                 validateAzureBlobProperties(configuration, srcLoc, collector, appCtx);
@@ -644,7 +727,10 @@ public class ExternalDataUtils {
                 validateAzureDataLakeProperties(configuration, srcLoc, collector, appCtx);
                 break;
             case ExternalDataConstants.KEY_ADAPTER_NAME_GCS:
-                validateProperties(configuration, srcLoc, collector);
+                validateProperties(appCtx, configuration, srcLoc, collector);
+                break;
+            case ExternalDataConstants.KEY_ADAPTER_NAME_HDFS:
+                HDFSUtils.validateProperties(configuration, srcLoc, collector);
                 break;
             default:
                 // Nothing needs to be done
@@ -761,11 +847,12 @@ public class ExternalDataUtils {
      *
      * @param configuration configuration
      */
-    public static String getPrefix(Map<String, String> configuration) {
-        return getPrefix(configuration, true);
+    public static String getPrefix(Map<String, String> configuration) throws CompilationException {
+        return getPrefix(configuration, true, true);
     }
 
-    public static String getPrefix(Map<String, String> configuration, boolean appendSlash) {
+    public static String getPrefix(Map<String, String> configuration, boolean appendSlash, boolean failSlashAtStart)
+            throws CompilationException {
         String root = configuration.get(ExternalDataPrefix.PREFIX_ROOT_FIELD_NAME);
         String definition = configuration.get(ExternalDataConstants.DEFINITION_FIELD_NAME);
         String subPath = configuration.get(ExternalDataConstants.SUBPATH);
@@ -773,6 +860,11 @@ public class ExternalDataUtils {
         boolean hasRoot = root != null;
         boolean hasDefinition = definition != null && !definition.isEmpty();
         boolean hasSubPath = subPath != null && !subPath.isEmpty();
+
+        // prefix cannot start with a "/"
+        if (failSlashAtStart && hasDefinition && definition.startsWith("/")) {
+            throw new CompilationException(ErrorCode.PREFIX_SHOULD_NOT_START_WITH_SLASH, definition);
+        }
 
         // if computed fields are used, subpath will not take effect. we can tell if we're using a computed field or
         // not by checking if the root matches the definition or not, they never match if computed fields are used
@@ -887,8 +979,8 @@ public class ExternalDataUtils {
     }
 
     public static boolean supportsPushdown(Map<String, String> properties) {
-        //Currently, only Apache Parquet format is supported
-        return isParquetFormat(properties);
+        //Currently, only Apache Parquet/Delta table format is supported
+        return isParquetFormat(properties) || isDeltaTable(properties);
     }
 
     /**
@@ -903,7 +995,7 @@ public class ExternalDataUtils {
             if (datasetRecordType.getFieldTypes().length != 0) {
                 throw new CompilationException(ErrorCode.UNSUPPORTED_TYPE_FOR_PARQUET, datasetRecordType.getTypeName());
             } else if (properties.containsKey(ParquetOptions.TIMEZONE)
-                    && !ParquetOptions.VALID_TIME_ZONES.contains(properties.get(ParquetOptions.TIMEZONE))) {
+                    && !validTimeZones.contains(properties.get(ParquetOptions.TIMEZONE))) {
                 //Ensure the configured time zone id is correct
                 throw new CompilationException(ErrorCode.INVALID_TIMEZONE, properties.get(ParquetOptions.TIMEZONE));
             }
@@ -1054,9 +1146,9 @@ public class ExternalDataUtils {
                 String[] nodePathPair = path.trim().split("://");
                 protocol = nodePathPair[0];
                 break;
-            case ExternalDataConstants.KEY_HDFS_URL:
-                protocol = ExternalDataConstants.KEY_HDFS_URL;
-                break;
+            case ExternalDataConstants.KEY_ADAPTER_NAME_HDFS:
+                // Remove trailing slashes as prefixes/paths in hdfs start with a slash (absolute paths)
+                return configurations.get(ExternalDataConstants.KEY_HDFS_URL).replaceAll("/+$", "");
             default:
                 return "";
         }

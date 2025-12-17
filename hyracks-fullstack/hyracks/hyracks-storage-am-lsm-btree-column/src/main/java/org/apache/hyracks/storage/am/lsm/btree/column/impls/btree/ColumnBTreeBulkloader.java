@@ -40,8 +40,11 @@ import org.apache.hyracks.storage.common.buffercache.ICachedPage;
 import org.apache.hyracks.storage.common.buffercache.IPageWriteCallback;
 import org.apache.hyracks.storage.common.buffercache.context.IBufferCacheWriteContext;
 import org.apache.hyracks.storage.common.file.BufferedFileHandle;
+import org.apache.hyracks.util.JSONUtil;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 public final class ColumnBTreeBulkloader extends BTreeNSMBulkLoader implements IColumnWriteMultiPageOp {
     private static final Logger LOGGER = LogManager.getLogger();
@@ -60,6 +63,7 @@ public final class ColumnBTreeBulkloader extends BTreeNSMBulkLoader implements I
     private int maxNumberOfPagesForAColumn;
     private int maxNumberOfPagesInALeafNode;
     private int maxTupleCount;
+    private int lastRequiredFreeSpace;
 
     public ColumnBTreeBulkloader(float fillFactor, boolean verifyInput, IPageWriteCallback callback, ITreeIndex index,
             ITreeIndexFrame leafFrame, IBufferCacheWriteContext writeContext) throws HyracksDataException {
@@ -80,6 +84,7 @@ public final class ColumnBTreeBulkloader extends BTreeNSMBulkLoader implements I
         maxNumberOfPagesInALeafNode = 0;
         numberOfLeafNodes = 1;
         maxTupleCount = 0;
+        lastRequiredFreeSpace = 0;
     }
 
     @Override
@@ -99,7 +104,7 @@ public final class ColumnBTreeBulkloader extends BTreeNSMBulkLoader implements I
         return tupleWriter.createTupleReference();
     }
 
-    private boolean isFull(ITupleReference tuple) {
+    private boolean isFull(ITupleReference tuple) throws HyracksDataException {
         if (tupleCount == 0) {
             return false;
         } else if (tupleCount >= columnWriter.getMaxNumberOfTuples()) {
@@ -108,13 +113,15 @@ public final class ColumnBTreeBulkloader extends BTreeNSMBulkLoader implements I
         }
         int requiredFreeSpace = AbstractColumnBTreeLeafFrame.HEADER_SIZE;
         //Columns' Offsets
-        requiredFreeSpace += columnWriter.getColumnOffsetsSize();
+        columnWriter.updateColumnMetadataForCurrentTuple(tuple);
+        requiredFreeSpace += columnWriter.getColumnOffsetsSize(true);
         //Occupied space from previous writes
         requiredFreeSpace += columnWriter.getOccupiedSpace();
         //min and max tuples' sizes
-        requiredFreeSpace += lowKey.getTuple().getTupleSize() + splitKey.getTuple().getTupleSize();
+        requiredFreeSpace += lowKey.getTuple().getTupleSize() + getSplitKeySize(tuple);
         //New tuple required space
         requiredFreeSpace += columnWriter.bytesRequired(tuple);
+        lastRequiredFreeSpace = requiredFreeSpace;
         return bufferCache.getPageSize() <= requiredFreeSpace;
     }
 
@@ -123,7 +130,6 @@ public final class ColumnBTreeBulkloader extends BTreeNSMBulkLoader implements I
         setSplitKey(splitKey, tuple);
         if (setLowKey) {
             setSplitKey(lowKey, tuple);
-            lowKey.getTuple().resetByTupleOffset(lowKey.getBuffer().array(), 0);
             setLowKey = false;
         }
     }
@@ -132,7 +138,12 @@ public final class ColumnBTreeBulkloader extends BTreeNSMBulkLoader implements I
     public void end() throws HyracksDataException {
         if (tupleCount > 0) {
             splitKey.getTuple().resetByTupleOffset(splitKey.getBuffer().array(), 0);
-            columnarFrame.flush(columnWriter, tupleCount, lowKey.getTuple(), splitKey.getTuple());
+            try {
+                columnarFrame.flush(columnWriter, tupleCount, lowKey.getTuple(), splitKey.getTuple());
+            } catch (Exception e) {
+                logState(e);
+                throw e;
+            }
         }
         columnWriter.close();
         //We are done, return any temporary confiscated pages
@@ -156,7 +167,12 @@ public final class ColumnBTreeBulkloader extends BTreeNSMBulkLoader implements I
         splitKey.setLeftPage(leafFrontier.pageId);
         if (tupleCount > 0) {
             //We need to flush columns to confiscate all columns pages first before calling propagateBulk
-            columnarFrame.flush(columnWriter, tupleCount, lowKey.getTuple(), splitKey.getTuple());
+            try {
+                columnarFrame.flush(columnWriter, tupleCount, lowKey.getTuple(), splitKey.getTuple());
+            } catch (Exception e) {
+                logState(e);
+                throw e;
+            }
         }
 
         propagateBulk(1, pagesToWrite);
@@ -233,9 +249,14 @@ public final class ColumnBTreeBulkloader extends BTreeNSMBulkLoader implements I
     }
 
     private void setSplitKey(ISplitKey splitKey, ITupleReference tuple) {
-        int splitKeySize = tupleWriter.bytesRequired(tuple, 0, cmp.getKeyFieldCount());
+        int splitKeySize = getSplitKeySize(tuple);
         splitKey.initData(splitKeySize);
         tupleWriter.writeTupleFields(tuple, 0, cmp.getKeyFieldCount(), splitKey.getBuffer().array(), 0);
+        splitKey.getTuple().resetByTupleOffset(splitKey.getBuffer().array(), 0);
+    }
+
+    private int getSplitKeySize(ITupleReference tuple) {
+        return tupleWriter.bytesRequired(tuple, 0, cmp.getKeyFieldCount());
     }
 
     private void log(String status, int numberOfTempConfiscatedPages) {
@@ -280,4 +301,26 @@ public final class ColumnBTreeBulkloader extends BTreeNSMBulkLoader implements I
         tempConfiscatedPages.add(page);
         return page.getBuffer();
     }
+
+    private void logState(Exception e) {
+        try {
+            ObjectNode state = JSONUtil.createObject();
+            // number of tuples processed for the current leaf
+            state.put("currentLeafTupleCount", tupleCount);
+            // number of columns
+            state.put("currentLeafColumnCount", columnWriter.getNumberOfColumns(false));
+            // number of columns including current tuple
+            state.put("currentColumnCount", columnWriter.getNumberOfColumns(true));
+            state.put("lastRequiredFreeSpace", lastRequiredFreeSpace);
+            state.put("splitKeyTupleSize", splitKey.getTuple().getTupleSize());
+            state.put("splitKeyTupleSizeByTupleWriter", tupleWriter.bytesRequired(splitKey.getTuple()));
+            state.put("lowKeyTupleSize", lowKey.getTuple().getTupleSize());
+            ObjectNode bufNode = state.putObject("leafBufferDetails");
+            columnarFrame.dumpBuffer(bufNode);
+            LOGGER.error("pageZero flush failed {}", state, e);
+        } catch (Exception ex) {
+            e.addSuppressed(ex);
+        }
+    }
+
 }

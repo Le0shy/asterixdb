@@ -21,13 +21,13 @@ package org.apache.asterix.column.metadata.schema.visitor;
 import java.io.IOException;
 import java.util.Map;
 
-import org.apache.asterix.column.metadata.FieldNamesDictionary;
 import org.apache.asterix.column.metadata.schema.AbstractSchemaNode;
 import org.apache.asterix.column.metadata.schema.ObjectSchemaNode;
 import org.apache.asterix.column.metadata.schema.UnionSchemaNode;
 import org.apache.asterix.column.metadata.schema.collection.AbstractCollectionSchemaNode;
 import org.apache.asterix.column.metadata.schema.primitive.MissingFieldSchemaNode;
 import org.apache.asterix.column.metadata.schema.primitive.PrimitiveSchemaNode;
+import org.apache.asterix.om.dictionary.IFieldNamesDictionary;
 import org.apache.asterix.om.types.ARecordType;
 import org.apache.asterix.om.types.ATypeTag;
 import org.apache.asterix.om.types.AUnionType;
@@ -40,12 +40,12 @@ import org.apache.hyracks.api.exceptions.IWarningCollector;
 import org.apache.hyracks.api.exceptions.Warning;
 
 public class SchemaClipperVisitor implements IATypeVisitor<AbstractSchemaNode, AbstractSchemaNode> {
-    private final FieldNamesDictionary fieldNamesDictionary;
+    private final IFieldNamesDictionary fieldNamesDictionary;
     private final IWarningCollector warningCollector;
     private final Map<String, FunctionCallInformation> functionCallInfoMap;
     private boolean ignoreFlatType;
 
-    public SchemaClipperVisitor(FieldNamesDictionary fieldNamesDictionary,
+    public SchemaClipperVisitor(IFieldNamesDictionary fieldNamesDictionary,
             Map<String, FunctionCallInformation> functionCallInfoMap, IWarningCollector warningCollector) {
         this.fieldNamesDictionary = fieldNamesDictionary;
         this.functionCallInfoMap = functionCallInfoMap;
