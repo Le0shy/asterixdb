@@ -18,7 +18,7 @@
  */
 // update config2's workload parameters:
 UPDATE SCHEDULER CONFIG s_config_1 {
-	"defaultPriority": 2,
-	"shortMemoryPercent": 15.0,
-	"shortCPUQuota": 5
+    "defaultPriority": 2,
+    "shortMemoryPercent": 15.0,
+    "shortCPUQuota": 5
 }

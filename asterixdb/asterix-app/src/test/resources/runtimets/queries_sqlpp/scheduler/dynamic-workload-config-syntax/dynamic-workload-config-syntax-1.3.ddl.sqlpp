@@ -19,25 +19,25 @@
 
 // create scheduler config 3:
 CREATE SCHEDULER CONFIG s_config_3 AS{
-	"defaultPriority": 1,
-	"shortMemoryPercent": 10.0,
-	"shortCPUQuota": 3,
+    "defaultPriority": 1,
+    "shortMemoryPercent": 10.0,
+    "shortCPUQuota": 3,
         "queryGroup":
         [
-		{
-			"priority": 4,
-			"grouplist": [ "ui"]
-		},
+        {
+            "priority": 4,
+            "grouplist": [ "ui"]
+        },
 
 
-		{
-			"priority" : 6,
-			"grouplist": ["analytics"]
-		},
+        {
+            "priority" : 6,
+            "grouplist": ["analytics"]
+        },
 
-		{
-        	"priority" : 8,
-        	"grouplist": ["ad-hoc", "management"]
+        {
+            "priority" : 8,
+            "grouplist": ["ad-hoc", "management"]
         }
-	]
+    ]
 };

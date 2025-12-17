@@ -121,7 +121,6 @@ public class MetricsPrinter implements IResponseFieldPrinter {
             pw.print("\t");
             ResultUtil.printField(pw, Metrics.REMOTE_PAGES_PERSISTED_COUNT.str(), metrics.getCloudPagesPersistedCount(),
                     hasWarnings || hasErrors);
-                    true);
             pw.print("\n");
         }
         if (hasWarnings) {

@@ -64,9 +64,6 @@ import org.apache.asterix.app.config.ConfigValidator;
 import org.apache.asterix.app.io.PersistedResourceRegistry;
 import org.apache.asterix.app.replication.NcLifecycleCoordinator;
 import org.apache.asterix.app.result.JobResultCallback;
-import org.apache.asterix.metadata.bootstrap.MetadataBuiltinEntities;
-import org.apache.asterix.metadata.declared.MetadataProvider;
-import org.apache.asterix.metadata.utils.SchedulerUtil;
 import org.apache.asterix.cloud.CloudConfigurator;
 import org.apache.asterix.cloud.clients.ICloudGuardian;
 import org.apache.asterix.common.api.AsterixThreadFactory;
@@ -102,8 +99,11 @@ import org.apache.asterix.messaging.CCMessageBroker;
 import org.apache.asterix.metadata.MetadataManager;
 import org.apache.asterix.metadata.api.IAsterixStateProxy;
 import org.apache.asterix.metadata.bootstrap.AsterixStateProxy;
+import org.apache.asterix.metadata.bootstrap.MetadataBuiltinEntities;
+import org.apache.asterix.metadata.declared.MetadataProvider;
 import org.apache.asterix.metadata.lock.MetadataLockManager;
 import org.apache.asterix.metadata.utils.MetadataLockUtil;
+import org.apache.asterix.metadata.utils.SchedulerUtil;
 import org.apache.asterix.runtime.job.resource.JobCapacityController;
 import org.apache.asterix.translator.IStatementExecutorFactory;
 import org.apache.asterix.translator.Receptionist;
@@ -464,7 +464,6 @@ public class CCApplication extends BaseCCApplication {
         return csm.getState() == ACTIVE || csm.getState() == REBALANCE_REQUIRED;
     }
 
-
     @Override
     public void startupCompleted() throws Exception {
         super.startupCompleted();
@@ -495,8 +494,8 @@ public class CCApplication extends BaseCCApplication {
                     return; // Success - exit
                 } catch (Exception e) {
                     if (i < maxRetries - 1) {
-                        LOGGER.debug("Could not initialize scheduler configuration (attempt {}/{}): {}",
-                                i + 1, maxRetries, e.getMessage());
+                        LOGGER.debug("Could not initialize scheduler configuration (attempt {}/{}): {}", i + 1,
+                                maxRetries, e.getMessage());
                     } else {
                         LOGGER.info("Scheduler configuration will use defaults. "
                                 + "Enable a configuration with ENABLE SCHEDULER CONFIG if needed.");

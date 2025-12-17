@@ -20,13 +20,13 @@
 // add group 'ingest' into config 1, modify 'management' priority:
 UPSERT QGROUP INTO s_config_1 {
 "list" :[
-		{
-			"priority": 10,
-			"name": "ingest"
-		},
+        {
+            "priority": 10,
+            "name": "ingest"
+        },
 
-		{
-			"priority": 7,
-			"name": "management"
-		}
+        {
+            "priority": 7,
+            "name": "management"
+        }
 ] };

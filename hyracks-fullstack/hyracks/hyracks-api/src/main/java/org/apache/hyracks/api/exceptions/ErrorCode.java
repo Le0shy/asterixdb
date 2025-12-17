@@ -163,7 +163,6 @@ public enum ErrorCode implements IError {
     EMPTY_TYPE_INFERRED(133),
     SCHEMA_LIMIT_EXCEEDED(134),
     FAILED_IO_OPERATION(135),
-    JOB_REJECTED(136),
 
     // Compilation error codes.
     RULECOLLECTION_NOT_INSTANCE_OF_LIST(10000),

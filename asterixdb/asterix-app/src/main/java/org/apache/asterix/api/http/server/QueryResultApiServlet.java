@@ -105,8 +105,9 @@ public class QueryResultApiServlet extends AbstractQueryApiServlet {
                         metadata.getTotalWarningsCount(), stats.getCompileTime(), stats.getQueueWaitTime(),
                         stats.getBufferCacheHitRatio(), stats.getBufferCachePageReadCount(),
                         stats.getCloudReadRequestsCount(), stats.getCloudPagesReadCount(),
-                        stats.getCloudPagesPersistedCount(), metadata.getJobAddedToQueueTime(), metadata.getJobAddedToMemoryQueueTime(),
-                        metadata.getJobExecutionStartTime(), metadata.getJobExecutionEndTime());
+                        stats.getCloudPagesPersistedCount(), metadata.getJobAddedToQueueTime(),
+                        metadata.getJobAddedToMemoryQueueTime(), metadata.getJobExecutionStartTime(),
+                        metadata.getJobExecutionEndTime());
                 printer.addFooterPrinter(new MetricsPrinter(metrics, HttpUtil.getPreferredCharset(request)));
                 if (metadata.getJobProfile() != null) {
                     printer.addFooterPrinter(new ProfilePrinter(metadata.getJobProfile()));

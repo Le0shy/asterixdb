@@ -46,8 +46,8 @@ public class ResponseMetrics {
     public static ResponseMetrics of(long elapsedTime, long executionTime, long resultCount, long resultSize,
             long processedObjects, long errorCount, long warnCount, long compileTime, long queueWaitTime,
             double bufferCacheHitRatio, long bufferCachePageReadCount, long cloudRequestsCount,
-            long cloudPagesReadCount, long cloudPagesPersistedCount,  long addedToQueueTime,
-                                     long addedToMemoryQueueTime, long executionStartTime, long executionEndTime) {
+            long cloudPagesReadCount, long cloudPagesPersistedCount, long addedToQueueTime, long addedToMemoryQueueTime,
+            long executionStartTime, long executionEndTime) {
         ResponseMetrics metrics = new ResponseMetrics();
         metrics.elapsedTime = elapsedTime;
         metrics.executionTime = executionTime;

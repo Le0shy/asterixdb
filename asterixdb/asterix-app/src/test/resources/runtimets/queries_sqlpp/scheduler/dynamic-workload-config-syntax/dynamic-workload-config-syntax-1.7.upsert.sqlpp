@@ -20,13 +20,13 @@
 // modify group 'ui' and 'management' priority in config_3:
 UPSERT QGROUP INTO s_config_3 {
 "list" :[
-		{
-			"priority": 6,
-			"name": "ui"
-		},
+        {
+            "priority": 6,
+            "name": "ui"
+        },
 
-		{
-			"priority": 4,
-			"name": "management"
-		}
+        {
+            "priority": 4,
+            "name": "management"
+        }
 ] };

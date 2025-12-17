@@ -371,7 +371,7 @@ public class QueryServiceServlet extends AbstractQueryApiServlet {
                 stats.getCount(), stats.getSize(), stats.getProcessedObjects(), errorCount,
                 stats.getTotalWarningsCount(), stats.getCompileTime(), stats.getQueueWaitTime(),
                 stats.getBufferCacheHitRatio(), stats.getBufferCachePageReadCount(), stats.getCloudReadRequestsCount(),
-                stats.getCloudPagesReadCount(), stats.getCloudPagesPersistedCount(),  stats.getAddedToQueueTime(),
+                stats.getCloudPagesReadCount(), stats.getCloudPagesPersistedCount(), stats.getAddedToQueueTime(),
                 stats.getAddedToTheMemoryQueueTime(), stats.getExecutionStartTime(), System.nanoTime());
         responsePrinter.addFooterPrinter(new MetricsPrinter(metrics, resultCharset));
         if (isPrintingProfile(stats)) {

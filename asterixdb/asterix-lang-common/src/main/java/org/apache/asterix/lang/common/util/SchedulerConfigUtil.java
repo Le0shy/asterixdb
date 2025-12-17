@@ -23,7 +23,10 @@ import static org.apache.asterix.lang.common.statement.CreateSchedulerConfigStat
 import org.apache.asterix.common.exceptions.CompilationException;
 import org.apache.asterix.lang.common.expression.RecordConstructor;
 import org.apache.asterix.object.base.AdmObjectNode;
-import org.apache.asterix.om.types.*;
+import org.apache.asterix.om.types.AOrderedListType;
+import org.apache.asterix.om.types.ARecordType;
+import org.apache.asterix.om.types.BuiltinType;
+import org.apache.asterix.om.types.IAType;
 
 public class SchedulerConfigUtil {
 
@@ -60,13 +63,13 @@ public class SchedulerConfigUtil {
     
     UPSERT QGROUP INTO s_config_1 {[
     {
-    	"priority": 10,
-    	"name": "ingest"
+        "priority": 10,
+        "name": "ingest"
     },
     
     {
-    	"priority": 6,
-    	"name": "management"
+        "priority": 6,
+        "name": "management"
     }
     ]};
     
