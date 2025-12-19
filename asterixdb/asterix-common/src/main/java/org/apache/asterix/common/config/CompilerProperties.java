@@ -157,7 +157,8 @@ public class CompilerProperties extends AbstractProperties {
                 getRangedIntegerType(0, Integer.MAX_VALUE),
                 128,
                 "Maximum occurrences of a variable allowed in an expression for inlining"),
-        COMPILER_ORDERED_FIELDS(BOOLEAN, AlgebricksConfig.ORDERED_FIELDS, "Enable/disable select order list");
+        COMPILER_ORDERED_FIELDS(BOOLEAN, AlgebricksConfig.ORDERED_FIELDS, "Enable/disable select order list"),
+        COMPILER_QGROUP(STRING, "d", "Enable clients to manually assign group to query");
 
         private final IOptionType type;
         private final Object defaultValue;
@@ -245,6 +246,8 @@ public class CompilerProperties extends AbstractProperties {
     public static final String COMPILER_ORDERED_FIELDS_KEY = Option.COMPILER_ORDERED_FIELDS.ini();
 
     public static final int COMPILER_PARALLELISM_AS_STORAGE = 0;
+
+    public static final String COMPILER_QGROUP_KEY = Option.COMPILER_QGROUP.ini();
 
     public CompilerProperties(PropertiesAccessor accessor) {
         super(accessor);
@@ -386,5 +389,9 @@ public class CompilerProperties extends AbstractProperties {
 
     public int getMaxVariableOccurrencesForInlining() {
         return accessor.getInt(Option.COMPILER_MAX_VARIABLE_OCCURRENCES_INLINING);
+    }
+
+    public String getJobGroupName() {
+        return accessor.getString(Option.COMPILER_QGROUP);
     }
 }

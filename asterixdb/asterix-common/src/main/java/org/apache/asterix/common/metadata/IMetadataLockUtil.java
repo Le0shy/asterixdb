@@ -170,4 +170,17 @@ public interface IMetadataLockUtil {
 
     void disconnectFeedBegin(IMetadataLockManager lockManager, LockList locks, String database,
             DataverseName dataverseName, String datasetName, String feedName) throws AlgebricksException;
+
+    // Scheduler Config helpers
+    void createSchedulerConfigBegin(IMetadataLockManager lockManager, LockList locks, String schedulerConfigName)
+            throws AlgebricksException;
+
+    void updateSchedulerConfigBegin(IMetadataLockManager lockMgr, LockList locks, String schedulerConfigName)
+            throws AlgebricksException;
+
+    void dropSchedulerConfigBegin(IMetadataLockManager lockManager, LockList locks, String schedulerConfigName)
+            throws AlgebricksException;
+
+    void enableSchedulerConfigBegin(IMetadataLockManager lockManager, LockList locks, String enableConfigName)
+            throws AlgebricksException;
 }

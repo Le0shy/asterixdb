@@ -82,15 +82,18 @@ import org.apache.asterix.lang.common.statement.CreateFullTextFilterStatement;
 import org.apache.asterix.lang.common.statement.CreateFunctionStatement;
 import org.apache.asterix.lang.common.statement.CreateIndexStatement;
 import org.apache.asterix.lang.common.statement.CreateLibraryStatement;
+import org.apache.asterix.lang.common.statement.CreateSchedulerConfigStatement;
 import org.apache.asterix.lang.common.statement.CreateSynonymStatement;
 import org.apache.asterix.lang.common.statement.CreateViewStatement;
 import org.apache.asterix.lang.common.statement.DatabaseDropStatement;
 import org.apache.asterix.lang.common.statement.DatasetDecl;
 import org.apache.asterix.lang.common.statement.DataverseDecl;
 import org.apache.asterix.lang.common.statement.DataverseDropStatement;
+import org.apache.asterix.lang.common.statement.DeleteQGroupStatement;
 import org.apache.asterix.lang.common.statement.DeleteStatement;
 import org.apache.asterix.lang.common.statement.DisconnectFeedStatement;
 import org.apache.asterix.lang.common.statement.DropDatasetStatement;
+import org.apache.asterix.lang.common.statement.EnableSchedulerStatement;
 import org.apache.asterix.lang.common.statement.ExternalDetailsDecl;
 import org.apache.asterix.lang.common.statement.FeedDropStatement;
 import org.apache.asterix.lang.common.statement.FeedPolicyDropStatement;
@@ -106,6 +109,7 @@ import org.apache.asterix.lang.common.statement.LoadStatement;
 import org.apache.asterix.lang.common.statement.NodeGroupDropStatement;
 import org.apache.asterix.lang.common.statement.NodegroupDecl;
 import org.apache.asterix.lang.common.statement.Query;
+import org.apache.asterix.lang.common.statement.SchedulerConfigDropStatement;
 import org.apache.asterix.lang.common.statement.SetStatement;
 import org.apache.asterix.lang.common.statement.StartFeedStatement;
 import org.apache.asterix.lang.common.statement.StopFeedStatement;
@@ -113,7 +117,9 @@ import org.apache.asterix.lang.common.statement.SynonymDropStatement;
 import org.apache.asterix.lang.common.statement.TruncateDatasetStatement;
 import org.apache.asterix.lang.common.statement.TypeDecl;
 import org.apache.asterix.lang.common.statement.TypeDropStatement;
+import org.apache.asterix.lang.common.statement.UpdateSchedulerStatement;
 import org.apache.asterix.lang.common.statement.UpdateStatement;
+import org.apache.asterix.lang.common.statement.UpsertQGroupStatement;
 import org.apache.asterix.lang.common.statement.ViewDecl;
 import org.apache.asterix.lang.common.statement.ViewDropStatement;
 import org.apache.asterix.lang.common.struct.Identifier;
@@ -828,6 +834,48 @@ public abstract class FormatPrintVisitor implements ILangVisitor<Void, Integer> 
     @Override
     public Void visit(CreateFullTextConfigStatement cis, Integer step) throws CompilationException {
         out.print(skip(step) + "create fulltext config " + cis.getConfigName());
+        out.println(SEMICOLON);
+        return null;
+    }
+
+    @Override
+    public Void visit(CreateSchedulerConfigStatement cis, Integer step) throws CompilationException {
+        out.print(skip(step) + "create scheduler config: " + cis.getConfigName());
+        out.println(SEMICOLON);
+        return null;
+    }
+
+    @Override
+    public Void visit(SchedulerConfigDropStatement cis, Integer step) throws CompilationException {
+        out.print(skip(step) + "drop scheduler config: " + cis.getConfigName());
+        out.println(SEMICOLON);
+        return null;
+    }
+
+    @Override
+    public Void visit(UpsertQGroupStatement cis, Integer step) throws CompilationException {
+        out.print(skip(step) + "upsert query group into: " + cis.getConfigName());
+        out.println(SEMICOLON);
+        return null;
+    }
+
+    @Override
+    public Void visit(DeleteQGroupStatement cis, Integer step) throws CompilationException {
+        out.print(skip(step) + "delete query group from: " + cis.getConfigName());
+        out.println(SEMICOLON);
+        return null;
+    }
+
+    @Override
+    public Void visit(EnableSchedulerStatement cis, Integer step) throws CompilationException {
+        out.print(skip(step) + "enable scheduler config: " + cis.getConfigName());
+        out.println(SEMICOLON);
+        return null;
+    }
+
+    @Override
+    public Void visit(UpdateSchedulerStatement cis, Integer step) throws CompilationException {
+        out.print(skip(step) + "update scheduler config: " + cis.getConfigName());
         out.println(SEMICOLON);
         return null;
     }

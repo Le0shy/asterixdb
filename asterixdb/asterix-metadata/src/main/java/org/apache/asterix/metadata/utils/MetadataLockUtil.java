@@ -18,6 +18,8 @@
  */
 package org.apache.asterix.metadata.utils;
 
+import static org.apache.asterix.metadata.entities.SchedulerConfigMetadataEntity.SCHEDULER_STATE;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -396,6 +398,33 @@ public class MetadataLockUtil implements IMetadataLockUtil {
         lockMgr.acquireDatabaseReadLock(locks, database);
         lockMgr.acquireDataverseReadLock(locks, database, dataverseName);
         lockMgr.acquireDatasetExclusiveModificationLock(locks, database, dataverseName, datasetName);
+    }
+
+    @Override
+    public void createSchedulerConfigBegin(IMetadataLockManager lockMgr, LockList locks, String schedulerConfigName)
+            throws AlgebricksException {
+        lockMgr.acquireSchedulerConfigWriteLock(locks, schedulerConfigName);
+    }
+
+    @Override
+    public void updateSchedulerConfigBegin(IMetadataLockManager lockMgr, LockList locks, String schedulerConfigName)
+            throws AlgebricksException {
+        lockMgr.acquireSchedulerConfigReadLock(locks, SCHEDULER_STATE);
+        lockMgr.acquireSchedulerConfigWriteLock(locks, schedulerConfigName);
+    }
+
+    @Override
+    public void dropSchedulerConfigBegin(IMetadataLockManager lockMgr, LockList locks, String schedulerConfigName)
+            throws AlgebricksException {
+        lockMgr.acquireSchedulerConfigReadLock(locks, SCHEDULER_STATE);
+        lockMgr.acquireSchedulerConfigWriteLock(locks, schedulerConfigName);
+    }
+
+    @Override
+    public void enableSchedulerConfigBegin(IMetadataLockManager lockMgr, LockList locks, String enableConfigName)
+            throws AlgebricksException {
+        lockMgr.acquireSchedulerConfigReadLock(locks, enableConfigName);
+        lockMgr.acquireSchedulerConfigWriteLock(locks, SCHEDULER_STATE);
     }
 
     private static void lockIfDifferentNamespace(IMetadataLockManager lockMgr, LockList locks, String lockedDatabase,

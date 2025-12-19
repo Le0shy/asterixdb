@@ -136,6 +136,16 @@ public final class MetadataRecordTypes {
     public static final String FIELD_NAME_CREATOR_UUID = "Uuid";
     public static final String CREATOR_ARECORD_FIELD_NAME = "Creator";
 
+    public static final String FIELD_NAME_SCHEDULER_CONFIG_NAME = "SchedulerConfigName";
+
+    public static final String FIELD_NAME_SCHEDULER_CONFIG_DEFAULT_PRIORITY = "DefaultPriority";
+    public static final String FIELD_NAME_SCHEDULER_CONFIG_SHORT_MEMORY_PERCENT = "ShortMemoryPercent";
+    public static final String FIELD_NAME_SCHEDULER_CONFIG_SHORT_CPU_QUOTA = "ShortCPUQuota";
+    public static final String FIELD_NAME_SCHEDULER_CONFIG_QUERY_GROUPS = "QueryGroups";
+    public static final String FIELD_NAME_SCHEDULER_ENABLED_CONFIG_NAME = "EnabledConfigName";
+    public static final ARecordType SCHEDULER_COFING_QUERY_GROUPS_RECORDTYPE = createRecordType(null,
+            new String[] { "name", "priority" }, new IAType[] { BuiltinType.ASTRING, BuiltinType.AINT64 }, true);
+
     //---------------------------------- Record Types Creation ----------------------------------//
     //--------------------------------------- Properties ----------------------------------------//
     public static final int PROPERTIES_NAME_FIELD_INDEX = 0;
@@ -299,6 +309,10 @@ public final class MetadataRecordTypes {
     //---------------------------------- FullText Config and Filter -------------------------//
     public static final String RECORD_NAME_FULL_TEXT_CONFIG = "FullTextConfigRecordType";
     public static final String RECORD_NAME_FULL_TEXT_FILTER = "FullTextFilterRecordType";
+
+    //---------------------------------- Scheduler Config and Filter -------------------------//
+    public static final String RECORD_NAME_SCHEDULER_CONFIG = "SchedulerConfigRecordType";
+    public static final String RECORD_NAME_SCHEDULER_CONFIG_STATE = "SchedulerConfigStateType";
 
     // private members
     private MetadataRecordTypes() {

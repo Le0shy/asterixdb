@@ -1,0 +1,326 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+package org.apache.hyracks.control.cc.scheduler;
+
+import java.util.ArrayList;
+import java.util.BitSet;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+import org.apache.hyracks.api.exceptions.ErrorCode;
+import org.apache.hyracks.api.exceptions.HyracksException;
+import org.apache.hyracks.api.job.JobId;
+import org.apache.hyracks.api.job.JobStatus;
+import org.apache.hyracks.api.job.resource.IJobCapacityController;
+import org.apache.hyracks.control.cc.job.IJobManager;
+import org.apache.hyracks.control.cc.job.JobRun;
+import org.apache.hyracks.util.annotations.GuardedBy;
+import org.apache.hyracks.util.annotations.NotThreadSafe;
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+@NotThreadSafe
+@GuardedBy("JobManager")
+
+public class DefaultJobQueue implements IJobQueue {
+
+    private final Logger LOGGER = LogManager.getLogger();
+    //private final Map<JobId, JobRun> memoryQueue = new LinkedHashMap<>();
+    private final IJobManager jobManager;
+    private final CapacityControllerGuard capacityControllerGuard;
+    //private final IJobCapacityController jobCapacityController;
+    private final Map<JobId, MPLQueue> jobIdToQueueMap = new HashMap<>();
+    private final int jobQueueCapacity;
+    private ArrayList<MPLQueue> queues = new ArrayList<>();
+    private int numberOfQueues = 11;
+    private BitSet queueHasAnyJob = new BitSet(numberOfQueues);
+
+    public DefaultJobQueue(IJobManager jobManager, CapacityControllerGuard capacityControllerGuard) {
+        this.jobManager = jobManager;
+        this.capacityControllerGuard = capacityControllerGuard;
+        this.jobQueueCapacity = jobManager.getJobQueueCapacity();
+        double[] candidateExecTimes =
+                new double[] { 337.32, 0.5, 5.5, 27.33, 41.4, 58.55, 76.27, 124.3, 160.46, 215.23, 295.49 };
+        for (int i = 0; i < numberOfQueues; i++) {
+            queues.add(new MPLQueue(i, candidateExecTimes[i]));
+        }
+    }
+
+    class MPLQueue {
+        private final Map<JobId, JobRun> jobs = new LinkedHashMap<>();
+        private double topQuerySlowDown;
+        private double betaWeight = 0.8;
+        private int countOfExecutedJobs = 0;
+        private Iterator<Map.Entry<JobId, JobRun>> it;
+        /* Exponentially Weighted Moving Average */
+        private double EWMA = 1;
+        private int id;
+
+        public String toString() {
+            StringBuilder sb = new StringBuilder();
+            sb.append("queue_id: " + id + ", topQuerySlowDown: " + topQuerySlowDown + ", EWMA: " + EWMA + "\n");
+            sb.append("jobs:{ ");
+            for (JobId jid : jobs.keySet()) {
+                sb.append(jid + ",");
+            }
+            sb.append("}");
+            return sb.toString();
+        }
+
+        public MPLQueue(int id, double candidateQueryExecTime) {
+            this.id = id;
+            this.EWMA = candidateQueryExecTime;
+        }
+
+        public int getQueueSize() {
+            return jobs.size();
+        }
+
+        public void put(JobId id, JobRun run) throws HyracksException {
+            if (getQueueSize() >= jobQueueCapacity) {
+                throw HyracksException.create(ErrorCode.JOB_QUEUE_FULL, jobQueueCapacity);
+            }
+            this.jobs.put(id, run);
+        }
+
+        public JobRun remove(JobId id) {
+            return jobs.remove(id);
+        }
+
+        public JobRun get(JobId id) {
+            return jobs.get(id);
+        }
+
+        public JobRun getFirst() {
+            it = jobs.entrySet().iterator();
+            if (it.hasNext()) {
+                return it.next().getValue();
+            }
+            return null;
+        }
+
+        public int getQueueId() {
+            return this.id;
+        }
+    }
+
+    private MPLQueue getQueue(JobRun run) {
+        if (run.getSchedulingType() == JobTypeManager.JobSchedulingType.LONG) {
+            LOGGER.log(Level.DEBUG, "JobID:{}, scheduled to DefaultJobQueue:Long Job Queue", run.getJobId());
+            return queues.get(0);
+        } else {
+            if (!capacityControllerGuard.isUpdate()) {
+                capacityControllerGuard.update();
+            }
+            double ratio = capacityControllerGuard.getMemoryRatio(run.getJobSpecification());
+            LOGGER.log(Level.DEBUG, "JobID:{}, scheduled to DefaultJobQueue: Memory Ratio:{}", run.getJobId(), ratio);
+            if (ratio <= 0.05) {
+                return queues.get(1);
+            } else if (ratio <= 0.10) {
+                return queues.get(2);
+            } else if (ratio <= 0.15) {
+                return queues.get(3);
+            } else if (ratio <= 0.20) {
+                return queues.get(4);
+            } else if (ratio <= 0.25) {
+                return queues.get(5);
+            } else if (ratio <= 0.40) {
+                return queues.get(6);
+            } else if (ratio <= 0.55) {
+                return queues.get(7);
+            } else if (ratio <= 0.70) {
+                return queues.get(8);
+            } else if (ratio <= 0.85) {
+                return queues.get(9);
+            }
+            return queues.get(10);
+        }
+    }
+
+    @Override
+    public void add(JobRun run) throws HyracksException {
+        //JobManager adds the size tag. if query has size tag of ZERO, job manager runs it immediately without
+        // adding it to any queue.
+        MPLQueue queue = getQueue(run);
+        //Make sure ZERO is handled out of queue.
+        run.setAddedToQueueTime(getCurrentTime());
+        queue.put(run.getJobId(), run);
+        jobIdToQueueMap.put(run.getJobId(), queue);
+        queueHasAnyJob.set(queue.id);
+        LOGGER.log(Level.DEBUG, "{}", printQueueInfo());
+    }
+
+    @Override
+    public JobRun remove(JobId jobId) {
+        MPLQueue queue = jobIdToQueueMap.get(jobId);
+        JobRun ret = queue.remove(jobId);
+        if (ret != null && queue.getFirst() == null) {
+            queueHasAnyJob.set(queue.id, false);
+        }
+        return ret;
+    }
+
+    @Override
+    public JobRun get(JobId jobId) {
+        MPLQueue queue = jobIdToQueueMap.get(jobId);
+        if (queue == null) {
+            return null;
+        }
+        return queue.get(jobId);
+    }
+
+    private boolean checkAndAdd(JobRun nextToRun, List<JobRun> jobRuns) {
+        boolean isAdmitted = false;
+        try {
+            IJobCapacityController.JobSubmissionStatus status = capacityControllerGuard.allocate(nextToRun);
+            // Checks if the job can be executed immediately.
+            if (status == IJobCapacityController.JobSubmissionStatus.EXECUTE) {
+                jobRuns.add(nextToRun);
+                isAdmitted = true;
+                remove(nextToRun.getJobId());
+            }
+        } catch (HyracksException exception) {
+            // The required capacity exceeds maximum capacity.
+            List<Exception> exceptions = new ArrayList<>();
+            exceptions.add(exception);
+            try {
+                // Fails the job.
+                jobManager.prepareComplete(nextToRun, JobStatus.FAILURE_BEFORE_EXECUTION, exceptions);
+                remove(nextToRun.getJobId()); // Removes the job from the queue.
+            } catch (HyracksException e) {
+                LOGGER.log(Level.ERROR, e.getMessage(), e);
+            }
+        }
+        return isAdmitted;
+    }
+
+    /* slowdown(i) = (waitTime + averageExecTime(i)) /averageExecTime(i) */
+    private void calculateSlowDown(MPLQueue queue, long now) {
+        JobRun nextJob = queue.getFirst();
+        if (nextJob != null) {
+            long queueTime = nextJob.getAddedToQueueTime();
+            long waitTime = (now - queueTime) / 1000000;
+            queue.topQuerySlowDown = ((double) waitTime + queue.EWMA) / queue.EWMA;
+        } else {
+            queue.topQuerySlowDown = -1;
+        }
+    }
+
+    @Override
+    public List<JobRun> pull() {
+        List<JobRun> jobRuns = new ArrayList<>();
+        long now = getCurrentTime();
+
+        while (true) {
+            MPLQueue nextJobQueue = null;
+            double maxSlowDown = -1;
+
+            // Find the queue with the most slowdown
+            for (int i = queueHasAnyJob.nextSetBit(0); i >= 0 && i < queueHasAnyJob.size(); i =
+                    queueHasAnyJob.nextSetBit(i + 1)) {
+                MPLQueue queue = queues.get(i);
+                calculateSlowDown(queue, now);
+                if (queue.topQuerySlowDown > maxSlowDown) {
+                    maxSlowDown = queue.topQuerySlowDown;
+                    nextJobQueue = queue;
+                }
+            }
+
+            // No more queues with jobs
+            if (nextJobQueue == null)
+                break;
+
+            JobRun nextToRun = nextJobQueue.getFirst();
+
+            if (checkAndAdd(nextToRun, jobRuns)) {
+                LOGGER.log(Level.DEBUG, "JobID:{} is pulled from DefaultJobQueue: Queue #{}", nextToRun.getJobId(),
+                        nextJobQueue.getQueueId());
+            } else {
+                // Stop if no more capacity
+                break;
+            }
+        }
+
+        return jobRuns;
+    }
+
+    @Override
+    public Collection<JobRun> jobs() {
+        List<JobRun> allJobs = new ArrayList<>();
+        for (MPLQueue q : queues) {
+            allJobs.addAll(q.jobs.values());
+        }
+        return Collections.unmodifiableCollection(allJobs);
+    }
+
+    @Override
+    public void clear() {
+        for (MPLQueue q : queues) {
+            q.jobs.clear();
+        }
+    }
+
+    @Override
+    public int size() {
+        return jobIdToQueueMap.size();
+    }
+
+    /* update exponentially weighted moving average */
+    private void updateMovingAverage(MPLQueue queue, long executionTime) {
+        double old_EWMA = queue.EWMA;
+        queue.EWMA = queue.EWMA * queue.betaWeight + (double) executionTime * (1 - queue.betaWeight);
+        LOGGER.log(Level.DEBUG, "Queue {} - Update EWMA: old EWMA:{}, new EWMA:{}", queue.getQueueId(), old_EWMA,
+                queue.EWMA);
+    }
+
+    public void notifyJobFinished(JobRun run) {
+        LOGGER.warn(run.toJSON_Shortened());
+        LOGGER.info(run.toJSON());
+        MPLQueue queue = jobIdToQueueMap.get(run.getJobId());
+        queue.countOfExecutedJobs++;
+        jobIdToQueueMap.remove(run.getJobId());
+        /* get executionTime from notifying */
+        long executionTime = run.getExecutionTime();
+        LOGGER.log(Level.DEBUG, "JobId: {} finished with execution time of {}ms", run.getJobId(), executionTime);
+        updateMovingAverage(queue, executionTime);
+    }
+
+    @Override
+    public boolean isEmpty() {
+        return queueHasAnyJob.isEmpty();
+    }
+
+    public String printQueueInfo() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("\nMPL Queues:{\n");
+        for (MPLQueue queue : queues) {
+            sb.append(queue.toString()).append("\n");
+        }
+        sb.append("}\n");
+        return sb.toString();
+    }
+
+}

@@ -98,6 +98,9 @@ public class JobSpecification implements Serializable, IOperatorDescriptorRegist
 
     private transient List<IOperatorDescriptor> metaOps;
 
+    private int priority;
+    private String groupName;
+
     // This constructor uses the default frame size. It is for test purposes only.
     // For other use cases, use the one which sets the frame size.
     public JobSpecification() {
@@ -352,6 +355,22 @@ public class JobSpecification implements Serializable, IOperatorDescriptorRegist
         List<V> vList = map.computeIfAbsent(key, k -> new ArrayList<>());
         extend(vList, index);
         vList.set(index, value);
+    }
+
+    public void setPriority(int priority) {
+        this.priority = priority;
+    }
+
+    public int getPriority() {
+        return priority;
+    }
+
+    public void setGroupName(String groupName) {
+        this.groupName = groupName;
+    }
+
+    public String getGroupName() {
+        return groupName;
     }
 
     @Override

@@ -43,6 +43,7 @@ import org.apache.asterix.metadata.entities.FullTextFilterMetadataEntity;
 import org.apache.asterix.metadata.entities.Index;
 import org.apache.asterix.metadata.entities.InternalDatasetDetails;
 import org.apache.asterix.metadata.entities.NodeGroup;
+import org.apache.asterix.metadata.entities.SchedulerConfigMetadataEntity;
 import org.apache.asterix.metadata.entities.Synonym;
 import org.apache.asterix.om.types.ARecordType;
 import org.apache.asterix.om.types.IAType;
@@ -224,6 +225,11 @@ public class MetadataManagerUtil {
     public static DataSource findDataSource(IClusterStateManager clusterStateManager,
             MetadataTransactionContext mdTxnCtx, DataSourceId id) throws AlgebricksException {
         return lookupSourceInMetadata(clusterStateManager, mdTxnCtx, id);
+    }
+
+    public static SchedulerConfigMetadataEntity findSchedulerConfigDescriptor(MetadataTransactionContext mdTxnCtx,
+            String schedulerConfigName) throws AlgebricksException {
+        return MetadataManager.INSTANCE.getSchedulerConfig(mdTxnCtx, schedulerConfigName);
     }
 
     public static DataSource lookupSourceInMetadata(IClusterStateManager clusterStateManager,

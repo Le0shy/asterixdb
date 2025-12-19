@@ -68,4 +68,12 @@ public interface IJobCapacityController {
      * @return the cluster current capacity.
      */
     IReadOnlyClusterCapacity getClusterCapacity();
+
+    default int getMaxAggregatedNumCores() {
+        return 0;
+    }
+
+    default long getMaxAggregatedMemoryByteSize() {
+        return 0;
+    }
 }

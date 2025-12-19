@@ -44,6 +44,7 @@ import org.apache.asterix.metadata.entities.Index;
 import org.apache.asterix.metadata.entities.Library;
 import org.apache.asterix.metadata.entities.Node;
 import org.apache.asterix.metadata.entities.NodeGroup;
+import org.apache.asterix.metadata.entities.SchedulerConfigMetadataEntity;
 import org.apache.asterix.metadata.entities.Synonym;
 import org.apache.hyracks.algebricks.common.exceptions.AlgebricksException;
 
@@ -511,6 +512,40 @@ public interface IMetadataManager extends IMetadataBootstrap {
      */
     void dropFullTextConfig(MetadataTransactionContext mdTxnCtx, String database, DataverseName dataverseName,
             String configName) throws AlgebricksException;
+
+    /**
+     * @param mdTxnCtx
+     *         MetadataTransactionContext of an active metadata transaction.
+     * @param configName
+     *         the name of the scheduler config to be fetched
+     * @return
+     * @throws AlgebricksException
+     */
+    SchedulerConfigMetadataEntity getSchedulerConfig(MetadataTransactionContext mdTxnCtx, String configName)
+            throws AlgebricksException;
+
+    /**
+     * @param mdTxnCtx
+     *            MetadataTransactionContext of an active metadata transaction.
+     * @param configMetadataEntity
+     *            the scheduler config descriptor to be added
+     * @throws AlgebricksException
+     *
+     * @return
+     */
+    void addSchedulerConfig(MetadataTransactionContext mdTxnCtx, SchedulerConfigMetadataEntity configMetadataEntity)
+            throws AlgebricksException;
+
+    /**
+     * @param mdTxnCtx
+     *            MetadataTransactionContext of an active metadata transaction.
+     * @param configName
+     *            name of the scheduler config to be dropped
+     * @throws AlgebricksException
+     *
+     * @return
+     */
+    void dropSchedulerConfig(MetadataTransactionContext mdTxnCtx, String configName) throws AlgebricksException;
 
     /**
      * @param mdTxnCtx

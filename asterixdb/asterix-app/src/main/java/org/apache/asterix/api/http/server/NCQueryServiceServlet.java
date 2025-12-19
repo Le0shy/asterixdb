@@ -213,6 +213,11 @@ public class NCQueryServiceServlet extends QueryServiceServlet {
         stats.setCloudReadRequestsCount(responseStats.getCloudReadRequestsCount());
         stats.setCloudPagesReadCount(responseStats.getCloudPagesReadCount());
         stats.setCloudPagesPersistedCount(responseStats.getCloudPagesPersistedCount());
+
+        stats.setAddedToQueueTime(responseStats.getAddedToQueueTime());
+        stats.setAddedToTheMemoryQueueTime(responseStats.getAddedToTheMemoryQueueTime());
+        stats.setExecutionStartTime(responseStats.getExecutionStartTime());
+        stats.setExecutionEndTime(responseStats.getExecutionEndTime());
     }
 
     private static void updatePropertiesFromCC(IStatementExecutor.StatementProperties statementProperties,

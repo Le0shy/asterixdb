@@ -41,15 +41,18 @@ import org.apache.asterix.lang.common.statement.CreateFullTextFilterStatement;
 import org.apache.asterix.lang.common.statement.CreateFunctionStatement;
 import org.apache.asterix.lang.common.statement.CreateIndexStatement;
 import org.apache.asterix.lang.common.statement.CreateLibraryStatement;
+import org.apache.asterix.lang.common.statement.CreateSchedulerConfigStatement;
 import org.apache.asterix.lang.common.statement.CreateSynonymStatement;
 import org.apache.asterix.lang.common.statement.CreateViewStatement;
 import org.apache.asterix.lang.common.statement.DatabaseDropStatement;
 import org.apache.asterix.lang.common.statement.DatasetDecl;
 import org.apache.asterix.lang.common.statement.DataverseDecl;
 import org.apache.asterix.lang.common.statement.DataverseDropStatement;
+import org.apache.asterix.lang.common.statement.DeleteQGroupStatement;
 import org.apache.asterix.lang.common.statement.DeleteStatement;
 import org.apache.asterix.lang.common.statement.DisconnectFeedStatement;
 import org.apache.asterix.lang.common.statement.DropDatasetStatement;
+import org.apache.asterix.lang.common.statement.EnableSchedulerStatement;
 import org.apache.asterix.lang.common.statement.FeedDropStatement;
 import org.apache.asterix.lang.common.statement.FeedPolicyDropStatement;
 import org.apache.asterix.lang.common.statement.FullTextConfigDropStatement;
@@ -63,6 +66,7 @@ import org.apache.asterix.lang.common.statement.LoadStatement;
 import org.apache.asterix.lang.common.statement.NodeGroupDropStatement;
 import org.apache.asterix.lang.common.statement.NodegroupDecl;
 import org.apache.asterix.lang.common.statement.Query;
+import org.apache.asterix.lang.common.statement.SchedulerConfigDropStatement;
 import org.apache.asterix.lang.common.statement.SetStatement;
 import org.apache.asterix.lang.common.statement.StartFeedStatement;
 import org.apache.asterix.lang.common.statement.StopFeedStatement;
@@ -70,7 +74,9 @@ import org.apache.asterix.lang.common.statement.SynonymDropStatement;
 import org.apache.asterix.lang.common.statement.TruncateDatasetStatement;
 import org.apache.asterix.lang.common.statement.TypeDecl;
 import org.apache.asterix.lang.common.statement.TypeDropStatement;
+import org.apache.asterix.lang.common.statement.UpdateSchedulerStatement;
 import org.apache.asterix.lang.common.statement.UpdateStatement;
+import org.apache.asterix.lang.common.statement.UpsertQGroupStatement;
 import org.apache.asterix.lang.common.statement.ViewDecl;
 import org.apache.asterix.lang.common.statement.ViewDropStatement;
 
@@ -228,6 +234,36 @@ public abstract class AbstractQueryExpressionVisitor<R, T> implements ILangVisit
 
     @Override
     public R visit(CreateFullTextConfigStatement del, T arg) throws CompilationException {
+        return null;
+    }
+
+    @Override
+    public R visit(CreateSchedulerConfigStatement cs, T arg) throws CompilationException {
+        return null;
+    }
+
+    @Override
+    public R visit(SchedulerConfigDropStatement scd, T arg) throws CompilationException {
+        return null;
+    }
+
+    @Override
+    public R visit(UpsertQGroupStatement uq, T arg) throws CompilationException {
+        return null;
+    }
+
+    @Override
+    public R visit(DeleteQGroupStatement dq, T arg) throws CompilationException {
+        return null;
+    }
+
+    @Override
+    public R visit(EnableSchedulerStatement dq, T arg) throws CompilationException {
+        return null;
+    }
+
+    @Override
+    public R visit(UpdateSchedulerStatement dq, T arg) throws CompilationException {
         return null;
     }
 

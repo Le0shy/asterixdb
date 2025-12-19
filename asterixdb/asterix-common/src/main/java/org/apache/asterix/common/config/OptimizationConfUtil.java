@@ -100,6 +100,8 @@ public class OptimizationConfUtil {
         boolean orderFields = getBoolean(querySpecificConfig, CompilerProperties.COMPILER_ORDERED_FIELDS_KEY,
                 compilerProperties.isOrderedFields());
 
+        String jobGroupName = getJobGroupName(compilerProperties, querySpecificConfig, sourceLoc);
+
         PhysicalOptimizationConfig physOptConf = new PhysicalOptimizationConfig();
         physOptConf.setFrameSize(frameSize);
         physOptConf.setMaxFramesExternalSort(sortFrameLimit);
@@ -129,6 +131,7 @@ public class OptimizationConfUtil {
         physOptConf.setMinWindowFrames(compilerProperties.getMinWindowMemoryFrames());
         physOptConf.setMaxVariableOccurrencesForInlining(maxVariableOccurrencesForInlining);
         physOptConf.setOrderFields(orderFields);
+        physOptConf.setJobGroupName(jobGroupName);
 
         // We should have already validated the parameter names at this point...
         Set<String> filteredParameterNames = new HashSet<>(parameterNames);
@@ -235,6 +238,17 @@ public class OptimizationConfUtil {
                     : OptionTypes.NONNEGATIVE_INTEGER.parse(valueInQuery);
         } catch (IllegalArgumentException e) {
             throw AsterixException.create(ErrorCode.COMPILATION_ERROR, sourceLoc, e.getMessage());
+        }
+    }
+
+    private static String getJobGroupName(CompilerProperties compilerProperties,
+            Map<String, Object> querySpecificConfig, SourceLocation sourceLoc) throws AsterixException {
+        String jobGroupName = (String) querySpecificConfig.get(CompilerProperties.COMPILER_QGROUP_KEY);
+        try {
+            return jobGroupName == null ? compilerProperties.getJobGroupName() : jobGroupName;
+        } catch (IllegalArgumentException e) {
+            throw AsterixException.create(ErrorCode.COMPILATION_BAD_QUERY_PARAMETER_VALUE, sourceLoc,
+                    CompilerProperties.COMPILER_QGROUP_KEY, 1, "qgroup");
         }
     }
 }

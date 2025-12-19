@@ -266,6 +266,16 @@ public abstract class AbstractMultiNCIntegrationTest {
                     clusterCapacity.setAggregatedCores(Integer.MAX_VALUE);
                     return clusterCapacity;
                 }
+
+                @Override
+                public int getMaxAggregatedNumCores() {
+                    return 0;
+                }
+
+                @Override
+                public long getMaxAggregatedMemoryByteSize() {
+                    return 0;
+                }
             };
         }
     }

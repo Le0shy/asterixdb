@@ -255,6 +255,7 @@ public class ClusterControllerService implements IControllerService {
         executor = MaintainedThreadNameExecutorService.newCachedThreadPool(serviceCtx.getThreadFactory());
         application.start(ccConfig.getAppArgsArray());
         IJobCapacityController jobCapacityController = application.getJobCapacityController();
+        /* jobManager = new WorkloadManager(ccConfig, this, jobCapacityController); */
 
         // Job manager is in charge of job lifecycle management.
         try {

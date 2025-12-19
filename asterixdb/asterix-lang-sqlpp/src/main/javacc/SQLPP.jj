@@ -147,15 +147,18 @@ import org.apache.asterix.lang.common.statement.CreateIndexStatement;
 import org.apache.asterix.lang.common.statement.CreateSynonymStatement;
 import org.apache.asterix.lang.common.statement.CreateFullTextFilterStatement;
 import org.apache.asterix.lang.common.statement.CreateFullTextConfigStatement;
+import org.apache.asterix.lang.common.statement.CreateSchedulerConfigStatement;
 import org.apache.asterix.lang.common.statement.CreateViewStatement;
 import org.apache.asterix.lang.common.statement.DatabaseDropStatement;
 import org.apache.asterix.lang.common.statement.DatasetDecl;
 import org.apache.asterix.lang.common.statement.DataverseDecl;
 import org.apache.asterix.lang.common.statement.DataverseDropStatement;
 import org.apache.asterix.lang.common.statement.DeleteStatement;
+import org.apache.asterix.lang.common.statement.DeleteQGroupStatement;
 import org.apache.asterix.lang.common.statement.DisconnectFeedStatement;
 import org.apache.asterix.lang.common.statement.DropDatasetStatement;
 import org.apache.asterix.lang.common.statement.TruncateDatasetStatement;
+import org.apache.asterix.lang.common.statement.EnableSchedulerStatement;
 import org.apache.asterix.lang.common.statement.ExternalDetailsDecl;
 import org.apache.asterix.lang.common.statement.FeedDropStatement;
 import org.apache.asterix.lang.common.statement.FeedPolicyDropStatement;
@@ -172,12 +175,15 @@ import org.apache.asterix.lang.common.statement.CopyToStatement;
 import org.apache.asterix.lang.common.statement.NodeGroupDropStatement;
 import org.apache.asterix.lang.common.statement.NodegroupDecl;
 import org.apache.asterix.lang.common.statement.Query;
+import org.apache.asterix.lang.common.statement.SchedulerConfigDropStatement;
 import org.apache.asterix.lang.common.statement.SetStatement;
 import org.apache.asterix.lang.common.statement.SynonymDropStatement;
 import org.apache.asterix.lang.common.statement.TypeDecl;
 import org.apache.asterix.lang.common.statement.TypeDropStatement;
 import org.apache.asterix.lang.common.statement.UpdateStatement;
+import org.apache.asterix.lang.common.statement.UpdateSchedulerStatement;
 import org.apache.asterix.lang.common.statement.UpsertStatement;
+import org.apache.asterix.lang.common.statement.UpsertQGroupStatement;
 import org.apache.asterix.lang.common.statement.ViewDecl;
 import org.apache.asterix.lang.common.statement.ViewDropStatement;
 import org.apache.asterix.lang.common.struct.Identifier;
@@ -188,6 +194,7 @@ import org.apache.asterix.lang.common.util.ConfigurationUtil;
 import org.apache.asterix.lang.common.util.DatasetDeclParametersUtil;
 import org.apache.asterix.lang.common.util.ExpressionUtils;
 import org.apache.asterix.lang.common.util.RangeMapBuilder;
+import org.apache.asterix.lang.common.statement.CreateSchedulerConfigStatement;
 import org.apache.asterix.lang.sqlpp.clause.AbstractBinaryCorrelateClause;
 import org.apache.asterix.lang.sqlpp.clause.FromClause;
 import org.apache.asterix.lang.sqlpp.clause.FromTerm;
@@ -1022,6 +1029,9 @@ Statement SingleStatement() throws ParseException:
     | stmt = TruncateStatement()
     | stmt = SetStatement()
     | stmt = InsertStatement()
+    | LOOKAHEAD(2) stmt = UpsertQGroupStatement()
+    | LOOKAHEAD(2) stmt = DeleteQGroupStatement()
+    | LOOKAHEAD(2) stmt = UpdateSchedulerStatement()
     | stmt = DeleteStatement()
     | stmt = UpdateStatement()
     | stmt = UpsertStatement()
@@ -1029,6 +1039,7 @@ Statement SingleStatement() throws ParseException:
     | stmt = CompactStatement()
     | stmt = AnalyzeStatement()
     | stmt = Query()
+    | stmt = EnableSchedulerStatement()
   )
   {
     return stmt;
@@ -1075,6 +1086,7 @@ Statement CreateStatement() throws ParseException:
     | stmt = CreateFeedPolicyStatement(startToken)
     | stmt = CreateFullTextStatement(startToken)
     | stmt = CreateViewStatement(startToken, false)
+    | stmt = CreateSchedulerConfigStatement(startToken)
   )
   {
     return stmt;
@@ -2195,6 +2207,46 @@ CreateFullTextConfigStatement CreateFullTextConfigSpec(Token startStmtToken) thr
   }
 }
 
+Statement CreateSchedulerConfigStatement(Token startStmtToken) throws ParseException:
+{
+  Statement stmt = null;
+}
+{
+  (
+    <SCHEDULER>
+    (
+      <IDENTIFIER> { expectToken(CONFIG); } stmt = CreateSchedulerConfigSpec(startStmtToken)
+    )
+  )
+  {
+    return stmt;
+  }
+}
+
+
+CreateSchedulerConfigStatement CreateSchedulerConfigSpec(Token startStmtToken) throws ParseException:
+{
+  CreateSchedulerConfigStatement stmt = null;
+  Pair<Namespace,Identifier> nameComponents = null;
+  boolean ifNotExists = false;
+  RecordConstructor expr = null;
+}
+{
+  (
+    nameComponents = QualifiedName() ifNotExists = IfNotExists()
+    <AS>
+    expr = RecordConstructor()
+  )
+  {
+    try {
+      stmt = new CreateSchedulerConfigStatement(nameComponents.second.getValue(), ifNotExists, expr);
+      return addSourceLocation(stmt, startStmtToken);
+    } catch (CompilationException e) {
+       throw new SqlppParseException(getSourceLocation(startStmtToken), e.getMessage());
+    }
+  }
+}
+
 CreateSynonymStatement CreateSynonymStatement(Token startStmtToken) throws ParseException:
 {
   CreateSynonymStatement stmt = null;
@@ -2436,6 +2488,7 @@ Statement DropStatement() throws ParseException:
     | stmt = DropSynonymStatement(startToken)
     | stmt = DropFullTextStatement(startToken)
     | stmt = DropViewStatement(startToken)
+    | stmt = DropSchedulerConfigStatement(startToken)
   )
   {
     return stmt;
@@ -2513,6 +2566,35 @@ IndexDropStatement DropIndexSpecification(Token startStmtToken) throws ParseExce
     return addSourceLocation(stmt, startStmtToken);
   }
 }
+
+Statement DropSchedulerConfigStatement(Token startStmtToken) throws ParseException:
+{
+  Statement stmt = null;
+}
+{
+  <SCHEDULER>
+  (
+    <IDENTIFIER> { expectToken(CONFIG); } stmt = DropSchedulerConfigSpec(startStmtToken)
+  )
+  {
+    return stmt;
+  }
+}
+
+SchedulerConfigDropStatement DropSchedulerConfigSpec(Token startStmtToken) throws ParseException:
+{
+  SchedulerConfigDropStatement stmt = null;
+  Pair<Namespace,Identifier> nameComponents = null;
+  boolean ifExists = false;
+}
+{
+  nameComponents = QualifiedName() ifExists = IfExists()
+  {
+    stmt = new SchedulerConfigDropStatement(nameComponents.second.getValue(), ifExists);
+    return addSourceLocation(stmt, startStmtToken);
+  }
+}
+
 
 Statement DropFullTextStatement(Token startStmtToken) throws ParseException:
 {
@@ -2834,6 +2916,67 @@ UpsertStatement UpsertStatement() throws ParseException:
         getVarCounter(), var, returnExpression);
       return addSourceLocation(stmt, startToken);
     }
+}
+
+
+UpsertQGroupStatement UpsertQGroupStatement() throws ParseException:
+{
+    Token startToken = null;
+    Pair<Namespace, Identifier> nameComponents = null;
+    RecordConstructor expr = null;
+}
+{
+    <UPSERT> <QGROUP> { startToken = token; }
+    <INTO> nameComponents = QualifiedName()
+    expr = RecordConstructor()
+    {
+        try {
+            UpsertQGroupStatement stmt = new UpsertQGroupStatement(nameComponents.second.getValue(), expr);
+            return addSourceLocation(stmt, startToken);
+        } catch (CompilationException e) {
+            throw new SqlppParseException(getSourceLocation(startToken), e.getMessage());
+        }
+    }
+}
+
+DeleteQGroupStatement DeleteQGroupStatement() throws ParseException:
+{
+  Token startToken = null;
+  Pair<Namespace, Identifier> nameComponents = null;
+  RecordConstructor expr = null;
+}
+{
+  <DELETE> <QGROUP> { startToken = token; }
+  <FROM>  nameComponents = QualifiedName()
+  expr = RecordConstructor()
+  {
+  try {
+      return addSourceLocation(new DeleteQGroupStatement(nameComponents.second.getValue(), expr
+    ), startToken);
+  } catch (CompilationException e) {
+        throw new SqlppParseException(getSourceLocation(startToken), e.getMessage());
+    }
+  }
+}
+UpdateSchedulerStatement UpdateSchedulerStatement() throws ParseException:
+{
+  Token startToken = null;
+  Pair<Namespace, Identifier> nameComponents = null;
+  RecordConstructor expr = null;
+}
+{
+  <UPDATE> <SCHEDULER> { startToken = token; }
+  <IDENTIFIER> { expectToken(CONFIG);}
+  nameComponents = QualifiedName()
+  expr = RecordConstructor()
+  {
+  try {
+      return addSourceLocation(new UpdateSchedulerStatement(nameComponents.second.getValue(), expr
+    ), startToken);
+  } catch (CompilationException e) {
+        throw new SqlppParseException(getSourceLocation(startToken), e.getMessage());
+    }
+  }
 }
 
 DeleteStatement DeleteStatement() throws ParseException:
@@ -3965,6 +4108,25 @@ Query Query() throws ParseException:
   }
 }
 
+
+EnableSchedulerStatement EnableSchedulerStatement() throws ParseException:
+{
+    Token startToken = null;
+    Pair<Namespace, Identifier> nameComponents = null;
+}
+{
+    <ENABLE> <SCHEDULER> {startToken = token;}
+    <IDENTIFIER> { expectToken(CONFIG);}
+    nameComponents = QualifiedName()
+    {
+        try {
+            EnableSchedulerStatement stmt = new EnableSchedulerStatement(nameComponents.second.getValue());
+            return addSourceLocation(stmt, startToken);
+        } catch (CompilationException e) {
+            throw new SqlppParseException(getSourceLocation(startToken), e.getMessage());
+        }
+    }
+}
 
 Expression Expression():
 {
@@ -6033,6 +6195,7 @@ TOKEN [IGNORE_CASE]:
   | <EXPLAIN : "explain">
   | <ELSE : "else">
   | <ENFORCED : "enforced">
+  | <ENABLE: "enable">
   | <END : "end">
   | <EVERY : "every">
   | <EXCEPT : "except">
@@ -6088,6 +6251,7 @@ TOKEN [IGNORE_CASE]:
   | <POLICY : "policy">
   | <PRESORTED : "pre-sorted">
   | <PRIMARY : "primary">
+  | <QGROUP: "qgroup">
   | <RAW : "raw">
   | <RETURN : "return">
   | <RETURNING : "returning">
@@ -6095,6 +6259,7 @@ TOKEN [IGNORE_CASE]:
   | <RTREE : "rtree">
   | <RUN : "run">
   | <SATISFIES : "satisfies">
+  | <SCHEDULER: "scheduler" >
   | <SECONDARY : "secondary">
   | <SELECT : "select">
   | <SET : "set">

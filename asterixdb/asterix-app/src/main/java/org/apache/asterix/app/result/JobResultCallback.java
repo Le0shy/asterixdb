@@ -115,6 +115,10 @@ public class JobResultCallback implements IJobResultCallback {
         metadata.setCloudPagesPersistedCount(cloudPagesPersisted);
         metadata.setWarnings(AggregateWarnings);
         metadata.setTotalWarningsCount(aggregateTotalWarningsCount);
+        metadata.setJobAddedToQueueTime(run.getAddedToQueueTime());
+        metadata.setJobExecutionEndTime(run.getExecutionEndTime());
+        metadata.setJobExecutionStartTime(run.getExecutionStartTime());
+        metadata.setJobAddedToMemoryQueueTime(run.getAddedToMemoryQueueTime());
         if (run != null && run.getFlags() != null && run.getFlags().contains(JobFlag.PROFILE_RUNTIME)) {
             metadata.setJobProfile(run.getJobProfile().toJSON());
         } else {

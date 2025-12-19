@@ -29,6 +29,10 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 public class ResultMetadata implements IResultMetadata {
     private static final long serialVersionUID = 1905367559307369036L;
 
+    private long jobAddedToQueueTime;
+    private long jobAddedToMemoryQueueTime;
+    private long jobExecutionStartTime;
+    private long jobExecutionEndTime;
     private final SessionConfig.OutputFormat format;
     private long jobDuration;
     private long processedObjects;
@@ -156,6 +160,38 @@ public class ResultMetadata implements IResultMetadata {
 
     public void setQueueWaitTimeInNanos(long queueWaitTimeInNanos) {
         this.queueWaitTimeInNanos = queueWaitTimeInNanos;
+    }
+
+    public long getJobAddedToQueueTime() {
+        return jobAddedToQueueTime;
+    }
+
+    public void setJobAddedToQueueTime(long jobAddedToQueueTime) {
+        this.jobAddedToQueueTime = jobAddedToQueueTime;
+    }
+
+    public long getJobExecutionStartTime() {
+        return jobExecutionStartTime;
+    }
+
+    public void setJobExecutionStartTime(long jobExecutionStartTime) {
+        this.jobExecutionStartTime = jobExecutionStartTime;
+    }
+
+    public long getJobExecutionEndTime() {
+        return jobExecutionEndTime;
+    }
+
+    public void setJobExecutionEndTime(long jobExecutionEndTime) {
+        this.jobExecutionEndTime = jobExecutionEndTime;
+    }
+
+    public long getJobAddedToMemoryQueueTime() {
+        return jobAddedToMemoryQueueTime;
+    }
+
+    public void setJobAddedToMemoryQueueTime(long jobAddedToMemoryQueueTime) {
+        this.jobAddedToMemoryQueueTime = jobAddedToMemoryQueueTime;
     }
 
     @Override

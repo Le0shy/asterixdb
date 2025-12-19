@@ -59,6 +59,7 @@ import org.apache.asterix.metadata.entities.Index;
 import org.apache.asterix.metadata.entities.Library;
 import org.apache.asterix.metadata.entities.Node;
 import org.apache.asterix.metadata.entities.NodeGroup;
+import org.apache.asterix.metadata.entities.SchedulerConfigMetadataEntity;
 import org.apache.asterix.metadata.entities.Synonym;
 import org.apache.asterix.transaction.management.opcallbacks.AbstractIndexModificationOperationCallback.Operation;
 import org.apache.hyracks.algebricks.common.exceptions.AlgebricksException;
@@ -855,6 +856,69 @@ public abstract class MetadataManager implements IMetadataManager {
             throw new MetadataException(ErrorCode.REMOTE_EXCEPTION_WHEN_CALLING_METADATA_NODE, e);
         }
         mdTxnCtx.dropFullTextConfig(database, dataverseName, configName);
+    }
+
+    @Override
+    public void addSchedulerConfig(MetadataTransactionContext mdTxnCtx,
+            SchedulerConfigMetadataEntity configMetadataEntity) throws AlgebricksException {
+        if (Strings.isNullOrEmpty(configMetadataEntity.getSchedulerConfig().getName())) {
+            throw new MetadataException(ErrorCode.SCHEDULER_CONFIG_ALREADY_EXISTS);
+        }
+
+        try {
+            metadataNode.addSchedulerConfig(mdTxnCtx.getTxnId(), configMetadataEntity);
+        } catch (RemoteException e) {
+            throw new MetadataException(ErrorCode.REMOTE_EXCEPTION_WHEN_CALLING_METADATA_NODE, e);
+        }
+        mdTxnCtx.addSchedulerConfig(configMetadataEntity);
+    }
+
+    @Override
+    public SchedulerConfigMetadataEntity getSchedulerConfig(MetadataTransactionContext ctx, String configName)
+            throws AlgebricksException {
+        // First look in the context to see if this transaction created the
+        // requested scheduler config itself (but the scheduler config is still uncommitted).
+        SchedulerConfigMetadataEntity configMetadataEntity = ctx.getSchedulerConfig(configName);
+        if (configMetadataEntity != null) {
+            // Don't add this config to the cache, since it is still
+            // uncommitted.
+            return configMetadataEntity;
+        }
+
+        if (ctx.schedulerConfigIsDropped(configName)) {
+            // config has been dropped by this transaction but could still be
+            // in the cache.
+            return null;
+        }
+
+        configMetadataEntity = cache.getSchedulerConfig(configName);
+        if (configMetadataEntity != null) {
+            // config is already in the cache, don't add it again.
+            return configMetadataEntity;
+        }
+
+        try {
+            configMetadataEntity = metadataNode.getSchedulerConfig(ctx.getTxnId(), configName);
+        } catch (RemoteException e) {
+            throw new MetadataException(ErrorCode.REMOTE_EXCEPTION_WHEN_CALLING_METADATA_NODE, e);
+        }
+
+        // We fetched the config from the MetadataNode. Add it to the cache
+        // when this transaction commits.
+        if (configMetadataEntity != null) {
+            ctx.addSchedulerConfig(configMetadataEntity);
+        }
+        return configMetadataEntity;
+    }
+
+    @Override
+    public void dropSchedulerConfig(MetadataTransactionContext mdTxnCtx, String configName) throws AlgebricksException {
+        try {
+            metadataNode.dropSchedulerConfig(mdTxnCtx.getTxnId(), configName);
+        } catch (RemoteException e) {
+            throw new MetadataException(ErrorCode.REMOTE_EXCEPTION_WHEN_CALLING_METADATA_NODE, e);
+        }
+        mdTxnCtx.dropSchedulerConfig(configName);
     }
 
     @Override

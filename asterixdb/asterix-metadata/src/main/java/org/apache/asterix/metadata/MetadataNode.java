@@ -56,6 +56,7 @@ import static org.apache.asterix.common.exceptions.ErrorCode.UNKNOWN_NODEGROUP;
 import static org.apache.asterix.common.exceptions.ErrorCode.UNKNOWN_SYNONYM;
 import static org.apache.asterix.common.exceptions.ErrorCode.UNKNOWN_TYPE;
 import static org.apache.asterix.common.utils.IdentifierUtil.dataset;
+import static org.apache.asterix.metadata.entities.SchedulerConfigMetadataEntity.SCHEDULER_STATE;
 
 import java.io.PrintStream;
 import java.rmi.RemoteException;
@@ -123,6 +124,7 @@ import org.apache.asterix.metadata.entities.InternalDatasetDetails;
 import org.apache.asterix.metadata.entities.Library;
 import org.apache.asterix.metadata.entities.Node;
 import org.apache.asterix.metadata.entities.NodeGroup;
+import org.apache.asterix.metadata.entities.SchedulerConfigMetadataEntity;
 import org.apache.asterix.metadata.entities.Synonym;
 import org.apache.asterix.metadata.entities.ViewDetails;
 import org.apache.asterix.metadata.entitytupletranslators.CompactionPolicyTupleTranslator;
@@ -143,6 +145,7 @@ import org.apache.asterix.metadata.entitytupletranslators.LibraryTupleTranslator
 import org.apache.asterix.metadata.entitytupletranslators.MetadataTupleTranslatorProvider;
 import org.apache.asterix.metadata.entitytupletranslators.NodeGroupTupleTranslator;
 import org.apache.asterix.metadata.entitytupletranslators.NodeTupleTranslator;
+import org.apache.asterix.metadata.entitytupletranslators.SchedulerConfigMetadataEntityTupleTranslator;
 import org.apache.asterix.metadata.entitytupletranslators.SynonymTupleTranslator;
 import org.apache.asterix.metadata.utils.DatasetUtil;
 import org.apache.asterix.metadata.utils.TypeUtil;
@@ -160,6 +163,8 @@ import org.apache.asterix.om.types.AbstractComplexType;
 import org.apache.asterix.om.types.BuiltinType;
 import org.apache.asterix.om.types.IAType;
 import org.apache.asterix.runtime.fulltext.FullTextConfigDescriptor;
+import org.apache.asterix.runtime.scheduler.SchedulerConfigRecordDescriptor;
+import org.apache.asterix.runtime.scheduler.SchedulerConfigStateDescriptor;
 import org.apache.asterix.transaction.management.opcallbacks.AbstractIndexModificationOperationCallback.Operation;
 import org.apache.asterix.transaction.management.opcallbacks.NoOpModificationOpCallback;
 import org.apache.asterix.transaction.management.opcallbacks.SecondaryIndexModificationOperationCallback;
@@ -664,6 +669,81 @@ public class MetadataNode implements IMetadataNode {
         try {
             ITupleReference key = createTuple(database, dataverseName, configName);
             deleteTupleFromIndex(txnId, mdIndexesProvider.getFullTextConfigEntity().getIndex(), key);
+        } catch (HyracksDataException e) {
+            throw new AsterixException(METADATA_ERROR, e, e.getMessage());
+        }
+    }
+
+    private void insertSchedulerConfigMetadataEntityToCatalog(TxnId txnId, SchedulerConfigMetadataEntity config)
+            throws AlgebricksException {
+        try {
+            SchedulerConfigMetadataEntityTupleTranslator tupleReaderWriter;
+            if (config.getSchedulerConfig() instanceof SchedulerConfigRecordDescriptor) {
+                tupleReaderWriter = tupleTranslatorProvider.getSchedulerConfigTupleTranslator(true, true);
+                ITupleReference configTuple = tupleReaderWriter.getTupleFromMetadataEntity(config);
+                insertTupleIntoIndex(txnId, mdIndexesProvider.getSchedulerConfigRecordEntity().getIndex(), configTuple);
+            } else if (config.getSchedulerConfig() instanceof SchedulerConfigStateDescriptor) {
+                tupleReaderWriter = tupleTranslatorProvider.getSchedulerConfigTupleTranslator(true, false);
+                ITupleReference configTuple = tupleReaderWriter.getTupleFromMetadataEntity(config);
+                insertTupleIntoIndex(txnId, mdIndexesProvider.getSchedulerConfigStateEntity().getIndex(), configTuple);
+            }
+        } catch (HyracksDataException e) {
+            throw new AsterixException(METADATA_ERROR, e, e.getMessage());
+        }
+    }
+
+    @Override
+    public void addSchedulerConfig(TxnId txnId, SchedulerConfigMetadataEntity config)
+            throws AlgebricksException, RemoteException {
+        insertSchedulerConfigMetadataEntityToCatalog(txnId, config);
+    }
+
+    @Override
+    public SchedulerConfigMetadataEntity getSchedulerConfig(TxnId txnId, String configName) throws AlgebricksException {
+        SchedulerConfigMetadataEntityTupleTranslator translator;
+        /* initialize tuple translator */
+        if (configName.equals(SCHEDULER_STATE)) {
+            translator = tupleTranslatorProvider.getSchedulerConfigTupleTranslator(true, false);
+        } else {
+            translator = tupleTranslatorProvider.getSchedulerConfigTupleTranslator(true, true);
+        }
+
+        ITupleReference searchKey;
+        List<SchedulerConfigMetadataEntity> results = new ArrayList<>();
+        try {
+            searchKey = createTuple(configName);
+            IValueExtractor<SchedulerConfigMetadataEntity> valueExtractor =
+                    new MetadataEntityValueExtractor<>(translator);
+            if (configName.equals(SCHEDULER_STATE)) {
+                searchIndex(txnId, mdIndexesProvider.getSchedulerConfigStateEntity().getIndex(), searchKey,
+                        valueExtractor, results);
+            } else {
+                searchIndex(txnId, mdIndexesProvider.getSchedulerConfigRecordEntity().getIndex(), searchKey,
+                        valueExtractor, results);
+            }
+        } catch (HyracksDataException e) {
+            throw new AsterixException(METADATA_ERROR, e, e.getMessage());
+        }
+
+        if (results.isEmpty()) {
+            return null;
+        }
+
+        return results.get(0);
+    }
+
+    public void dropSchedulerConfig(TxnId txnId, String configName) throws AlgebricksException {
+        dropSchedulerConfigDescriptor(txnId, configName);
+    }
+
+    private void dropSchedulerConfigDescriptor(TxnId txnId, String configName) throws AlgebricksException {
+        try {
+            ITupleReference key = createTuple(configName);
+            if (configName.equals(SCHEDULER_STATE)) {
+                deleteTupleFromIndex(txnId, mdIndexesProvider.getSchedulerConfigStateEntity().getIndex(), key);
+            } else {
+                deleteTupleFromIndex(txnId, mdIndexesProvider.getSchedulerConfigRecordEntity().getIndex(), key);
+            }
         } catch (HyracksDataException e) {
             throw new AsterixException(METADATA_ERROR, e, e.getMessage());
         }

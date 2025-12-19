@@ -143,6 +143,10 @@ public interface IStatementExecutor {
         private long cloudReadRequestsCount;
         private long cloudPagesReadCount;
         private long cloudPagesPersistedCount;
+        private long addedToQueueTime;
+        private long addedToTheMemoryQueueTime;
+        private long executionStartTime;
+        private long executionEndTime;
 
         public long getCount() {
             return count;
@@ -248,6 +252,38 @@ public interface IStatementExecutor {
 
         public long getCloudPagesPersistedCount() {
             return cloudPagesPersistedCount;
+        }
+
+        public long getAddedToTheMemoryQueueTime() {
+            return addedToTheMemoryQueueTime;
+        }
+
+        public void setAddedToTheMemoryQueueTime(long addedToTheMemoryQueueTime) {
+            this.addedToTheMemoryQueueTime = addedToTheMemoryQueueTime;
+        }
+
+        public long getAddedToQueueTime() {
+            return addedToQueueTime;
+        }
+
+        public void setAddedToQueueTime(long addedToQueueTime) {
+            this.addedToQueueTime = addedToQueueTime;
+        }
+
+        public long getExecutionStartTime() {
+            return executionStartTime;
+        }
+
+        public void setExecutionStartTime(long executionStartTime) {
+            this.executionStartTime = executionStartTime;
+        }
+
+        public long getExecutionEndTime() {
+            return executionEndTime;
+        }
+
+        public void setExecutionEndTime(long executionEndTime) {
+            this.executionEndTime = executionEndTime;
         }
     }
 

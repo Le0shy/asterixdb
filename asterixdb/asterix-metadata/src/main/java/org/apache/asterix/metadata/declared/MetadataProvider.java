@@ -21,6 +21,7 @@ package org.apache.asterix.metadata.declared;
 import static org.apache.asterix.common.api.IIdentifierMapper.Modifier.PLURAL;
 import static org.apache.asterix.common.metadata.MetadataConstants.METADATA_OBJECT_NAME_INVALID_CHARS;
 import static org.apache.asterix.common.utils.IdentifierUtil.dataset;
+import static org.apache.asterix.metadata.entities.SchedulerConfigMetadataEntity.SCHEDULER_STATE;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -89,6 +90,7 @@ import org.apache.asterix.metadata.entities.FullTextConfigMetadataEntity;
 import org.apache.asterix.metadata.entities.FullTextFilterMetadataEntity;
 import org.apache.asterix.metadata.entities.Function;
 import org.apache.asterix.metadata.entities.Index;
+import org.apache.asterix.metadata.entities.SchedulerConfigMetadataEntity;
 import org.apache.asterix.metadata.entities.Synonym;
 import org.apache.asterix.metadata.feeds.FeedMetadataUtil;
 import org.apache.asterix.metadata.provider.ExternalWriterProvider;
@@ -525,6 +527,16 @@ public class MetadataProvider implements IMetadataProvider<DataSourceId, String>
     public FullTextFilterMetadataEntity findFullTextFilter(String database, DataverseName dataverseName,
             String ftFilterName) throws AlgebricksException {
         return MetadataManagerUtil.findFullTextFilterDescriptor(mdTxnCtx, database, dataverseName, ftFilterName);
+    }
+
+    public SchedulerConfigMetadataEntity findEnabledSchedulerConfig() throws AlgebricksException {
+        TxnId txnId = new TxnId(0);
+        mdTxnCtx = new MetadataTransactionContext(txnId);
+        SchedulerConfigMetadataEntity scme =
+                MetadataManagerUtil.findSchedulerConfigDescriptor(mdTxnCtx, SCHEDULER_STATE);
+        if (scme == null)
+            return null;
+        return MetadataManagerUtil.findSchedulerConfigDescriptor(mdTxnCtx, scme.getEnabled());
     }
 
     @Override

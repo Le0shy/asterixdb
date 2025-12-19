@@ -99,8 +99,11 @@ import org.apache.asterix.messaging.CCMessageBroker;
 import org.apache.asterix.metadata.MetadataManager;
 import org.apache.asterix.metadata.api.IAsterixStateProxy;
 import org.apache.asterix.metadata.bootstrap.AsterixStateProxy;
+import org.apache.asterix.metadata.bootstrap.MetadataBuiltinEntities;
+import org.apache.asterix.metadata.declared.MetadataProvider;
 import org.apache.asterix.metadata.lock.MetadataLockManager;
 import org.apache.asterix.metadata.utils.MetadataLockUtil;
+import org.apache.asterix.metadata.utils.SchedulerUtil;
 import org.apache.asterix.runtime.job.resource.JobCapacityController;
 import org.apache.asterix.translator.IStatementExecutorFactory;
 import org.apache.asterix.translator.Receptionist;
@@ -122,6 +125,9 @@ import org.apache.hyracks.api.lifecycle.LifeCycleComponentManager;
 import org.apache.hyracks.api.result.IJobResultCallback;
 import org.apache.hyracks.control.cc.BaseCCApplication;
 import org.apache.hyracks.control.cc.ClusterControllerService;
+import org.apache.hyracks.control.cc.job.WorkloadManager;
+import org.apache.hyracks.control.cc.scheduler.IWorkloadConfigInfo;
+import org.apache.hyracks.control.cc.work.NotifyWorkloadConfigWork;
 import org.apache.hyracks.control.common.controllers.CCConfig;
 import org.apache.hyracks.control.nc.io.DefaultDeviceResolver;
 import org.apache.hyracks.control.nc.io.IOManager;
@@ -456,5 +462,46 @@ public class CCApplication extends BaseCCApplication {
         }
         IClusterStateManager csm = appCtx.getClusterStateManager();
         return csm.getState() == ACTIVE || csm.getState() == REBALANCE_REQUIRED;
+    }
+
+    @Override
+    public void startupCompleted() throws Exception {
+        super.startupCompleted();
+        // Schedule scheduler initialization with a delay to allow metadata to initialize
+        scheduleSchedulerInitialization();
+    }
+
+    private void scheduleSchedulerInitialization() {
+        ClusterControllerService cc = (ClusterControllerService) ccServiceCtx.getControllerService();
+        if (!(cc.getJobManager() instanceof WorkloadManager)) {
+            return;
+        }
+        // Schedule with a delay to allow metadata initialization to complete
+        cc.getExecutor().submit(() -> {
+            int maxRetries = 5;
+            int retryDelayMs = 2000;
+            for (int i = 0; i < maxRetries; i++) {
+                try {
+                    Thread.sleep(retryDelayMs);
+                    IWorkloadConfigInfo workloadConfigInfo = SchedulerUtil.fetchSchedulerConfigDescriptor(
+                            MetadataProvider.create(appCtx, MetadataBuiltinEntities.DEFAULT_NAMESPACE));
+                    if (workloadConfigInfo != null) {
+                        cc.getWorkQueue().scheduleAndSync(new NotifyWorkloadConfigWork(cc, workloadConfigInfo));
+                        LOGGER.info("Initialized WorkloadManager with scheduler configuration");
+                    } else {
+                        LOGGER.debug("No enabled scheduler configuration found at startup");
+                    }
+                    return; // Success - exit
+                } catch (Exception e) {
+                    if (i < maxRetries - 1) {
+                        LOGGER.debug("Could not initialize scheduler configuration (attempt {}/{}): {}", i + 1,
+                                maxRetries, e.getMessage());
+                    } else {
+                        LOGGER.info("Scheduler configuration will use defaults. "
+                                + "Enable a configuration with ENABLE SCHEDULER CONFIG if needed.");
+                    }
+                }
+            }
+        });
     }
 }

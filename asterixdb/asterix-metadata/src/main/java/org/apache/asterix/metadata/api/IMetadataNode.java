@@ -44,6 +44,7 @@ import org.apache.asterix.metadata.entities.Index;
 import org.apache.asterix.metadata.entities.Library;
 import org.apache.asterix.metadata.entities.Node;
 import org.apache.asterix.metadata.entities.NodeGroup;
+import org.apache.asterix.metadata.entities.SchedulerConfigMetadataEntity;
 import org.apache.asterix.metadata.entities.Synonym;
 import org.apache.asterix.transaction.management.opcallbacks.AbstractIndexModificationOperationCallback;
 import org.apache.hyracks.algebricks.common.exceptions.AlgebricksException;
@@ -1019,4 +1020,12 @@ public interface IMetadataNode extends Remote, Serializable {
             throws AlgebricksException, RemoteException;
 
     List<Dataset> getAllDatasets(TxnId txnId) throws AlgebricksException, RemoteException;
+
+    void addSchedulerConfig(TxnId txnId, SchedulerConfigMetadataEntity configMetadataEntity)
+            throws AlgebricksException, RemoteException;
+
+    SchedulerConfigMetadataEntity getSchedulerConfig(TxnId txnId, String configName)
+            throws AlgebricksException, RemoteException;
+
+    public void dropSchedulerConfig(TxnId txnId, String configName) throws AlgebricksException, RemoteException;
 }

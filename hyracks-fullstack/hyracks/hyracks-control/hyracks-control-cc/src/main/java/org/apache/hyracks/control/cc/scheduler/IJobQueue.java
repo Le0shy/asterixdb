@@ -80,4 +80,12 @@ public interface IJobQueue {
      * @return the number of queued jobs.
      */
     int size();
+
+    void notifyJobFinished(JobRun run);
+
+    boolean isEmpty();
+
+    default long getCurrentTime() {
+        return System.nanoTime();
+    }
 }

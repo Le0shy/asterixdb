@@ -63,8 +63,8 @@ public class PhysicalOptimizationConfig {
     private static final String MIN_GROUP_FRAMES = "MIN_GROUP_FRAMES";
     private static final String MIN_WINDOW_FRAMES = "MIN_WINDOW_FRAMES";
     private static final String MAX_VARIABLE_OCCURRENCES_INLINING = "MAX_VARIABLE_OCCURRENCES_INLINING";
-
     private static final String ORDER_FIELDS = "ORDERED_FIELDS";
+    private static final String JOB_GROUP_NAME = "JOB_GROUP_NAME";
 
     private final Properties properties = new Properties();
 
@@ -374,6 +374,14 @@ public class PhysicalOptimizationConfig {
 
     public boolean isColumnFilterEnabled() {
         return getBoolean(COLUMN_FILTER, AlgebricksConfig.COLUMN_FILTER_DEFAULT);
+    }
+
+    public String getJobGroupName() {
+        return getString(JOB_GROUP_NAME, AlgebricksConfig.JOB_GROUP_DEFAULT);
+    }
+
+    public void setJobGroupName(String jobGroupName) {
+        setString(JOB_GROUP_NAME, jobGroupName);
     }
 
     public void setExtensionProperty(String property, Object value) {

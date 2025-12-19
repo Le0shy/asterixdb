@@ -94,6 +94,16 @@ public class JobCapacityController implements IJobCapacityController {
         return resourceManager.getCurrentCapacity();
     }
 
+    @Override
+    public int getMaxAggregatedNumCores() {
+        return resourceManager.getCurrentCapacity().getAggregatedCores();
+    }
+
+    @Override
+    public long getMaxAggregatedMemoryByteSize() {
+        return resourceManager.getCurrentCapacity().getAggregatedMemoryByteSize();
+    }
+
     private void ensureMaxCapacity() {
         final IClusterCapacity currentCapacity = resourceManager.getCurrentCapacity();
         final IReadOnlyClusterCapacity maximumCapacity = resourceManager.getMaximumCapacity();

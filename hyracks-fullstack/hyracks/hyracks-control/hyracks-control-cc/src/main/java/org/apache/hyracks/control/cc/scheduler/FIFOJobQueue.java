@@ -137,4 +137,14 @@ public class FIFOJobQueue implements IJobQueue {
     public int size() {
         return jobListMap.size();
     }
+
+    @Override
+    public void notifyJobFinished(JobRun run) {
+
+    }
+
+    @Override
+    public boolean isEmpty() {
+        return false;
+    }
 }

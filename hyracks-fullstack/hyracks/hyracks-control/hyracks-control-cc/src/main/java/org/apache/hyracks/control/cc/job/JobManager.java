@@ -66,16 +66,16 @@ public class JobManager implements IJobManager {
 
     private static final Logger LOGGER = LogManager.getLogger();
 
-    private final ClusterControllerService ccs;
-    private final Map<JobId, JobRun> activeRunMap;
-    private final Map<JobId, JobRun> runMapArchive;
-    private final Map<JobId, List<Exception>> runMapHistory;
-    private final IJobCapacityController jobCapacityController;
+    protected final ClusterControllerService ccs;
+    protected final Map<JobId, JobRun> activeRunMap;
+    protected final Map<JobId, JobRun> runMapArchive;
+    protected final Map<JobId, List<Exception>> runMapHistory;
+    protected final IJobCapacityController jobCapacityController;
     private final AtomicLong successfulJobs;
     private final AtomicLong totalFailedJobs;
     private final AtomicLong totalCancelledJobs;
     private final AtomicLong totalRejectedJobs;
-    private IJobQueue jobQueue;
+    protected IJobQueue jobQueue;
 
     public JobManager(CCConfig ccConfig, ClusterControllerService ccs, IJobCapacityController jobCapacityController) {
         this.ccs = ccs;
@@ -126,6 +126,7 @@ public class JobManager implements IJobManager {
             status = jobCapacityController.allocate(job, jobRun.getJobId(), jobRun.getFlags());
             CCServiceContext serviceCtx = ccs.getContext();
             serviceCtx.notifyJobCreation(jobRun.getJobId(), job, status);
+            jobRun.setAddedToQueueTime(System.nanoTime());
             switch (status) {
                 case QUEUE:
                     queueJob(jobRun);
@@ -253,6 +254,7 @@ public class JobManager implements IJobManager {
         }
         run.setStatus(run.getPendingStatus(), run.getPendingExceptions());
         run.setEndTime(System.currentTimeMillis());
+        run.setExecutionEndTime(System.nanoTime());
         if (activeRunMap.remove(jobId) != null) {
             incrementJobCounters(run, successful);
 
@@ -289,7 +291,7 @@ public class JobManager implements IJobManager {
      * @param run job run
      * @param successful if job is successful
      */
-    private void incrementJobCounters(JobRun run, boolean successful) {
+    protected void incrementJobCounters(JobRun run, boolean successful) {
         if (successful) {
             incrementSuccessfulJobs();
             return;
@@ -308,7 +310,7 @@ public class JobManager implements IJobManager {
      * @param run job run
      * @return true if cancelled job, false otherwise
      */
-    private boolean isCancelledJob(JobRun run) {
+    protected boolean isCancelledJob(JobRun run) {
         List<Exception> exceptions = run.getExceptions();
         for (Exception e : exceptions) {
             if (e instanceof IFormattedException f && f.getErrorCode() == ErrorCode.JOB_CANCELED.intValue()) {
@@ -390,6 +392,7 @@ public class JobManager implements IJobManager {
 
     // Executes a job when the required capacity for the job is met.
     private void executeJob(JobRun run) throws HyracksException {
+        run.setExecutionStartTime(System.nanoTime());
         run.setStartTime(System.currentTimeMillis());
         run.setStartTimeZoneId(ZoneId.systemDefault().getId());
         JobId jobId = run.getJobId();
@@ -400,7 +403,7 @@ public class JobManager implements IJobManager {
     }
 
     // Queue a job when the required capacity for the job is not met.
-    private void queueJob(JobRun jobRun) throws HyracksException {
+    protected void queueJob(JobRun jobRun) throws HyracksException {
         logJobCapacity(jobRun, "queueing", Level.INFO);
         jobRun.setStatus(JobStatus.PENDING, null);
         jobQueue.add(jobRun);
@@ -419,7 +422,7 @@ public class JobManager implements IJobManager {
         }
     }
 
-    private ObjectNode createJobLogObject(final JobRun run) {
+    ObjectNode createJobLogObject(final JobRun run) {
         ObjectMapper om = new ObjectMapper();
         ObjectNode jobLogObject = om.createObjectNode();
         ActivityClusterGraph acg = run.getActivityClusterGraph();
@@ -428,7 +431,7 @@ public class JobManager implements IJobManager {
         return jobLogObject;
     }
 
-    private void checkJob(JobRun jobRun) throws HyracksException {
+    void checkJob(JobRun jobRun) throws HyracksException {
         if (jobRun == null) {
             throw HyracksException.create(ErrorCode.INVALID_INPUT_PARAMETER);
         }
@@ -469,19 +472,19 @@ public class JobManager implements IJobManager {
         }
     }
 
-    private void incrementSuccessfulJobs() {
+    protected void incrementSuccessfulJobs() {
         successfulJobs.incrementAndGet();
     }
 
-    private void incrementFailedJobs() {
+    protected void incrementFailedJobs() {
         totalFailedJobs.incrementAndGet();
     }
 
-    private void incrementCancelledJobs() {
+    protected void incrementCancelledJobs() {
         totalCancelledJobs.incrementAndGet();
     }
 
-    private void incrementRejectedJobs() {
+    protected void incrementRejectedJobs() {
         totalRejectedJobs.incrementAndGet();
     }
 }

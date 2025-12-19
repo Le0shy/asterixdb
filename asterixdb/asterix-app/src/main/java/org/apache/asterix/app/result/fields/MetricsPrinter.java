@@ -43,7 +43,11 @@ public class MetricsPrinter implements IResponseFieldPrinter {
         BUFFERCACHE_PAGEREAD_COUNT("bufferCachePageReadCount"),
         REMOTE_STORAGE_REQUESTS_COUNT("remoteStorageRequestsCount"),
         REMOTE_STORAGE_PAGES_READ_COUNT("remoteStoragePagesReadCount"),
-        REMOTE_PAGES_PERSISTED_COUNT("remoteStoragePagesPersistedCount");
+        REMOTE_PAGES_PERSISTED_COUNT("remoteStoragePagesPersistedCount"),
+        ADDED_TO_THE_QUEUE_TIME_NANO("addedToTheQueueTimeNano"),
+        ADDED_TO_THE_MEMORY_QUEUE_TIME_NANO("addedToTheMemoryQueueTimeNano"),
+        EXECUTION_START_TIME_NANO("executionStartTimeNano"),
+        EXECUTION_END_TIME_NANO("executionEndTimeNano");
 
         private final String str;
 
@@ -93,6 +97,7 @@ public class MetricsPrinter implements IResponseFieldPrinter {
         final boolean madeCloudReadRequests = metrics.getCloudReadRequestsCount() > 0;
         ResultUtil.printField(pw, Metrics.PROCESSED_OBJECTS_COUNT.str(), metrics.getProcessedObjects(),
                 usedCache || hasWarnings || hasErrors);
+        ResultUtil.printField(pw, Metrics.PROCESSED_OBJECTS_COUNT.str(), metrics.getProcessedObjects(), true);
         pw.print("\n");
         if (usedCache) {
             pw.print("\t");
@@ -120,14 +125,30 @@ public class MetricsPrinter implements IResponseFieldPrinter {
         }
         if (hasWarnings) {
             pw.print("\t");
-            ResultUtil.printField(pw, Metrics.WARNING_COUNT.str(), metrics.getWarnCount(), hasErrors);
+            ResultUtil.printField(pw, Metrics.WARNING_COUNT.str(), metrics.getWarnCount(), true);
             pw.print("\n");
         }
         if (hasErrors) {
             pw.print("\t");
-            ResultUtil.printField(pw, Metrics.ERROR_COUNT.str(), metrics.getErrorCount(), false);
+            ResultUtil.printField(pw, Metrics.ERROR_COUNT.str(), metrics.getErrorCount(), true);
             pw.print("\n");
         }
+        pw.print("\t");
+        ResultUtil.printField(pw, Metrics.ADDED_TO_THE_QUEUE_TIME_NANO.str(), metrics.getAddedToQueueTime(), true);
+        pw.print("\n");
+
+        pw.print("\t");
+        ResultUtil.printField(pw, Metrics.ADDED_TO_THE_MEMORY_QUEUE_TIME_NANO.str(),
+                metrics.getAddedToMemoryQueueTime(), true);
+        pw.print("\n");
+
+        pw.print("\t");
+        ResultUtil.printField(pw, Metrics.EXECUTION_START_TIME_NANO.str(), metrics.getExecutionStartTime(), true);
+        pw.print("\n");
+
+        pw.print("\t");
+        ResultUtil.printField(pw, Metrics.EXECUTION_END_TIME_NANO.str(), metrics.getExecutionEndTime(), false);
+        pw.print("\n");
         pw.print("\t}");
     }
 
