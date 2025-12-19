@@ -37,8 +37,6 @@
       <AppenderRef ref="Console"/>
     </Root>
     <Logger name="org.apache.hyracks.control.nc.service" level="INFO"/>
-    <Logger name="org.apache.hyracks.control.cc.scheduler" level="DEBUG"/>
-    <Logger name="org.apache.hyracks.control.cc.job" level="DEBUG"/>
     <Logger name="org.apache.hyracks.http.server.CLFLogger" level="ACCESS" additivity="false">
         <AppenderRef ref="AccessLog"/>
     </Logger>
