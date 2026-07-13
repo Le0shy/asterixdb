@@ -16,10 +16,12 @@
  * specific language governing permissions and limitations
  * under the License.
  */
--- The block's LET is not yet supported with CLUSTER BY (its bindings would need re-scoping into
--- every emitted clustering subquery); must be rejected at compile time.
-from [{"x": [1.0, 2.0]}] as r
-let y = r.x
-cluster by y as sc
-with { "NumClusters": 2 }
-select sc.cluster_id;
+-- nearest_centroid_distance(point, centroids): squared-Euclidean distance to the closest centroid --
+-- the k-means|| sampling score d2(x, C). NULL on invalid input.
+select value [
+  nearest_centroid_distance([0.0, 0.0], [[0.0, 0.0], [3.0, 4.0]]),
+  nearest_centroid_distance([1.0, 1.0], [[0.0, 0.0], [3.0, 4.0]]),
+  nearest_centroid_distance([3.0, 3.0], [[0.0, 0.0], [3.0, 4.0]]),
+  nearest_centroid_distance(null, [[0.0, 0.0]]) is null,
+  nearest_centroid_distance([1.0, 1.0], [1.0, 2.0]) is null
+];

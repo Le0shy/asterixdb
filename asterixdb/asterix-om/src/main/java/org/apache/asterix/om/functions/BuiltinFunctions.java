@@ -1241,6 +1241,10 @@ public class BuiltinFunctions {
             FunctionConstants.newAsterix("ann-distance", FunctionIdentifier.VARARGS);
     // CLUSTER BY: nearest_centroid(point, centroids) -> AINT32 index of the closest centroid.
     public static final FunctionIdentifier NEAREST_CENTROID = FunctionConstants.newAsterix("nearest-centroid", 2);
+    // CLUSTER BY: nearest_centroid_distance(point, centroids) -> ADOUBLE squared distance from the point to
+    // its closest centroid.
+    public static final FunctionIdentifier NEAREST_CENTROID_DISTANCE =
+            FunctionConstants.newAsterix("nearest-centroid-distance", 2);
 
     // Temporal functions
     public static final FunctionIdentifier UNIX_TIME_FROM_DATE_IN_DAYS =
@@ -1992,6 +1996,7 @@ public class BuiltinFunctions {
         addFunction(ANN_DISTANCE, ADoubleTypeComputer.INSTANCE, true);
 
         addFunction(NEAREST_CENTROID, AInt32TypeComputer.INSTANCE_NULLABLE, true);
+        addFunction(NEAREST_CENTROID_DISTANCE, ADoubleTypeComputer.INSTANCE_NULLABLE, true);
         // Window functions
 
         addFunction(CUME_DIST, ADoubleTypeComputer.INSTANCE, false);
