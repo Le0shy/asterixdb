@@ -1,0 +1,84 @@
+<!--
+  ~ Licensed to the Apache Software Foundation (ASF) under one
+  ~ or more contributor license agreements.  See the NOTICE file
+  ~ distributed with this work for additional information
+  ~ regarding copyright ownership.  The ASF licenses this file
+  ~ to you under the Apache License, Version 2.0 (the
+  ~ "License"); you may not use this file except in compliance
+  ~ with the License.  You may obtain a copy of the License at
+  ~
+  ~   http://www.apache.org/licenses/LICENSE-2.0
+  ~
+  ~ Unless required by applicable law or agreed to in writing,
+  ~ software distributed under the License is distributed on an
+  ~ "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+  ~ KIND, either express or implied.  See the License for the
+  ~ specific language governing permissions and limitations
+  ~ under the License.
+  -->
+<test-group name="cluster-by">
+    <!-- Negative cases: CLUSTER BY WITH-option validation (SqlppClusterByVisitor, rewrite phase).
+         GROUP BY + CLUSTER BY mutual exclusion is enforced at the grammar level and covered by
+         ClusterByParserTest, so it is not duplicated here. -->
+    <test-case FilePath="cluster-by/negative">
+        <compilation-unit name="missing-numclusters">
+            <output-dir compare="Text">missing-numclusters</output-dir>
+            <expected-error>CLUSTER BY requires the 'NumClusters' option.</expected-error>
+        </compilation-unit>
+    </test-case>
+    <test-case FilePath="cluster-by/negative">
+        <compilation-unit name="nonpositive-numclusters">
+            <output-dir compare="Text">nonpositive-numclusters</output-dir>
+            <expected-error>CLUSTER BY 'NumClusters' must be a positive integer</expected-error>
+        </compilation-unit>
+    </test-case>
+    <test-case FilePath="cluster-by/negative">
+        <compilation-unit name="unknown-option">
+            <output-dir compare="Text">unknown-option</output-dir>
+            <expected-error>Unknown CLUSTER BY option 'numcluster'</expected-error>
+        </compilation-unit>
+    </test-case>
+    <test-case FilePath="cluster-by/negative">
+        <compilation-unit name="let-in-block">
+            <output-dir compare="Text">let-in-block</output-dir>
+            <expected-error>CLUSTER BY does not support LET in its query block</expected-error>
+        </compilation-unit>
+    </test-case>
+    <test-case FilePath="cluster-by/negative">
+        <compilation-unit name="unknown-distance">
+            <output-dir compare="Text">unknown-distance</output-dir>
+            <expected-error>CLUSTER BY distanceFunction 'euclidian' is not supported</expected-error>
+        </compilation-unit>
+    </test-case>
+    <test-case FilePath="cluster-by/negative">
+        <compilation-unit name="unsupported-distance">
+            <output-dir compare="Text">unsupported-distance</output-dir>
+            <expected-error>CLUSTER BY distanceFunction 'cosine' is not supported</expected-error>
+        </compilation-unit>
+    </test-case>
+    <test-case FilePath="cluster-by/negative">
+        <compilation-unit name="unsupported-algorithm">
+            <output-dir compare="Text">unsupported-algorithm</output-dir>
+            <expected-error>Unsupported CLUSTER BY Clustering_Algorithm 'DBSCAN'</expected-error>
+        </compilation-unit>
+    </test-case>
+    <!-- v1 scope restrictions: single FROM term, no joins/UNNEST, no set operations. -->
+    <test-case FilePath="cluster-by/negative">
+        <compilation-unit name="multiple-from-terms">
+            <output-dir compare="Text">multiple-from-terms</output-dir>
+            <expected-error>CLUSTER BY currently requires exactly one FROM term.</expected-error>
+        </compilation-unit>
+    </test-case>
+    <test-case FilePath="cluster-by/negative">
+        <compilation-unit name="join-in-from">
+            <output-dir compare="Text">join-in-from</output-dir>
+            <expected-error>CLUSTER BY currently does not support joins in its FROM clause.</expected-error>
+        </compilation-unit>
+    </test-case>
+    <test-case FilePath="cluster-by/negative">
+        <compilation-unit name="setop-with-clusterby">
+            <output-dir compare="Text">setop-with-clusterby</output-dir>
+            <expected-error>CLUSTER BY is not supported with set operations (UNION/INTERSECT/EXCEPT).</expected-error>
+        </compilation-unit>
+    </test-case>
+</test-group>

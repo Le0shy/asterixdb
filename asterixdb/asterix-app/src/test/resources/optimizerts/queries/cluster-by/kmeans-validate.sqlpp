@@ -16,36 +16,21 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.asterix.lang.common.base;
+-- Desugared-plan validation: distributed k-means expressed as plain SQL++ so the optimizer builds the
+-- broadcast + two-step CENTROID aggregate (rather than us hand-wiring a Replicate). Minimal form:
+-- one seed cluster (GROUP BY 0) -> centroids computed by the two-step CENTROID aggregate -> the
+-- (uncorrelated) centroids subquery is broadcast to every point via nearest_centroid.
+drop dataverse clusterby_test if exists;
+create dataverse clusterby_test;
+use clusterby_test;
 
-public interface Clause extends ILangExpression {
-    public ClauseType getClauseType();
+create type clusterby_test.ReviewType as closed {
+  id : integer,
+  reviewEmbedding : [double]
+};
+create dataset Reviews(ReviewType) primary key id;
 
-    public enum ClauseType {
-        FOR_CLAUSE,
-        LET_CLAUSE,
-        WHERE_CLAUSE,
-        GROUP_BY_CLAUSE,
-        CLUSTER_BY_CLAUSE,
-        DISTINCT_BY_CLAUSE,
-        ORDER_BY_CLAUSE,
-        LIMIT_CLAUSE,
-
-        // SQL related clause
-        FROM_CLAUSE,
-        FROM_TERM,
-        HAVING_CLAUSE,
-        JOIN_CLAUSE,
-        NEST_CLAUSE,
-        PROJECTION,
-        SELECT_BLOCK,
-        SELECT_CLAUSE,
-        SELECT_ELEMENT,
-        SELECT_REGULAR,
-        SELECT_SET_OPERATION,
-        UNNEST_CLAUSE,
-
-        EXTENSION
-    }
-
-}
+select r.id as id,
+       nearest_centroid(r.reviewEmbedding,
+           (select value centroid(r2.reviewEmbedding) from Reviews r2 group by 0)) as cluster_id
+from Reviews r;

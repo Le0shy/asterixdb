@@ -62,6 +62,7 @@ import org.apache.asterix.lang.common.struct.VarIdentifier;
 import org.apache.asterix.lang.common.util.FunctionUtil;
 import org.apache.asterix.lang.sqlpp.annotation.ExcludeFromSelectStarAnnotation;
 import org.apache.asterix.lang.sqlpp.clause.AbstractBinaryCorrelateClause;
+import org.apache.asterix.lang.sqlpp.clause.ClusterbyClause;
 import org.apache.asterix.lang.sqlpp.clause.FromClause;
 import org.apache.asterix.lang.sqlpp.clause.FromTerm;
 import org.apache.asterix.lang.sqlpp.clause.HavingClause;
@@ -261,6 +262,15 @@ public class SqlppExpressionToPlanTranslator extends LangExpressionToPlanTransla
     }
 
     @Override
+    public Pair<ILogicalOperator, LogicalVariable> visit(ClusterbyClause clusterbyClause,
+            Mutable<ILogicalOperator> tupSource) throws CompilationException {
+        // CLUSTER BY is desugared into a distributed k-means query (query-level LET centroids + GROUP BY
+        // nearest_centroid) by SqlppClusterByVisitor during query rewriting, so a ClusterbyClause must never
+        // reach the plan translator. This method exists only to satisfy the ISqlppVisitor interface.
+        throw new IllegalStateException("CLUSTER BY should have been rewritten to a k-means query before translation");
+    }
+
+    @Override
     public Pair<ILogicalOperator, LogicalVariable> visit(SelectBlock selectBlock, Mutable<ILogicalOperator> tupSource)
             throws CompilationException {
         Mutable<ILogicalOperator> currentOpRef = tupSource;
@@ -299,6 +309,9 @@ public class SqlppExpressionToPlanTranslator extends LangExpressionToPlanTransla
         }
         if (selectBlock.hasGroupbyClause()) {
             currentOpRef = new MutableObject<>(selectBlock.getGroupbyClause().accept(this, currentOpRef).first);
+        }
+        if (selectBlock.hasClusterbyClause()) {
+            currentOpRef = new MutableObject<>(selectBlock.getClusterbyClause().accept(this, currentOpRef).first);
         }
         return currentOpRef;
     }

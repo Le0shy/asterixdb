@@ -16,36 +16,10 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.asterix.lang.common.base;
-
-public interface Clause extends ILangExpression {
-    public ClauseType getClauseType();
-
-    public enum ClauseType {
-        FOR_CLAUSE,
-        LET_CLAUSE,
-        WHERE_CLAUSE,
-        GROUP_BY_CLAUSE,
-        CLUSTER_BY_CLAUSE,
-        DISTINCT_BY_CLAUSE,
-        ORDER_BY_CLAUSE,
-        LIMIT_CLAUSE,
-
-        // SQL related clause
-        FROM_CLAUSE,
-        FROM_TERM,
-        HAVING_CLAUSE,
-        JOIN_CLAUSE,
-        NEST_CLAUSE,
-        PROJECTION,
-        SELECT_BLOCK,
-        SELECT_CLAUSE,
-        SELECT_ELEMENT,
-        SELECT_REGULAR,
-        SELECT_SET_OPERATION,
-        UNNEST_CLAUSE,
-
-        EXTENSION
-    }
-
-}
+-- LET in the CLUSTER BY block is rejected: its bindings would need re-scoping into every emitted
+-- centroid subquery.
+from [{"reviewEmbedding": [1.0, 2.0]}, {"reviewEmbedding": [3.0, 4.0]}] as r
+let scaled = r.reviewEmbedding
+cluster by scaled as sc
+with { "NumClusters": 2 }
+select sc.cluster_id as cid;

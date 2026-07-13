@@ -1,0 +1,240 @@
+distribute result [$$429]
+-- DISTRIBUTE_RESULT  |PARTITIONED|
+  exchange
+  -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
+    assign [$$429] <- [{"cid": $#14, "centroid": $$439}] project: [$$429]
+    -- ASSIGN  |PARTITIONED|
+      exchange
+      -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
+        group by ([$#14 := $$453]) decor ([]) {
+                  aggregate [$$439] <- [agg-global-sql-centroid($$452)] [cardinality: 0.0, doc-size: 0.0, op-cost: 0.0, total-cost: 0.0]
+                  -- AGGREGATE  |LOCAL|
+                    nested tuple source [cardinality: 0.0, doc-size: 0.0, op-cost: 0.0, total-cost: 0.0]
+                    -- NESTED_TUPLE_SOURCE  |LOCAL|
+               }
+        -- SORT_GROUP_BY[$$453]  |PARTITIONED|
+          exchange
+          -- HASH_PARTITION_EXCHANGE [$$453]  |PARTITIONED|
+            group by ([$$453 := $$433]) decor ([]) {
+                      aggregate [$$452] <- [agg-local-sql-centroid($$444)] [cardinality: 0.0, doc-size: 0.0, op-cost: 0.0, total-cost: 0.0]
+                      -- AGGREGATE  |LOCAL|
+                        nested tuple source [cardinality: 0.0, doc-size: 0.0, op-cost: 0.0, total-cost: 0.0]
+                        -- NESTED_TUPLE_SOURCE  |LOCAL|
+                   }
+            -- SORT_GROUP_BY[$$433]  |PARTITIONED|
+              exchange
+              -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
+                assign [$$433] <- [nearest-centroid($$444, $$421)] project: [$$444, $$433]
+                -- ASSIGN  |PARTITIONED|
+                  exchange
+                  -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
+                    join (true)
+                    -- NESTED_LOOP  |PARTITIONED|
+                      exchange
+                      -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
+                        assign [$$444] <- [$$392] project: [$$444]
+                        -- ASSIGN  |PARTITIONED|
+                          exchange
+                          -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
+                            replicate
+                            -- REPLICATE  |PARTITIONED|
+                              exchange
+                              -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
+                                assign [$$392] <- [$#1.getField(1)] project: [$$392]
+                                -- ASSIGN  |PARTITIONED|
+                                  project ([$#1])
+                                  -- STREAM_PROJECT  |PARTITIONED|
+                                    exchange
+                                    -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
+                                      data-scan []<-[$$437, $#1] <- clusterby_test.Reviews
+                                      -- DATASOURCE_SCAN  |PARTITIONED|
+                                        exchange
+                                        -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
+                                          empty-tuple-source
+                                          -- EMPTY_TUPLE_SOURCE  |PARTITIONED|
+                      exchange
+                      -- BROADCAST_EXCHANGE  |PARTITIONED|
+                        aggregate [$$421] <- [listify($$443)]
+                        -- AGGREGATE  |UNPARTITIONED|
+                          exchange
+                          -- RANDOM_MERGE_EXCHANGE  |PARTITIONED|
+                            project ([$$443])
+                            -- STREAM_PROJECT  |PARTITIONED|
+                              exchange
+                              -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
+                                group by ([$#12 := $$451]) decor ([]) {
+                                          aggregate [$$443] <- [agg-global-sql-centroid($$450)] [cardinality: 0.0, doc-size: 0.0, op-cost: 0.0, total-cost: 0.0]
+                                          -- AGGREGATE  |LOCAL|
+                                            nested tuple source [cardinality: 0.0, doc-size: 0.0, op-cost: 0.0, total-cost: 0.0]
+                                            -- NESTED_TUPLE_SOURCE  |LOCAL|
+                                       }
+                                -- SORT_GROUP_BY[$$451]  |PARTITIONED|
+                                  exchange
+                                  -- HASH_PARTITION_EXCHANGE [$$451]  |PARTITIONED|
+                                    group by ([$$451 := $$432]) decor ([]) {
+                                              aggregate [$$450] <- [agg-local-sql-centroid($$380)] [cardinality: 0.0, doc-size: 0.0, op-cost: 0.0, total-cost: 0.0]
+                                              -- AGGREGATE  |LOCAL|
+                                                nested tuple source [cardinality: 0.0, doc-size: 0.0, op-cost: 0.0, total-cost: 0.0]
+                                                -- NESTED_TUPLE_SOURCE  |LOCAL|
+                                           }
+                                    -- SORT_GROUP_BY[$$432]  |PARTITIONED|
+                                      exchange
+                                      -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
+                                        assign [$$432] <- [nearest-centroid($$380, $$414)] project: [$$380, $$432]
+                                        -- ASSIGN  |PARTITIONED|
+                                          exchange
+                                          -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
+                                            join (true)
+                                            -- NESTED_LOOP  |PARTITIONED|
+                                              exchange
+                                              -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
+                                                assign [$$380] <- [$$392] project: [$$380]
+                                                -- ASSIGN  |PARTITIONED|
+                                                  exchange
+                                                  -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
+                                                    replicate
+                                                    -- REPLICATE  |PARTITIONED|
+                                                      exchange
+                                                      -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
+                                                        assign [$$392] <- [$#1.getField(1)] project: [$$392]
+                                                        -- ASSIGN  |PARTITIONED|
+                                                          project ([$#1])
+                                                          -- STREAM_PROJECT  |PARTITIONED|
+                                                            exchange
+                                                            -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
+                                                              data-scan []<-[$$437, $#1] <- clusterby_test.Reviews
+                                                              -- DATASOURCE_SCAN  |PARTITIONED|
+                                                                exchange
+                                                                -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
+                                                                  empty-tuple-source
+                                                                  -- EMPTY_TUPLE_SOURCE  |PARTITIONED|
+                                              exchange
+                                              -- BROADCAST_EXCHANGE  |PARTITIONED|
+                                                aggregate [$$414] <- [listify($$442)]
+                                                -- AGGREGATE  |UNPARTITIONED|
+                                                  exchange
+                                                  -- RANDOM_MERGE_EXCHANGE  |PARTITIONED|
+                                                    project ([$$442])
+                                                    -- STREAM_PROJECT  |PARTITIONED|
+                                                      exchange
+                                                      -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
+                                                        group by ([$#9 := $$449]) decor ([]) {
+                                                                  aggregate [$$442] <- [agg-global-sql-centroid($$448)] [cardinality: 0.0, doc-size: 0.0, op-cost: 0.0, total-cost: 0.0]
+                                                                  -- AGGREGATE  |LOCAL|
+                                                                    nested tuple source [cardinality: 0.0, doc-size: 0.0, op-cost: 0.0, total-cost: 0.0]
+                                                                    -- NESTED_TUPLE_SOURCE  |LOCAL|
+                                                               }
+                                                        -- SORT_GROUP_BY[$$449]  |PARTITIONED|
+                                                          exchange
+                                                          -- HASH_PARTITION_EXCHANGE [$$449]  |PARTITIONED|
+                                                            group by ([$$449 := $$431]) decor ([]) {
+                                                                      aggregate [$$448] <- [agg-local-sql-centroid($$386)] [cardinality: 0.0, doc-size: 0.0, op-cost: 0.0, total-cost: 0.0]
+                                                                      -- AGGREGATE  |LOCAL|
+                                                                        nested tuple source [cardinality: 0.0, doc-size: 0.0, op-cost: 0.0, total-cost: 0.0]
+                                                                        -- NESTED_TUPLE_SOURCE  |LOCAL|
+                                                                   }
+                                                            -- SORT_GROUP_BY[$$431]  |PARTITIONED|
+                                                              exchange
+                                                              -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
+                                                                assign [$$431] <- [nearest-centroid($$386, $$407)] project: [$$386, $$431]
+                                                                -- ASSIGN  |PARTITIONED|
+                                                                  exchange
+                                                                  -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
+                                                                    join (true)
+                                                                    -- NESTED_LOOP  |PARTITIONED|
+                                                                      exchange
+                                                                      -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
+                                                                        assign [$$386] <- [$$392] project: [$$386]
+                                                                        -- ASSIGN  |PARTITIONED|
+                                                                          exchange
+                                                                          -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
+                                                                            replicate
+                                                                            -- REPLICATE  |PARTITIONED|
+                                                                              exchange
+                                                                              -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
+                                                                                assign [$$392] <- [$#1.getField(1)] project: [$$392]
+                                                                                -- ASSIGN  |PARTITIONED|
+                                                                                  project ([$#1])
+                                                                                  -- STREAM_PROJECT  |PARTITIONED|
+                                                                                    exchange
+                                                                                    -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
+                                                                                      data-scan []<-[$$437, $#1] <- clusterby_test.Reviews
+                                                                                      -- DATASOURCE_SCAN  |PARTITIONED|
+                                                                                        exchange
+                                                                                        -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
+                                                                                          empty-tuple-source
+                                                                                          -- EMPTY_TUPLE_SOURCE  |PARTITIONED|
+                                                                      exchange
+                                                                      -- BROADCAST_EXCHANGE  |PARTITIONED|
+                                                                        aggregate [$$407] <- [listify($$441)]
+                                                                        -- AGGREGATE  |UNPARTITIONED|
+                                                                          exchange
+                                                                          -- RANDOM_MERGE_EXCHANGE  |PARTITIONED|
+                                                                            project ([$$441])
+                                                                            -- STREAM_PROJECT  |PARTITIONED|
+                                                                              exchange
+                                                                              -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
+                                                                                group by ([$#6 := $$447]) decor ([]) {
+                                                                                          aggregate [$$441] <- [agg-global-sql-centroid($$446)] [cardinality: 0.0, doc-size: 0.0, op-cost: 0.0, total-cost: 0.0]
+                                                                                          -- AGGREGATE  |LOCAL|
+                                                                                            nested tuple source [cardinality: 0.0, doc-size: 0.0, op-cost: 0.0, total-cost: 0.0]
+                                                                                            -- NESTED_TUPLE_SOURCE  |LOCAL|
+                                                                                       }
+                                                                                -- SORT_GROUP_BY[$$447]  |PARTITIONED|
+                                                                                  exchange
+                                                                                  -- HASH_PARTITION_EXCHANGE [$$447]  |PARTITIONED|
+                                                                                    group by ([$$447 := $$430]) decor ([]) {
+                                                                                              aggregate [$$446] <- [agg-local-sql-centroid($$392)] [cardinality: 0.0, doc-size: 0.0, op-cost: 0.0, total-cost: 0.0]
+                                                                                              -- AGGREGATE  |LOCAL|
+                                                                                                nested tuple source [cardinality: 0.0, doc-size: 0.0, op-cost: 0.0, total-cost: 0.0]
+                                                                                                -- NESTED_TUPLE_SOURCE  |LOCAL|
+                                                                                           }
+                                                                                    -- SORT_GROUP_BY[$$430]  |PARTITIONED|
+                                                                                      exchange
+                                                                                      -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
+                                                                                        assign [$$430] <- [nearest-centroid($$392, $$400)] project: [$$392, $$430]
+                                                                                        -- ASSIGN  |PARTITIONED|
+                                                                                          exchange
+                                                                                          -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
+                                                                                            join (true)
+                                                                                            -- NESTED_LOOP  |PARTITIONED|
+                                                                                              exchange
+                                                                                              -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
+                                                                                                replicate
+                                                                                                -- REPLICATE  |PARTITIONED|
+                                                                                                  exchange
+                                                                                                  -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
+                                                                                                    assign [$$392] <- [$#1.getField(1)] project: [$$392]
+                                                                                                    -- ASSIGN  |PARTITIONED|
+                                                                                                      project ([$#1])
+                                                                                                      -- STREAM_PROJECT  |PARTITIONED|
+                                                                                                        exchange
+                                                                                                        -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
+                                                                                                          data-scan []<-[$$437, $#1] <- clusterby_test.Reviews
+                                                                                                          -- DATASOURCE_SCAN  |PARTITIONED|
+                                                                                                            exchange
+                                                                                                            -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
+                                                                                                              empty-tuple-source
+                                                                                                              -- EMPTY_TUPLE_SOURCE  |PARTITIONED|
+                                                                                              exchange
+                                                                                              -- BROADCAST_EXCHANGE  |PARTITIONED|
+                                                                                                aggregate [$$400] <- [listify($$398)]
+                                                                                                -- AGGREGATE  |UNPARTITIONED|
+                                                                                                  limit 2
+                                                                                                  -- STREAM_LIMIT  |UNPARTITIONED|
+                                                                                                    exchange
+                                                                                                    -- RANDOM_MERGE_EXCHANGE  |PARTITIONED|
+                                                                                                      assign [$$398] <- [$#1.getField(1)] project: [$$398]
+                                                                                                      -- ASSIGN  |PARTITIONED|
+                                                                                                        limit 2
+                                                                                                        -- STREAM_LIMIT  |PARTITIONED|
+                                                                                                          project ([$#1])
+                                                                                                          -- STREAM_PROJECT  |PARTITIONED|
+                                                                                                            exchange
+                                                                                                            -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
+                                                                                                              data-scan []<-[$$438, $#1] <- clusterby_test.Reviews limit 2
+                                                                                                              -- DATASOURCE_SCAN  |PARTITIONED|
+                                                                                                                exchange
+                                                                                                                -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
+                                                                                                                  empty-tuple-source
+                                                                                                                  -- EMPTY_TUPLE_SOURCE  |PARTITIONED|

@@ -16,36 +16,20 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.asterix.lang.common.base;
+-- CLUSTER BY syntax plan validation (minimal): the clause desugars into the distributed k-means shape
+-- validated by kmeans-validate — first-k seed + 3 unrolled Lloyd iterations (two-step CENTROID
+-- aggregate, centroid list broadcast into nearest_centroid) + a final GROUP BY labeling pass.
+drop dataverse clusterby_test if exists;
+create dataverse clusterby_test;
+use clusterby_test;
 
-public interface Clause extends ILangExpression {
-    public ClauseType getClauseType();
+create type clusterby_test.ReviewType as closed {
+  id : integer,
+  reviewEmbedding : [double]
+};
+create dataset Reviews(ReviewType) primary key id;
 
-    public enum ClauseType {
-        FOR_CLAUSE,
-        LET_CLAUSE,
-        WHERE_CLAUSE,
-        GROUP_BY_CLAUSE,
-        CLUSTER_BY_CLAUSE,
-        DISTINCT_BY_CLAUSE,
-        ORDER_BY_CLAUSE,
-        LIMIT_CLAUSE,
-
-        // SQL related clause
-        FROM_CLAUSE,
-        FROM_TERM,
-        HAVING_CLAUSE,
-        JOIN_CLAUSE,
-        NEST_CLAUSE,
-        PROJECTION,
-        SELECT_BLOCK,
-        SELECT_CLAUSE,
-        SELECT_ELEMENT,
-        SELECT_REGULAR,
-        SELECT_SET_OPERATION,
-        UNNEST_CLAUSE,
-
-        EXTENSION
-    }
-
-}
+from Reviews as r
+cluster by r.reviewEmbedding as sc
+with { "NumClusters": 2 }
+select sc.cluster_id as cid, sc.centroid as centroid;
