@@ -16,10 +16,8 @@
  * specific language governing permissions and limitations
  * under the License.
  */
--- The block's LET is not yet supported with CLUSTER BY (its bindings would need re-scoping into
--- every emitted clustering subquery); must be rejected at compile time.
+
 from [{"x": [1.0, 2.0]}] as r
-let y = r.x
-cluster by y as sc
-with { "NumClusters": 2 }
+cluster by r.x as sc
+with { "NumClusters": 5, "initMode": "randm" }
 select sc.cluster_id;

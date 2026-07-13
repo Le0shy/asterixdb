@@ -17,6 +17,42 @@
   ~ under the License.
   -->
 <test-group name="cluster-by">
+    <!-- End-to-end distributed k-means: the SQL++ desugar form (two-step CENTROID aggregate +
+         nearest_centroid broadcast labeling) runs on a tiny 2-D dataset and produces the two expected clusters. -->
+    <test-case FilePath="cluster-by">
+        <compilation-unit name="kmeans-exec">
+            <output-dir compare="Text">kmeans-exec</output-dir>
+        </compilation-unit>
+    </test-case>
+    <!-- CLUSTER BY syntax end-to-end: the SqlppClusterByVisitor rewrite desugars CLUSTER BY (sc descriptor +
+         CLUSTER AS members) into the distributed k-means query and runs it on the tiny 2-D dataset. -->
+    <test-case FilePath="cluster-by">
+        <compilation-unit name="kmeans-syntax">
+            <output-dir compare="Text">kmeans-syntax</output-dir>
+        </compilation-unit>
+    </test-case>
+    <!-- nearest_centroid_distance scalar: the k-means|| sampling score d2(x, C). -->
+    <test-case FilePath="cluster-by">
+        <compilation-unit name="nearest-centroid-distance">
+            <output-dir compare="Text">nearest-centroid-distance</output-dir>
+        </compilation-unit>
+    </test-case>
+    <!-- CLUSTER BY under non-inlined WITH/LET compilation (SET inline_with false): guards the shared-subplan
+         path; the desugar's own centroid LETs are always non-inlined via markNoInlineLetVar. -->
+    <test-case FilePath="cluster-by">
+        <compilation-unit name="kmeans-syntax-noinline">
+            <output-dir compare="Text">kmeans-syntax-noinline</output-dir>
+        </compilation-unit>
+    </test-case>
+    <!-- The k-means|| init runtime operator path (SET cluster_by_runtime_init true): round 1 runs as the
+         Store+Score operator; results must equal the pure-desugar reference path. -->
+    <!-- initMode "random": C0 = the k lexicographically smallest vectors, no k-means|| tower;
+         the Lloyd stages and labeling are shared with the default kmeansPP mode. -->
+    <test-case FilePath="cluster-by">
+        <compilation-unit name="kmeans-syntax-random">
+            <output-dir compare="Text">kmeans-syntax-random</output-dir>
+        </compilation-unit>
+    </test-case>
     <!-- Negative cases: CLUSTER BY WITH-option validation (SqlppClusterByVisitor, rewrite phase).
          GROUP BY + CLUSTER BY mutual exclusion is enforced at the grammar level and covered by
          ClusterByParserTest, so it is not duplicated here. -->
@@ -39,9 +75,9 @@
         </compilation-unit>
     </test-case>
     <test-case FilePath="cluster-by/negative">
-        <compilation-unit name="let-in-block">
-            <output-dir compare="Text">let-in-block</output-dir>
-            <expected-error>CLUSTER BY does not support LET in its query block</expected-error>
+        <compilation-unit name="unknown-init-mode">
+            <output-dir compare="Text">unknown-init-mode</output-dir>
+            <expected-error>Unknown CLUSTER BY initMode 'randm'</expected-error>
         </compilation-unit>
     </test-case>
     <test-case FilePath="cluster-by/negative">
@@ -60,6 +96,12 @@
         <compilation-unit name="unsupported-algorithm">
             <output-dir compare="Text">unsupported-algorithm</output-dir>
             <expected-error>Unsupported CLUSTER BY Clustering_Algorithm 'DBSCAN'</expected-error>
+        </compilation-unit>
+    </test-case>
+    <test-case FilePath="cluster-by/negative">
+        <compilation-unit name="let-in-block">
+            <output-dir compare="Text">let-in-block</output-dir>
+            <expected-error>CLUSTER BY currently does not support LET in its query block.</expected-error>
         </compilation-unit>
     </test-case>
     <!-- v1 scope restrictions: single FROM term, no joins/UNNEST, no set operations. -->
