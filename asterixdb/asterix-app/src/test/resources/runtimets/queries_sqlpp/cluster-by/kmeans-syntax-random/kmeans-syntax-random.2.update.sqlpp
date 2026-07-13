@@ -16,10 +16,13 @@
  * specific language governing permissions and limitations
  * under the License.
  */
--- The block's LET is not yet supported with CLUSTER BY (its bindings would need re-scoping into
--- every emitted clustering subquery); must be rejected at compile time.
-from [{"x": [1.0, 2.0]}] as r
-let y = r.x
-cluster by y as sc
-with { "NumClusters": 2 }
-select sc.cluster_id;
+use test;
+
+insert into Points ([
+  {"id": 1, "vec": [1.0, 1.0]},
+  {"id": 2, "vec": [1.5, 2.0]},
+  {"id": 3, "vec": [8.0, 8.0]},
+  {"id": 4, "vec": [9.0, 9.0]},
+  {"id": 5, "vec": [1.0, 0.5]},
+  {"id": 6, "vec": [8.0, 9.0]}
+]);
