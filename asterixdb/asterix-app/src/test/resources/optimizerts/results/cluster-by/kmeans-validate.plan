@@ -1,0 +1,62 @@
+distribute result [$$79]
+-- DISTRIBUTE_RESULT  |PARTITIONED|
+  exchange
+  -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
+    assign [$$79] <- [{"id": $$81, "cluster_id": nearest-centroid($$85, $$78)}] project: [$$79]
+    -- ASSIGN  |PARTITIONED|
+      exchange
+      -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
+        join (true)
+        -- NESTED_LOOP  |PARTITIONED|
+          exchange
+          -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
+            assign [$$85] <- [$$r.getField(1)] project: [$$81, $$85]
+            -- ASSIGN  |PARTITIONED|
+              exchange
+              -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
+                data-scan []<-[$$81, $$r] <- clusterby_test.Reviews
+                -- DATASOURCE_SCAN  |PARTITIONED|
+                  exchange
+                  -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
+                    empty-tuple-source
+                    -- EMPTY_TUPLE_SOURCE  |PARTITIONED|
+          exchange
+          -- BROADCAST_EXCHANGE  |PARTITIONED|
+            aggregate [$$78] <- [listify($$83)]
+            -- AGGREGATE  |UNPARTITIONED|
+              exchange
+              -- RANDOM_MERGE_EXCHANGE  |PARTITIONED|
+                project ([$$83])
+                -- STREAM_PROJECT  |PARTITIONED|
+                  exchange
+                  -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
+                    group by ([$#1 := $$88]) decor ([]) {
+                              aggregate [$$83] <- [agg-global-sql-centroid($$87)] [cardinality: 0.0, doc-size: 0.0, op-cost: 0.0, total-cost: 0.0]
+                              -- AGGREGATE  |LOCAL|
+                                nested tuple source [cardinality: 0.0, doc-size: 0.0, op-cost: 0.0, total-cost: 0.0]
+                                -- NESTED_TUPLE_SOURCE  |LOCAL|
+                           }
+                    -- SORT_GROUP_BY[$$88]  |PARTITIONED|
+                      exchange
+                      -- HASH_PARTITION_EXCHANGE [$$88]  |PARTITIONED|
+                        group by ([$$88 := $$80]) decor ([]) {
+                                  aggregate [$$87] <- [agg-local-sql-centroid($$75)] [cardinality: 0.0, doc-size: 0.0, op-cost: 0.0, total-cost: 0.0]
+                                  -- AGGREGATE  |LOCAL|
+                                    nested tuple source [cardinality: 0.0, doc-size: 0.0, op-cost: 0.0, total-cost: 0.0]
+                                    -- NESTED_TUPLE_SOURCE  |LOCAL|
+                               }
+                        -- SORT_GROUP_BY[$$80]  |PARTITIONED|
+                          exchange
+                          -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
+                            assign [$$80, $$75] <- [0, $$r2.getField(1)] project: [$$75, $$80]
+                            -- ASSIGN  |PARTITIONED|
+                              project ([$$r2])
+                              -- STREAM_PROJECT  |PARTITIONED|
+                                exchange
+                                -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
+                                  data-scan []<-[$$82, $$r2] <- clusterby_test.Reviews
+                                  -- DATASOURCE_SCAN  |PARTITIONED|
+                                    exchange
+                                    -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
+                                      empty-tuple-source
+                                      -- EMPTY_TUPLE_SOURCE  |PARTITIONED|

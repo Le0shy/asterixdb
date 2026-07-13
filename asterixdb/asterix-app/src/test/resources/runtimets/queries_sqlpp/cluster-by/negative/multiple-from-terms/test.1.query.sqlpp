@@ -16,36 +16,12 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.asterix.lang.common.base;
-
-public interface Clause extends ILangExpression {
-    public ClauseType getClauseType();
-
-    public enum ClauseType {
-        FOR_CLAUSE,
-        LET_CLAUSE,
-        WHERE_CLAUSE,
-        GROUP_BY_CLAUSE,
-        CLUSTER_BY_CLAUSE,
-        DISTINCT_BY_CLAUSE,
-        ORDER_BY_CLAUSE,
-        LIMIT_CLAUSE,
-
-        // SQL related clause
-        FROM_CLAUSE,
-        FROM_TERM,
-        HAVING_CLAUSE,
-        JOIN_CLAUSE,
-        NEST_CLAUSE,
-        PROJECTION,
-        SELECT_BLOCK,
-        SELECT_CLAUSE,
-        SELECT_ELEMENT,
-        SELECT_REGULAR,
-        SELECT_SET_OPERATION,
-        UNNEST_CLAUSE,
-
-        EXTENSION
-    }
-
-}
+-- APE 33 Database Design #1 (movies and reviews as separate collections): joins are not supported in
+-- v1, so CLUSTER BY over more than one FROM term must be rejected at compile time.
+from [{"movie_id": 1, "movie_year": 2019}] as m,
+     [{"movie_id": 1, "reviewEmbedding": [1.0, 2.0]}] as r
+where r.movie_id = m.movie_id and m.movie_year < 2020
+cluster by r.reviewEmbedding as sc
+cluster as rvc
+with { "NumClusters": 5 }
+select sc.cluster_id as cid, array_count(rvc) as cnt, rvc;

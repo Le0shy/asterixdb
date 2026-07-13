@@ -16,36 +16,11 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.asterix.lang.common.base;
-
-public interface Clause extends ILangExpression {
-    public ClauseType getClauseType();
-
-    public enum ClauseType {
-        FOR_CLAUSE,
-        LET_CLAUSE,
-        WHERE_CLAUSE,
-        GROUP_BY_CLAUSE,
-        CLUSTER_BY_CLAUSE,
-        DISTINCT_BY_CLAUSE,
-        ORDER_BY_CLAUSE,
-        LIMIT_CLAUSE,
-
-        // SQL related clause
-        FROM_CLAUSE,
-        FROM_TERM,
-        HAVING_CLAUSE,
-        JOIN_CLAUSE,
-        NEST_CLAUSE,
-        PROJECTION,
-        SELECT_BLOCK,
-        SELECT_CLAUSE,
-        SELECT_ELEMENT,
-        SELECT_REGULAR,
-        SELECT_SET_OPERATION,
-        UNNEST_CLAUSE,
-
-        EXTENSION
-    }
-
-}
+-- APE 33 Database Design #3 (reviews nested inside movies): UNNEST attaches a correlate clause to the
+-- FROM term, which v1 CLUSTER BY must reject at compile time.
+from [{"movie_year": 2019, "reviews": [{"reviewEmbedding": [1.0, 2.0]}]}] as m
+unnest m.reviews as re
+cluster by re.reviewEmbedding as sc
+cluster as rvc
+with { "NumClusters": 5 }
+select sc.cluster_id as cid, array_count(rvc) as cnt, rvc;

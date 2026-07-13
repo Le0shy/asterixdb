@@ -53,6 +53,7 @@ import org.apache.asterix.lang.common.statement.UpdateStatement;
 import org.apache.asterix.lang.common.struct.Identifier;
 import org.apache.asterix.lang.common.struct.QuantifiedPair;
 import org.apache.asterix.lang.sqlpp.clause.AbstractBinaryCorrelateClause;
+import org.apache.asterix.lang.sqlpp.clause.ClusterbyClause;
 import org.apache.asterix.lang.sqlpp.clause.FromClause;
 import org.apache.asterix.lang.sqlpp.clause.FromTerm;
 import org.apache.asterix.lang.sqlpp.clause.HavingClause;
@@ -136,6 +137,9 @@ public class AbstractSqlppSimpleExpressionVisitor
         }
         if (selectBlock.hasGroupbyClause()) {
             selectBlock.getGroupbyClause().accept(this, arg);
+        }
+        if (selectBlock.hasClusterbyClause()) {
+            selectBlock.getClusterbyClause().accept(this, arg);
         }
         if (selectBlock.hasLetHavingClausesAfterGroupby()) {
             for (AbstractClause clause : selectBlock.getLetHavingListAfterGroupby()) {
@@ -222,6 +226,12 @@ public class AbstractSqlppSimpleExpressionVisitor
                 decVarExpr.setExpr(visit(decVarExpr.getExpr(), gc));
             }
         }
+        return null;
+    }
+
+    @Override
+    public Expression visit(ClusterbyClause cc, ILangExpression arg) throws CompilationException {
+        cc.setClusteringExpression(visit(cc.getClusteringExpression(), cc));
         return null;
     }
 
