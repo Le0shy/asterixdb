@@ -54,6 +54,7 @@ import org.apache.asterix.lang.common.struct.Identifier;
 import org.apache.asterix.lang.common.struct.QuantifiedPair;
 import org.apache.asterix.lang.sqlpp.clause.AbstractBinaryCorrelateClause;
 import org.apache.asterix.lang.sqlpp.clause.AbstractBinaryCorrelateWithConditionClause;
+import org.apache.asterix.lang.sqlpp.clause.ClusterbyClause;
 import org.apache.asterix.lang.sqlpp.clause.FromClause;
 import org.apache.asterix.lang.sqlpp.clause.FromTerm;
 import org.apache.asterix.lang.sqlpp.clause.HavingClause;
@@ -226,6 +227,14 @@ public class FreeVariableVisitor extends AbstractSqlppQueryExpressionVisitor<Voi
                 gbyLetHavingsFreeVars.removeAll(gbyBindingVars);
             }
         }
+        if (selectBlock.hasClusterbyClause()) {
+            // The clustering expression's free vars are bound by the FROM/LET vars of this block.
+            Collection<VariableExpr> clusterByFreeVars = new HashSet<>();
+            selectBlock.getClusterbyClause().accept(this, clusterByFreeVars);
+            clusterByFreeVars.removeAll(fromBindingVars);
+            clusterByFreeVars.removeAll(letsBindingVars);
+            freeVars.addAll(clusterByFreeVars);
+        }
 
         // Removes all binding vars from <code>freeVars</code>, which contains the free
         // vars in the order-by and limit.
@@ -329,6 +338,13 @@ public class FreeVariableVisitor extends AbstractSqlppQueryExpressionVisitor<Voi
                 expr.accept(this, freeVars);
             }
         }
+        return null;
+    }
+
+    @Override
+    public Void visit(ClusterbyClause cc, Collection<VariableExpr> freeVars) throws CompilationException {
+        // The clustering expression's variables are free; the descriptor/members vars are bound by the clause.
+        cc.getClusteringExpression().accept(this, freeVars);
         return null;
     }
 

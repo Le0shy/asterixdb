@@ -16,36 +16,10 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.asterix.lang.common.base;
 
-public interface Clause extends ILangExpression {
-    public ClauseType getClauseType();
-
-    public enum ClauseType {
-        FOR_CLAUSE,
-        LET_CLAUSE,
-        WHERE_CLAUSE,
-        GROUP_BY_CLAUSE,
-        CLUSTER_BY_CLAUSE,
-        DISTINCT_BY_CLAUSE,
-        ORDER_BY_CLAUSE,
-        LIMIT_CLAUSE,
-
-        // SQL related clause
-        FROM_CLAUSE,
-        FROM_TERM,
-        HAVING_CLAUSE,
-        JOIN_CLAUSE,
-        NEST_CLAUSE,
-        PROJECTION,
-        SELECT_BLOCK,
-        SELECT_CLAUSE,
-        SELECT_ELEMENT,
-        SELECT_REGULAR,
-        SELECT_SET_OPERATION,
-        UNNEST_CLAUSE,
-
-        EXTENSION
-    }
-
-}
+// cosine is a recognized vector-distance metric but has no matching centroid update for k-means yet,
+// so CLUSTER BY rejects it rather than silently clustering with Euclidean distance.
+from [{"x": [1.0, 2.0]}] as r
+cluster by r.x as sc
+with { "NumClusters": 5, "distanceFunction": "cosine" }
+select sc.cluster_id;

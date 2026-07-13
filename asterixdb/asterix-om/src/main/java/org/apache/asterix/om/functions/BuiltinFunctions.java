@@ -114,6 +114,7 @@ import org.apache.asterix.om.typecomputer.impl.NumericUnaryTypeComputer;
 import org.apache.asterix.om.typecomputer.impl.OpenARecordTypeComputer;
 import org.apache.asterix.om.typecomputer.impl.OpenRecordConstructorResultType;
 import org.apache.asterix.om.typecomputer.impl.OrderedListConstructorTypeComputer;
+import org.apache.asterix.om.typecomputer.impl.OrderedListOfADoubleTypeComputer;
 import org.apache.asterix.om.typecomputer.impl.OrderedListOfAInt32TypeComputer;
 import org.apache.asterix.om.typecomputer.impl.OrderedListOfAIntervalTypeComputer;
 import org.apache.asterix.om.typecomputer.impl.OrderedListOfAPointTypeComputer;
@@ -442,6 +443,20 @@ public class BuiltinFunctions {
     public static final FunctionIdentifier GLOBAL_AVG = FunctionConstants.newAsterix("agg-global-avg", 1);
     public static final FunctionIdentifier INTERMEDIATE_AVG = FunctionConstants.newAsterix("agg-intermediate-avg", 1);
     public static final FunctionIdentifier LOCAL_AVG = FunctionConstants.newAsterix("agg-local-avg", 1);
+    // CLUSTER BY: CENTROID aggregate family (vector sum + count -> average), two-step distributed like AVG.
+    public static final FunctionIdentifier CENTROID = FunctionConstants.newAsterix("agg-centroid", 1);
+    public static final FunctionIdentifier GLOBAL_CENTROID = FunctionConstants.newAsterix("agg-global-centroid", 1);
+    public static final FunctionIdentifier INTERMEDIATE_CENTROID =
+            FunctionConstants.newAsterix("agg-intermediate-centroid", 1);
+    public static final FunctionIdentifier LOCAL_CENTROID = FunctionConstants.newAsterix("agg-local-centroid", 1);
+    // SQL-semantics variant of CENTROID (what the SQL++ group-by sugar resolves `centroid(x)` to via array_centroid).
+    public static final FunctionIdentifier SQL_CENTROID = FunctionConstants.newAsterix("agg-sql-centroid", 1);
+    public static final FunctionIdentifier GLOBAL_SQL_CENTROID =
+            FunctionConstants.newAsterix("agg-global-sql-centroid", 1);
+    public static final FunctionIdentifier INTERMEDIATE_SQL_CENTROID =
+            FunctionConstants.newAsterix("agg-intermediate-sql-centroid", 1);
+    public static final FunctionIdentifier LOCAL_SQL_CENTROID =
+            FunctionConstants.newAsterix("agg-local-sql-centroid", 1);
     public static final FunctionIdentifier MEDIAN = FunctionConstants.newAsterix("agg-median", 1);
     public static final FunctionIdentifier FIRST_ELEMENT = FunctionConstants.newAsterix("agg-first-element", 1);
     public static final FunctionIdentifier LOCAL_FIRST_ELEMENT =
@@ -493,6 +508,8 @@ public class BuiltinFunctions {
 
     public static final FunctionIdentifier SCALAR_ARRAYAGG = FunctionConstants.newAsterix("arrayagg", 1);
     public static final FunctionIdentifier SCALAR_AVG = FunctionConstants.newAsterix("avg", 1);
+    // CLUSTER BY: SQL++-callable name for the CENTROID aggregate (centroid(vec) in a GROUP BY -> averaged centroid).
+    public static final FunctionIdentifier SCALAR_CENTROID = FunctionConstants.newAsterix("centroid", 1);
     public static final FunctionIdentifier SCALAR_COUNT = FunctionConstants.newAsterix("count", 1);
     public static final FunctionIdentifier SCALAR_COUNTN = FunctionConstants.newAsterix("countn", 1);
     public static final FunctionIdentifier SCALAR_SUM = FunctionConstants.newAsterix("sum", 1);
@@ -689,6 +706,8 @@ public class BuiltinFunctions {
             FunctionConstants.newAsterix("agg-global-sql-union_mbr", 1);
 
     public static final FunctionIdentifier SCALAR_SQL_AVG = FunctionConstants.newAsterix("sql-avg", 1);
+    // Scalar/collection form of the SQL CENTROID aggregate; centroid(x) in SQL++ resolves here (array_centroid -> sql-centroid).
+    public static final FunctionIdentifier SCALAR_SQL_CENTROID = FunctionConstants.newAsterix("sql-centroid", 1);
     public static final FunctionIdentifier SCALAR_SQL_COUNT = FunctionConstants.newAsterix("sql-count", 1);
     public static final FunctionIdentifier SCALAR_SQL_COUNTN = FunctionConstants.newAsterix("sql-countn", 1);
     public static final FunctionIdentifier SCALAR_SQL_SUM = FunctionConstants.newAsterix("sql-sum", 1);
@@ -1220,6 +1239,8 @@ public class BuiltinFunctions {
     // Vector search functions
     public static final FunctionIdentifier ANN_DISTANCE =
             FunctionConstants.newAsterix("ann-distance", FunctionIdentifier.VARARGS);
+    // CLUSTER BY: nearest_centroid(point, centroids) -> AINT32 index of the closest centroid.
+    public static final FunctionIdentifier NEAREST_CENTROID = FunctionConstants.newAsterix("nearest-centroid", 2);
 
     // Temporal functions
     public static final FunctionIdentifier UNIX_TIME_FROM_DATE_IN_DAYS =
@@ -1681,6 +1702,15 @@ public class BuiltinFunctions {
         addPrivateFunction(LOCAL_AVG, LocalAvgTypeComputer.INSTANCE, true);
         addFunction(AVG, NullableDoubleTypeComputer.INSTANCE, true);
         addPrivateFunction(GLOBAL_AVG, NullableDoubleTypeComputer.INSTANCE, true);
+        // CLUSTER BY CENTROID family: all steps produce an ordered list of doubles (packed partial / centroid).
+        addFunction(CENTROID, OrderedListOfADoubleTypeComputer.INSTANCE, true);
+        addPrivateFunction(LOCAL_CENTROID, OrderedListOfADoubleTypeComputer.INSTANCE, true);
+        addPrivateFunction(INTERMEDIATE_CENTROID, OrderedListOfADoubleTypeComputer.INSTANCE, true);
+        addPrivateFunction(GLOBAL_CENTROID, OrderedListOfADoubleTypeComputer.INSTANCE, true);
+        addFunction(SQL_CENTROID, OrderedListOfADoubleTypeComputer.INSTANCE, true);
+        addPrivateFunction(LOCAL_SQL_CENTROID, OrderedListOfADoubleTypeComputer.INSTANCE, true);
+        addPrivateFunction(INTERMEDIATE_SQL_CENTROID, OrderedListOfADoubleTypeComputer.INSTANCE, true);
+        addPrivateFunction(GLOBAL_SQL_CENTROID, OrderedListOfADoubleTypeComputer.INSTANCE, true);
         addPrivateFunction(SCALAR_FIRST_ELEMENT, CollectionMemberResultType.INSTANCE_NULLABLE, true);
         addPrivateFunction(SCALAR_LOCAL_FIRST_ELEMENT, CollectionMemberResultType.INSTANCE_NULLABLE, true);
         addPrivateFunction(SCALAR_LAST_ELEMENT, CollectionMemberResultType.INSTANCE_NULLABLE, true);
@@ -1732,6 +1762,8 @@ public class BuiltinFunctions {
         addPrivateFunction(SERIAL_LOCAL_SQL_AVG, LocalAvgTypeComputer.INSTANCE, true);
         addPrivateFunction(SERIAL_INTERMEDIATE_SQL_AVG, LocalAvgTypeComputer.INSTANCE, true);
         addFunction(SCALAR_AVG, NullableDoubleTypeComputer.INSTANCE, true);
+        addFunction(SCALAR_CENTROID, OrderedListOfADoubleTypeComputer.INSTANCE, true);
+        addFunction(SCALAR_SQL_CENTROID, OrderedListOfADoubleTypeComputer.INSTANCE, true);
         addFunction(SCALAR_COUNT, AInt64TypeComputer.INSTANCE, true);
         addFunction(SCALAR_COUNTN, CountNTypeComputer.INSTANCE, true);
         addFunction(SCALAR_MAX, scalarMinMaxTypeComputer, true);
@@ -1959,6 +1991,7 @@ public class BuiltinFunctions {
         // Ann functions
         addFunction(ANN_DISTANCE, ADoubleTypeComputer.INSTANCE, true);
 
+        addFunction(NEAREST_CENTROID, AInt32TypeComputer.INSTANCE_NULLABLE, true);
         // Window functions
 
         addFunction(CUME_DIST, ADoubleTypeComputer.INSTANCE, false);
@@ -2332,6 +2365,27 @@ public class BuiltinFunctions {
         addIntermediateAgg(LOCAL_AVG, INTERMEDIATE_AVG);
         addIntermediateAgg(GLOBAL_AVG, INTERMEDIATE_AVG);
         addGlobalAgg(AVG, GLOBAL_AVG);
+
+        // CLUSTER BY CENTROID: two-step local/global aggregation (no scalar-agg sugar; used by the translator).
+        addAgg(CENTROID);
+        addAgg(LOCAL_CENTROID);
+        addAgg(GLOBAL_CENTROID);
+        addLocalAgg(CENTROID, LOCAL_CENTROID);
+        addIntermediateAgg(CENTROID, INTERMEDIATE_CENTROID);
+        addIntermediateAgg(LOCAL_CENTROID, INTERMEDIATE_CENTROID);
+        addIntermediateAgg(GLOBAL_CENTROID, INTERMEDIATE_CENTROID);
+        addGlobalAgg(CENTROID, GLOBAL_CENTROID);
+        addScalarAgg(CENTROID, SCALAR_CENTROID);
+
+        addAgg(SQL_CENTROID);
+        addAgg(LOCAL_SQL_CENTROID);
+        addAgg(GLOBAL_SQL_CENTROID);
+        addLocalAgg(SQL_CENTROID, LOCAL_SQL_CENTROID);
+        addIntermediateAgg(SQL_CENTROID, INTERMEDIATE_SQL_CENTROID);
+        addIntermediateAgg(LOCAL_SQL_CENTROID, INTERMEDIATE_SQL_CENTROID);
+        addIntermediateAgg(GLOBAL_SQL_CENTROID, INTERMEDIATE_SQL_CENTROID);
+        addGlobalAgg(SQL_CENTROID, GLOBAL_SQL_CENTROID);
+        addScalarAgg(SQL_CENTROID, SCALAR_SQL_CENTROID);
 
         addScalarAgg(AVG, SCALAR_AVG);
 
