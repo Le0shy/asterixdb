@@ -35,6 +35,7 @@ import org.apache.asterix.lang.common.statement.ViewDecl;
 import org.apache.asterix.lang.common.struct.Identifier;
 import org.apache.asterix.lang.common.visitor.AbstractInlineUdfsVisitor;
 import org.apache.asterix.lang.sqlpp.clause.AbstractBinaryCorrelateClause;
+import org.apache.asterix.lang.sqlpp.clause.ClusterbyClause;
 import org.apache.asterix.lang.sqlpp.clause.FromClause;
 import org.apache.asterix.lang.sqlpp.clause.FromTerm;
 import org.apache.asterix.lang.sqlpp.clause.HavingClause;
@@ -125,6 +126,13 @@ public class SqlppInlineUdfsVisitor extends AbstractInlineUdfsVisitor implements
         }
         Pair<Boolean, Expression> p = inlineUdfsAndViewsInExpr(projection.getExpression());
         projection.setExpression(p.second);
+        return p.first;
+    }
+
+    @Override
+    public Boolean visit(ClusterbyClause cc, Void arg) throws CompilationException {
+        Pair<Boolean, Expression> p = inlineUdfsAndViewsInExpr(cc.getClusteringExpression());
+        cc.setClusteringExpression(p.second);
         return p.first;
     }
 

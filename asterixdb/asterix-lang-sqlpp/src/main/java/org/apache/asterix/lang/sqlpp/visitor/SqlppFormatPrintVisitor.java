@@ -33,6 +33,7 @@ import org.apache.asterix.lang.common.expression.VariableExpr;
 import org.apache.asterix.lang.common.statement.InsertStatement;
 import org.apache.asterix.lang.common.visitor.FormatPrintVisitor;
 import org.apache.asterix.lang.sqlpp.clause.AbstractBinaryCorrelateClause;
+import org.apache.asterix.lang.sqlpp.clause.ClusterbyClause;
 import org.apache.asterix.lang.sqlpp.clause.FromClause;
 import org.apache.asterix.lang.sqlpp.clause.FromTerm;
 import org.apache.asterix.lang.sqlpp.clause.HavingClause;
@@ -172,6 +173,9 @@ public class SqlppFormatPrintVisitor extends FormatPrintVisitor implements ISqlp
                 }
             }
         }
+        if (selectBlock.hasClusterbyClause()) {
+            selectBlock.getClusterbyClause().accept(this, step);
+        }
         return null;
     }
 
@@ -291,6 +295,14 @@ public class SqlppFormatPrintVisitor extends FormatPrintVisitor implements ISqlp
             }
             out.print(")");
         }
+        out.println();
+        return null;
+    }
+
+    @Override
+    public Void visit(ClusterbyClause cc, Integer step) throws CompilationException {
+        out.print(skip(step) + "cluster by ");
+        cc.getClusteringExpression().accept(this, step + 2);
         out.println();
         return null;
     }
