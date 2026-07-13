@@ -52,6 +52,7 @@ import org.apache.hyracks.algebricks.core.algebra.operators.logical.IndexInsertD
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.InnerJoinOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.InsertDeleteUpsertOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.IntersectOperator;
+import org.apache.hyracks.algebricks.core.algebra.operators.logical.KMeansInitCandidatesOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.LeftOuterJoinOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.LeftOuterUnnestMapOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.LeftOuterUnnestOperator;
@@ -393,6 +394,21 @@ public class IsomorphismOperatorVisitor implements ILogicalOperatorVisitor<Boole
             return Boolean.FALSE;
         }
         return Boolean.TRUE;
+    }
+
+    @Override
+    public Boolean visitKMeansInitCandidatesOperator(KMeansInitCandidatesOperator op, ILogicalOperator arg)
+            throws AlgebricksException {
+        AbstractLogicalOperator aop = (AbstractLogicalOperator) copyAndSubstituteVar(op, arg);
+        if (aop.getOperatorTag() != LogicalOperatorTag.KMEANS_INIT_CANDIDATES) {
+            return Boolean.FALSE;
+        }
+        KMeansInitCandidatesOperator other = (KMeansInitCandidatesOperator) aop;
+        return op.getTopCount() == other.getTopCount() && op.getMode() == other.getMode()
+                && op.isPoolFromPriorRound() == other.isPoolFromPriorRound()
+                && op.getVectorVariable().equals(other.getVectorVariable())
+                && op.getPoolVariable().equals(other.getPoolVariable())
+                && op.getCandidateVariable().equals(other.getCandidateVariable());
     }
 
     @Override

@@ -49,6 +49,7 @@ import org.apache.hyracks.algebricks.core.algebra.operators.logical.InnerJoinOpe
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.InsertDeleteUpsertOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.InsertDeleteUpsertOperator.Kind;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.IntersectOperator;
+import org.apache.hyracks.algebricks.core.algebra.operators.logical.KMeansInitCandidatesOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.LeftOuterJoinOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.LeftOuterUnnestMapOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.LeftOuterUnnestOperator;
@@ -339,6 +340,19 @@ public class LogicalOperatorDotVisitor implements ILogicalOperatorVisitor<String
             }
         }
         stringBuilder.append("])");
+        appendSchema(op, showDetails);
+        appendAnnotations(op, showDetails);
+        appendPhysicalOperatorInfo(op, showDetails);
+        return stringBuilder.toString();
+    }
+
+    @Override
+    public String visitKMeansInitCandidatesOperator(KMeansInitCandidatesOperator op, Boolean showDetails)
+            throws AlgebricksException {
+        stringBuilder.setLength(0);
+        stringBuilder.append("kmeans-init-candidates ").append(str(op.getCandidateVariable())).append(" <- top-")
+                .append(op.getTopCount()).append(" of ").append(str(op.getVectorVariable())).append(" vs pool ")
+                .append(str(op.getPoolVariable()));
         appendSchema(op, showDetails);
         appendAnnotations(op, showDetails);
         appendPhysicalOperatorInfo(op, showDetails);

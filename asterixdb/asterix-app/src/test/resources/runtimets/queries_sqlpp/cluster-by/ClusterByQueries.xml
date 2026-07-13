@@ -53,6 +53,18 @@
             <output-dir compare="Text">kmeans-syntax-random</output-dir>
         </compilation-unit>
     </test-case>
+    <!-- The pure-desugar REFERENCE path (runtime init disabled): the executable spec the operator
+         tower is gated against; results must stay byte-identical to kmeans-syntax. -->
+    <test-case FilePath="cluster-by">
+        <compilation-unit name="kmeans-syntax-reference">
+            <output-dir compare="Text">kmeans-syntax-reference</output-dir>
+        </compilation-unit>
+    </test-case>
+    <test-case FilePath="cluster-by">
+        <compilation-unit name="kmeans-syntax-runtime">
+            <output-dir compare="Text">kmeans-syntax-runtime</output-dir>
+        </compilation-unit>
+    </test-case>
     <!-- Negative cases: CLUSTER BY WITH-option validation (SqlppClusterByVisitor, rewrite phase).
          GROUP BY + CLUSTER BY mutual exclusion is enforced at the grammar level and covered by
          ClusterByParserTest, so it is not duplicated here. -->

@@ -51,6 +51,7 @@ import org.apache.hyracks.algebricks.core.algebra.operators.logical.InnerJoinOpe
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.InsertDeleteUpsertOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.InsertDeleteUpsertOperator.Kind;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.IntersectOperator;
+import org.apache.hyracks.algebricks.core.algebra.operators.logical.KMeansInitCandidatesOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.LeftOuterJoinOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.LeftOuterUnnestMapOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.LeftOuterUnnestOperator;
@@ -357,6 +358,36 @@ public class LogicalOperatorPrettyPrintVisitor extends AbstractLogicalOperatorPr
             }
         }
         buffer.append(']');
+        return null;
+    }
+
+    @Override
+    public Void visitKMeansInitCandidatesOperator(KMeansInitCandidatesOperator op, Integer indent)
+            throws AlgebricksException {
+        AlgebricksStringBuilderWriter out =
+                addIndent(indent).append("kmeans-init-candidates ").append(str(op.getCandidateVariable()));
+        switch (op.getMode()) {
+            case FINALIZE:
+                out.append(" <- finalize pool ").append(str(op.getPoolVariable())).append(" (global top-")
+                        .append(String.valueOf(op.getTopCount())).append(" intake)");
+                break;
+            case WEIGH:
+                out.append(" <- weigh ").append(str(op.getVectorVariable())).append(" vs pool ")
+                        .append(str(op.getPoolVariable())).append(" (global top-")
+                        .append(String.valueOf(op.getTopCount())).append(" intake)");
+                break;
+            case RECLUSTER:
+                out.append(" <- recluster pool ").append(str(op.getPoolVariable())).append(" to ")
+                        .append(String.valueOf(op.getTopCount())).append(" means");
+                break;
+            case LLOYD:
+                out.append(" <- lloyd-merge pool ").append(str(op.getPoolVariable()));
+                break;
+            default:
+                out.append(" <- top-").append(String.valueOf(op.getTopCount())).append(" of ")
+                        .append(str(op.getVectorVariable())).append(" vs pool ").append(str(op.getPoolVariable()));
+                break;
+        }
         return null;
     }
 

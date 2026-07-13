@@ -42,6 +42,7 @@ import org.apache.asterix.lang.common.expression.CallExpr;
 import org.apache.asterix.lang.common.expression.FieldAccessor;
 import org.apache.asterix.lang.common.expression.GbyVariableExpressionPair;
 import org.apache.asterix.lang.common.expression.IndexAccessor;
+import org.apache.asterix.lang.common.expression.ListConstructor;
 import org.apache.asterix.lang.common.expression.LiteralExpr;
 import org.apache.asterix.lang.common.expression.OperatorExpr;
 import org.apache.asterix.lang.common.expression.VariableExpr;
@@ -83,20 +84,29 @@ import org.apache.hyracks.util.annotations.AiProvenance;
  * becomes (conceptually)
  *
  * <pre>
- *   LET __vecs = (FROM src AS v [WHERE block-where] SELECT VALUE v.vec),
- *       C0 = (FROM __vecs AS v SELECT VALUE v ORDER BY v LIMIT k),                          -- initial centroids
- *       C1 = (FROM __vecs AS v SELECT VALUE centroid(v) GROUP BY nearest_centroid(v, C0)),  -- Lloyd iter 1
- *       C2 = (... nearest_centroid(v, C1)),                                                 -- iter 2
- *       C3 = (... nearest_centroid(v, C2)),                                                 -- iter 3
- *       Cf = (FROM C3 AS c SELECT VALUE c ORDER BY c)                                       -- sorted for labels
+ *   LET __vecs = (FROM src AS v SELECT VALUE v.vec),
+ *       __seed = (FROM __vecs AS v SELECT VALUE v LIMIT 1),                     -- k-means|| step 1 (first point)
+ *       __cand_r = (FROM __vecs AS v
+ *                   WHERE nearest_centroid_distance(v, __pool_{r-1}) &gt; 0
+ *                   SELECT VALUE v
+ *                   ORDER BY nearest_centroid_distance(v, __pool_{r-1}) DESC
+ *                   LIMIT 2k),                                                  -- oversampling rounds r = 1..5
+ *       __pool_r = array_concat(__pool_{r-1}, __cand_r),                        -- C &lt;- C u C'  (__pool_0 = __seed)
+ *       __wpairs = (FROM __vecs AS v GROUP BY nearest_centroid(v, __pool_R) AS ci
+ *                   SELECT VALUE [centroid(v), count(v)]),                      -- step 6: weight the candidates
+ *       __top = (FROM __wpairs AS g SELECT VALUE g[0]
+ *                ORDER BY g[1] DESC LIMIT k),                                   -- step 7: top-k group means
+ *       C0 = (FROM array_concat(__top, __vecs) AS c
+ *             SELECT VALUE c LIMIT k),                                          -- pad so |C0| = k
+ *       C1 = (FROM __vecs AS v SELECT VALUE centroid(v) GROUP BY nearest_centroid(v, C0)), -- Lloyd iter 1
+ *       C2 = (... nearest_centroid(v, C1)),                                                -- iter 2
+ *       C3 = (... nearest_centroid(v, C2))                                                 -- iter 3
  *   FROM src AS t
- *   [LET __cbdist = nearest_centroid_distance(t.vec, Cf)]
- *   GROUP BY nearest_centroid(t.vec, Cf) AS $cid [GROUP AS members]
- *   SELECT ...   -- sc.cluster_id -&gt; nearest_centroid(t.vec, Cf), sc.centroid -&gt; centroid(t.vec),
- *                --  sc.cluster_radius -&gt; sqrt(max(__cbdist))
+ *   GROUP BY nearest_centroid(t.vec, C3) AS $cid [GROUP AS members]
+ *   SELECT ...   -- sc.cluster_id -&gt; nearest_centroid(t.vec, C3), sc.centroid -&gt; centroid(t.vec), radius -&gt; 0.0
  * </pre>
  *
- * The centroid lists {@code C0..Cf} are query-level LETs (constants, in scope after the GROUP BY). The two-step
+ * The centroid lists {@code C0..C3} are query-level LETs (constants, in scope after the GROUP BY). The two-step
  * distributed CENTROID aggregate + {@code nearest_centroid} broadcast labeling are supplied by the downstream
  * group-by / aggregation rewrites, so this pass rides the normal SQL++ pipeline. It must run BEFORE
  * {@code substituteGroupbyKeyExpression()}/{@code rewriteGroupBys()} so the emitted GROUP BY is desugared like a
@@ -104,13 +114,15 @@ import org.apache.hyracks.util.annotations.AiProvenance;
  * directly ({@code sc.cluster_id} -&gt; the grouping-key expression, {@code sc.centroid} -&gt; {@code centroid(vec)} as
  * a per-cluster aggregate, {@code sc.cluster_radius} -&gt; sqrt(max of a pre-group distance binding)). Keeping
  * every post-group descriptor field on the
- * group-aggregation path (rather than constructing a record or indexing {@code Cf[cluster_id]}) avoids an
+ * group-aggregation path (rather than constructing a record or indexing {@code C3[cluster_id]}) avoids an
  * optimizer type-inference failure when {@code CLUSTER AS members} is also referenced.
  * <p>
  * Supports a single FROM term (no explicit joins), K-Means only, Euclidean(-squared) distance, and a fixed
- * number of Lloyd iterations. Initialization (initMode "random") takes the k lexicographically smallest vectors
- * as the initial centroids: a deterministic choice independent of partitioning and arrival order, so the
- * clustering is reproducible. Additional initialization strategies are not currently supported. The WITH
+ * number of Lloyd iterations. Seeding is the k-means|| initialization (VLDB'12 "Scalable K-Means++"): a
+ * deterministic first-point seed, then unrolled top-{@code 2k}-by-distance-to-pool oversampling rounds standing
+ * in for the paper's Bernoulli draw (whose expected picks per round is also {@code 2k}); the weighting/recluster
+ * steps are approximated by ranking the pool by weight and padding to k. The probabilistic draw with the
+ * potential {@code psi}, and sampling or materializing the initialization input, remain future work. The WITH
  * options are also validated.
  */
 @AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.GENERATED, notes = "CLUSTER BY -> k-means SQL++ desugar")
@@ -133,13 +145,31 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
     // so they are rejected until that is implemented. Names are the builtins VectorDistanceMetric resolves to.
     private static final Set<String> SUPPORTED_DISTANCE_BUILTINS = Set.of(BuiltinFunctions.EUCLIDEAN_DISTANCE.getName(),
             BuiltinFunctions.EUCLIDEAN_SQUARED_DISTANCE.getName());
-    // initMode "random" (default): the initial centroids are the k lexicographically smallest vectors.
-    // Additional initialization strategies are not currently supported.
+    // initMode "kmeanspp" (default) = the k-means|| oversampling initialization; "random" = the k
+    // lexicographically smallest vectors as C0 (arbitrary-but-DETERMINISTIC; cheap, but seeding
+    // quality is exactly what kmeansPP exists for).
+    private static final String INIT_MODE_KMEANSPP = "kmeanspp";
     private static final String INIT_MODE_RANDOM = "random";
-    private static final Set<String> KNOWN_INIT_MODES = Set.of(INIT_MODE_RANDOM);
+    private static final Set<String> KNOWN_INIT_MODES = Set.of(INIT_MODE_KMEANSPP, INIT_MODE_RANDOM);
 
     // Fixed number of Lloyd iterations (unrolled as nested centroid subqueries).
     private static final int LLOYD_ITERATIONS = 3;
+
+    // k-means|| initialization: oversampling factor l = OVERSAMPLING_FACTOR_PER_K * k, and the number of
+    // unrolled oversampling rounds.
+    //
+    // 5 rounds per the VLDB'12 experiments. Safe ONLY because every centroid-list LET this rewrite emits is
+    // marked no-inline (markNoInlineLetVar): each binding compiles once and is shared. With default per-reference
+    // inlining, chained rounds grow the plan exponentially (5 rounds formerly put the optimizer fixpoint pass
+    // into the hours range).
+    private static final int OVERSAMPLING_FACTOR_PER_K = 2;
+    private static final int INIT_OVERSAMPLING_ROUNDS = 5;
+
+    // When true (SET `cluster_by_runtime_init` "true"), round 1 of the init is emitted as the internal
+    // kmeans-init-candidates(vectors, pool, l) call, realized by the translator as the runtime Store+Score
+    // operator; default TRUE: the operator tower is the production path; setting it "false" selects the
+    // pure-desugar reference implementation (a debugging/spec tool, slow at scale).
+    public static final String CLUSTER_BY_RUNTIME_INIT_OPTION = "cluster_by_runtime_init";
 
     private final LangRewritingContext context;
 
@@ -238,24 +268,219 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
         SelectExpression vecsQuery =
                 selectValueFrom(srcClone, v0, vecExprForVecs, null, whereExprForVecs, null, null, null, loc);
 
-        // ---- Centroid initialization (initMode "random") ----
-        // C0 = the k lexicographically smallest vectors. Ordering by the vector value makes the pick a
-        // deterministic function of the data set (independent of partitioning and arrival order), so the
-        // clustering is reproducible run to run; ORDER BY .. LIMIT k compiles to a streaming per-partition
-        // top-k, not a full sort.
+        // ---- k-means|| initialization (VLDB'12 "Scalable K-Means++"), steps 1-5 ----
+        // Step 1 (deterministic: the smallest vector stands in for a uniform random pick):
+        //   __seed = (FROM __vecs AS v SELECT VALUE v LIMIT 1)
+        // The seed is the lexicographically SMALLEST vector (ORDER BY the value): a pure function of
+        // the data set, so seeding is deterministic across partitioning, arrival order, and restarts.
+        // A bare LIMIT 1 raced the partitions through the merge and could pick a different seed run
+        // to run. ORDER BY .. LIMIT 1 compiles to a streaming per-partition top-1, not a full sort.
+        VariableExpr seedItVar = newVar(loc);
+        LimitClause limit1 = new LimitClause(intLit(1, loc), null);
+        limit1.setSourceLocation(loc);
+        OrderbyClause seedOrder = ascOrder(varRef(seedItVar.getVar(), loc));
+        VarIdentifier seed = context.newVariable();
+        SelectExpression seedQuery =
+                selectValueFrom(varRef(vecs, loc), seedItVar, seedItVar, null, null, seedOrder, null, limit1, loc);
+
+        // Steps 4-5, oversampling round 1 of the hard-wired loop, as one parallel-map + central-reduce round:
+        // every partition scores its local points by d2(x, C) and keeps a local top-l (map); the merge keeps the
+        // global top-l (reduce). Taking the l = 2k highest-cost points is the deterministic stand-in for the
+        // paper's Bernoulli draw with p = l*d2(x,C)/psi, whose expected picks per round is also l; the potential
+        // psi returns when the probabilistic draw (or the adaptive round count) is implemented. With a single seed
+        // point, d2(x, C) is just the distance to __seed[0]; further rounds grow C and use a distance-to-set
+        // score.
+        //   __cand = (FROM __vecs AS v SELECT VALUE v
+        //             ORDER BY euclidean-squared-distance(v, __seed[0]) DESC LIMIT 2k)
         List<LetClause> centroidLets = new ArrayList<>();
         centroidLets.add(letClause(vecs, vecsQuery, loc));
 
-        VariableExpr c0Var = newVar(loc);
-        LimitClause limitKC0 = new LimitClause(intLit(k, loc), null);
-        limitKC0.setSourceLocation(loc);
-        VarIdentifier prev = context.newVariable();
-        centroidLets.add(letClause(prev, selectValueFrom(varRef(vecs, loc), c0Var, c0Var, null, null,
-                ascOrder(varRef(c0Var.getVar(), loc)), null, limitKC0, loc), loc));
-        context.markNoInlineLetVar(prev);
+        // Steps 3-6, the hard-wired oversampling loop: each round is one parallel-map + central-reduce pass.
+        // Every partition scores its local points by the distance-to-set d2(x, __pool) and keeps a local top-l
+        // (map, a topK sort); the sort-merge keeps the global top-l (reduce); the round's picks join the pool
+        // (C <- C u C'). Taking the l = 2k highest-cost points is the deterministic stand-in for the paper's
+        // Bernoulli draw with p = l*d2(x,C)/psi, whose expected picks per round is also l; the potential psi
+        // returns when the probabilistic draw (or the adaptive round count) is implemented. The d2 > 0 filter is
+        // paper-faithful (p = 0 is never drawn) and keeps pool members from being re-sampled. The score is called
+        // DIRECTLY in both WHERE and ORDER BY (no LET binding): an ORDER BY on a LET variable defeats the
+        // sort+limit topK pushdown, turning each round's local top-l into a FULL external sort of the input
+        // (at 100k x 384-dim scale that was ~13 spilling sorts and a cancelled query). The doubled pool
+        // reference is harmless now that the pool LETs are compiled once (markNoInlineLetVar).
+        //   __cand_r = (FROM __vecs AS v WHERE nearest-centroid-distance(v, __pool_{r-1}) > 0
+        //               SELECT VALUE v ORDER BY nearest-centroid-distance(v, __pool_{r-1}) DESC LIMIT 2k)
+        //   __pool_r = array_concat(__pool_{r-1}, __cand_r)
+        boolean runtimeInit = context.getMetadataProvider() != null
+                && context.getMetadataProvider().getBooleanProperty(CLUSTER_BY_RUNTIME_INIT_OPTION, true);
+        boolean randomInit = INIT_MODE_RANDOM.equals(getInitMode(cbc));
+        VarIdentifier pool;
+        VarIdentifier prev = null;
+        if (runtimeInit) {
+            // Runtime init: the whole oversampling loop is a linear TOWER of nested calls — round r's pool
+            // argument IS round r-1's call (the operator echoes its pool through, so each round's output is
+            // the accumulated pool C ∪ C'), and the innermost pool is the seed subquery. The subquery args
+            // become the operator's two stream inputs in the translator; they must be SELF-CONTAINED
+            // pipelines (deep copies of the defining subqueries), because the operator's input branches are
+            // independent trees that cannot reference the chain's LET vars — the per-round dataset re-scan
+            // this implies is collapsed by the optimizer's common-subtree REPLICATE sharing. Only the final
+            // pool is LET-bound; intermediate rounds never materialize as arrays.
+            Expression c0Stream;
+            if (randomInit) {
+                // initMode "random": C0 = the k lexicographically smallest vectors (deterministic, like
+                // the kmeansPP seed) — no oversampling tower; the Lloyd stages below are unchanged.
+                VariableExpr rv0 = newVar(loc);
+                LimitClause limitKInit = new LimitClause(intLit(k, loc), null);
+                limitKInit.setSourceLocation(loc);
+                c0Stream = selectValueFrom(copy(vecsQuery), rv0, rv0, null, null, ascOrder(varRef(rv0.getVar(), loc)),
+                        null, limitKInit, loc);
+            } else {
+                VariableExpr pv = newVar(loc);
+                LimitClause seedLimit = new LimitClause(intLit(1, loc), null);
+                seedLimit.setSourceLocation(loc);
+                // Deterministic seed: the lexicographically smallest vector (see the seedQuery comment).
+                Expression poolStream = selectValueFrom(copy(vecsQuery), pv, pv, null, null,
+                        ascOrder(varRef(pv.getVar(), loc)), null, seedLimit, loc);
+                for (int r = 0; r < INIT_OVERSAMPLING_ROUNDS; r++) {
+                    poolStream = call(BuiltinFunctions.KMEANS_INIT_CANDIDATES, loc, copy(vecsQuery), poolStream,
+                            intLit(OVERSAMPLING_FACTOR_PER_K * k, loc));
+                }
+                // WEIGH: consumes the round tower directly (its intake applies the terminal global
+                // re-limit), scores every point once against the decoded pool, and emits per-partition
+                // (count, sum) partials per pool member — the runtime realization of the __wpairs GROUP BY.
+                Expression weighed = call(BuiltinFunctions.KMEANS_WEIGH_CANDIDATES, loc, copy(vecsQuery), poolStream,
+                        intLit(OVERSAMPLING_FACTOR_PER_K * k, loc));
+                // RECLUSTER: merges the (broadcast) partials and emits the k heaviest means — C0 — padded
+                // from pool members if fewer than k attracted points. Its vector input is unused: LIMIT 1.
+                VariableExpr rv = newVar(loc);
+                LimitClause reclusterDummyLimit = new LimitClause(intLit(1, loc), null);
+                reclusterDummyLimit.setSourceLocation(loc);
+                Expression reclusterDummy =
+                        selectValueFrom(copy(vecsQuery), rv, rv, null, null, null, null, reclusterDummyLimit, loc);
+                c0Stream = call(BuiltinFunctions.KMEANS_RECLUSTER, loc, reclusterDummy, weighed, intLit(k, loc));
+            }
+            // Lloyd iterations ride the same tower: each is a WEIGH pass over the previous centroids
+            // (a plain-vector stream, so no intake re-limit applies) followed by a LLOYD merge emitting
+            // every non-empty centroid's mean. Only the final centroid list is LET-bound.
+            Expression centroidStream = c0Stream;
+            for (int i = 0; i < LLOYD_ITERATIONS; i++) {
+                Expression iterWeighed = call(BuiltinFunctions.KMEANS_WEIGH_CANDIDATES, loc, copy(vecsQuery),
+                        centroidStream, intLit(k, loc));
+                VariableExpr lv = newVar(loc);
+                LimitClause lloydDummyLimit = new LimitClause(intLit(1, loc), null);
+                lloydDummyLimit.setSourceLocation(loc);
+                Expression lloydDummy =
+                        selectValueFrom(copy(vecsQuery), lv, lv, null, null, null, null, lloydDummyLimit, loc);
+                centroidStream =
+                        call(BuiltinFunctions.KMEANS_LLOYD_MERGE, loc, lloydDummy, iterWeighed, intLit(k, loc));
+            }
+            VarIdentifier cFinal = context.newVariable();
+            centroidLets.add(letClause(cFinal, centroidStream, loc));
+            context.markNoInlineLetVar(cFinal);
+            prev = cFinal;
+            pool = null;
+        } else {
+            if (!randomInit) {
+                centroidLets.add(letClause(seed, seedQuery, loc));
+                context.markNoInlineLetVar(seed);
+            }
+            pool = seed;
+        }
+        int desugarRounds = runtimeInit || randomInit ? 0 : INIT_OVERSAMPLING_ROUNDS;
+        for (int r = 0; r < desugarRounds; r++) {
+            VariableExpr sampVar = newVar(loc);
+            Expression whereScore = call(BuiltinFunctions.NEAREST_CENTROID_DISTANCE, loc, varRef(sampVar.getVar(), loc),
+                    varRef(pool, loc));
+            Expression positiveScore = binaryOp(OperatorType.GT, whereScore, doubleLit(0.0d, loc), loc);
+            Expression orderScore = call(BuiltinFunctions.NEAREST_CENTROID_DISTANCE, loc, varRef(sampVar.getVar(), loc),
+                    varRef(pool, loc));
+            List<OrderbyClause.NullOrderModifier> defaultNullOrder = new ArrayList<>();
+            defaultNullOrder.add(null);
+            OrderbyClause topLOrder = new OrderbyClause(new ArrayList<>(List.of(orderScore)),
+                    new ArrayList<>(List.of(OrderbyClause.OrderModifier.DESC)), defaultNullOrder);
+            topLOrder.setSourceLocation(loc);
+            LimitClause limitL = new LimitClause(intLit(OVERSAMPLING_FACTOR_PER_K * k, loc), null);
+            limitL.setSourceLocation(loc);
+            VarIdentifier cand = context.newVariable();
+            centroidLets.add(letClause(cand, selectValueFrom(varRef(vecs, loc), sampVar, sampVar, null, positiveScore,
+                    topLOrder, null, limitL, loc), loc));
+            context.markNoInlineLetVar(cand);
+            VarIdentifier nextPool = context.newVariable();
+            centroidLets.add(letClause(nextPool,
+                    call(BuiltinFunctions.ARRAY_CONCAT, loc, varRef(pool, loc), varRef(cand, loc)), loc));
+            context.markNoInlineLetVar(nextPool);
+            pool = nextPool;
+        }
+
+        // Steps 6-7: weight every pool candidate by the number of points nearest to it (one more parallel-map +
+        // central-reduce round, riding the same two-step GROUP BY machinery as the Lloyd iterations) and keep the
+        // k heaviest. Recluster approximation: instead of the paper's central weighted k-means++,
+        // rank the candidate groups by weight and emit each group's mean -- a bonus micro-Lloyd step. Two levels,
+        // because the aggregation sugar does not resolve aggregates in a SELECT VALUE block's ORDER BY: the inner
+        // level emits [mean, weight] pairs, the outer level sorts on the weight element. In runtime-init mode this
+        // whole block is realized by the WEIGH + RECLUSTER stages of the operator tower above.
+        //   __wpairs = (FROM __vecs AS v GROUP BY nearest_centroid(v, __pool) AS ci
+        //               SELECT VALUE [centroid(v), sql-count(v)])
+        //   __top = (FROM __wpairs AS g SELECT VALUE g[0] ORDER BY g[1] DESC LIMIT k)
+        if (!runtimeInit && randomInit) {
+            // initMode "random", reference path: C0 = the k lexicographically smallest vectors.
+            VariableExpr rcVar = newVar(loc);
+            LimitClause limitKC0 = new LimitClause(intLit(k, loc), null);
+            limitKC0.setSourceLocation(loc);
+            prev = context.newVariable();
+            centroidLets.add(letClause(prev, selectValueFrom(varRef(vecs, loc), rcVar, rcVar, null, null,
+                    ascOrder(varRef(rcVar.getVar(), loc)), null, limitKC0, loc), loc));
+            context.markNoInlineLetVar(prev);
+        }
+        if (!runtimeInit && !randomInit) {
+            VariableExpr weighVar = newVar(loc);
+            Expression weighAssign = call(BuiltinFunctions.NEAREST_CENTROID, loc, weighVar, varRef(pool, loc));
+            GroupbyClause weighGby = groupBy(weighAssign, newVar(loc), null, null, loc);
+            // count(v) is emitted name-based (as the parser would), NOT via a builtin fid: the group-by aggregation
+            // sugar only resolves the parsed form; a direct SCALAR_SQL_COUNT fid dies with "Illegal state:
+            // array_sql-count" (centroid tolerates the fid form only because its array_* variants are registered).
+            CallExpr countCall = new CallExpr(new FunctionSignature(null, null, "count", 1),
+                    List.of(varRef(weighVar.getVar(), loc)));
+            countCall.setSourceLocation(loc);
+            ListConstructor weighPair = new ListConstructor(ListConstructor.Type.ORDERED_LIST_CONSTRUCTOR,
+                    new ArrayList<>(List.of(call(BuiltinFunctions.SCALAR_CENTROID, loc, weighVar), countCall)));
+            weighPair.setSourceLocation(loc);
+            VarIdentifier wpairs = context.newVariable();
+            centroidLets.add(letClause(wpairs,
+                    selectValueFrom(varRef(vecs, loc), weighVar, weighPair, null, null, null, weighGby, null, loc),
+                    loc));
+            context.markNoInlineLetVar(wpairs);
+
+            LimitClause limitK = new LimitClause(intLit(k, loc), null);
+            limitK.setSourceLocation(loc);
+            VariableExpr pairVar = newVar(loc);
+            List<OrderbyClause.NullOrderModifier> weightNullOrder = new ArrayList<>();
+            weightNullOrder.add(null);
+            OrderbyClause byWeight = new OrderbyClause(new ArrayList<>(List.of(elementAt(pairVar, 1, loc))),
+                    new ArrayList<>(List.of(OrderbyClause.OrderModifier.DESC)), weightNullOrder);
+            byWeight.setSourceLocation(loc);
+            VarIdentifier top = context.newVariable();
+            centroidLets.add(letClause(top, selectValueFrom(varRef(wpairs, loc), pairVar, elementAt(pairVar, 0, loc),
+                    null, null, byWeight, null, limitK, loc), loc));
+            context.markNoInlineLetVar(top);
+
+            // Pad with __vecs so C0 always has k entries even when the data has fewer than k occupied candidate groups
+            // (duplicates are tolerable: nearest_centroid resolves ties to the first occurrence).
+            //   C0 = (FROM array_concat(__top, __vecs) AS c SELECT VALUE c LIMIT k)
+            VariableExpr seedVar = newVar(loc);
+            LimitClause limitKPad = new LimitClause(intLit(k, loc), null);
+            limitKPad.setSourceLocation(loc);
+            Expression c0Pool = call(BuiltinFunctions.ARRAY_CONCAT, loc, varRef(top, loc), varRef(vecs, loc));
+            SelectExpression c0Query =
+                    selectValueFrom(c0Pool, seedVar, seedVar, null, null, null, null, limitKPad, loc);
+
+            prev = context.newVariable();
+            centroidLets.add(letClause(prev, c0Query, loc));
+            context.markNoInlineLetVar(prev);
+        }
 
         // C1..C3 = (FROM __vecs AS v SELECT VALUE centroid(v) GROUP BY nearest_centroid(v, Cprev))
-        for (int i = 0; i < LLOYD_ITERATIONS; i++) {
+        // (in runtime-init mode the Lloyd iterations are folded into the operator tower above)
+        int lloydIterations = runtimeInit ? 0 : LLOYD_ITERATIONS;
+        for (int i = 0; i < lloydIterations; i++) {
             VariableExpr iterVar = newVar(loc);
             Expression assignExpr = call(BuiltinFunctions.NEAREST_CENTROID, loc, iterVar, varRef(prev, loc));
             GroupbyClause gby = groupBy(assignExpr, newVar(loc), null, null, loc);
@@ -294,7 +519,7 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
         List<AbstractClause> letWhere = selectBlock.getLetWhereList();
         letWhere.add(distLet);
 
-        // Convert the block to: GROUP BY nearest_centroid(clusteringExpr, Cf) AS $cid [GROUP AS members]
+        // Convert the block to: GROUP BY nearest_centroid(clusteringExpr, C3) AS $cid [GROUP AS members]
         VariableExpr cidVar = newVar(loc);
         Expression labelExpr =
                 call(BuiltinFunctions.NEAREST_CENTROID, loc, clusteringExpr, varRef(finalCentroids, loc));
@@ -311,13 +536,13 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
         selectBlock.setGroupbyClause(mainGby);
 
         // Replace the descriptor field accesses (sc.cluster_id / sc.centroid / sc.cluster_radius) directly with their
-        // values, where <label> is a copy of the grouping-key expression nearest_centroid(vec, Cf).
+        // values, where <label> is a copy of the grouping-key expression nearest_centroid(vec, C3).
         // substituteGroupbyKeyExpression (which runs next) maps those copies to the group-by key variable.
         // Substituting the field accesses (rather than binding sc to a record) avoids constructing an
         // OpenRecordConstructor whose type inference breaks when the group (members) variable is also referenced.
         // sc.centroid is the mean of the cluster's members: centroid(vec) as a SQL aggregate over the group (the
         // group-by aggregation rewrite turns it into the two-step CENTROID over the group variable). Using this
-        // instead of indexing the constant list Cf[cluster_id] keeps every post-group descriptor field on the
+        // instead of indexing the constant list C3[cluster_id] keeps every post-group descriptor field on the
         // group-aggregation path, avoiding an optimizer type-inference failure when members is also referenced.
         VariableExpr scVar = cbc.getClusterDescriptorVar();
         Map<Expression, Expression> scSubst = new HashMap<>();
@@ -325,8 +550,8 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
         scSubst.put(fieldAccess(scVar, "centroid", loc),
                 call(BuiltinFunctions.SCALAR_CENTROID, loc, copy(clusteringExpr)));
         // cluster_radius = sqrt(MAX(distance to the assignment centroid)); MAX is emitted name-based
-        // (as the parser would produce it) so the aggregation sugar resolves it over the group, and sqrt
-        // is a scalar over the aggregate result (distances are the squared-Euclidean kernel). Measured to
+        // (like count in __wpairs) so the aggregation sugar resolves it over the group, and sqrt is a
+        // scalar over the aggregate result (distances are the squared-Euclidean kernel). Measured to
         // the ASSIGNMENT centroid, which may differ from the reported members-mean centroid.
         CallExpr radiusMax =
                 new CallExpr(new FunctionSignature(null, null, "max", 1), List.of(new VariableExpr(distVar.getVar())));
@@ -510,10 +735,21 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
         String initMode = opts.get(OPT_INIT_MODE);
         if (initMode != null && !KNOWN_INIT_MODES.contains(initMode.toLowerCase())) {
             throw new CompilationException(ErrorCode.COMPILATION_ERROR, cbc.getSourceLocation(),
-                    "Unknown CLUSTER BY initMode '" + initMode + "'. Supported: random.");
+                    "Unknown CLUSTER BY initMode '" + initMode + "'. Supported: kmeansPP, random.");
         }
         // CrossPollination / CrossPollinationDistanceRatio are accepted but inert in this release.
         return k;
     }
 
+    /** The validated initMode ({@link #INIT_MODE_KMEANSPP} default). */
+    private String getInitMode(ClusterbyClause cbc) throws CompilationException {
+        if (cbc.hasWithOptions()) {
+            for (Map.Entry<String, String> e : ConfigurationUtil.toProperties(cbc.getWithOptions()).entrySet()) {
+                if (OPT_INIT_MODE.equals(e.getKey().toLowerCase())) {
+                    return e.getValue().toLowerCase();
+                }
+            }
+        }
+        return INIT_MODE_KMEANSPP;
+    }
 }

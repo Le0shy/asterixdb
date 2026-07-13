@@ -16,47 +16,22 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.hyracks.algebricks.core.algebra.base;
+-- CLUSTER BY runtime-init plan validation: with the cluster_by_runtime_init flag, round 1 of the
+-- k-means|| oversampling loop compiles to the dedicated KMEANS_INIT_CANDIDATES operator (two stream
+-- inputs, broadcast pool) instead of the sort-based desugar; the rest of the shape matches kmeans-syntax-validate.
+drop dataverse clusterby_test if exists;
+create dataverse clusterby_test;
+use clusterby_test;
 
-public enum LogicalOperatorTag {
-    AGGREGATE,
-    ASSIGN,
-    DATASOURCESCAN,
-    DISTINCT,
-    DISTRIBUTE_RESULT,
-    EMPTYTUPLESOURCE,
-    EXCHANGE,
-    DELEGATE_OPERATOR,
-    EXTERNAL_LOOKUP,
-    FORWARD,
-    GROUP,
-    INDEX_INSERT_DELETE_UPSERT,
-    INNERJOIN,
-    INSERT_DELETE_UPSERT,
-    LEFTOUTERJOIN,
-    LEFT_OUTER_UNNEST_MAP,
-    LIMIT,
-    MATERIALIZE,
-    NESTEDTUPLESOURCE,
-    ORDER,
-    PROJECT,
-    REPLICATE,
-    RUNNINGAGGREGATE,
-    SCRIPT,
-    SELECT,
-    SINK,
-    SPLIT,
-    SWITCH,
-    SUBPLAN,
-    TOKENIZE,
-    UNIONALL,
-    UNNEST,
-    LEFT_OUTER_UNNEST,
-    UNNEST_MAP,
-    UPDATE,
-    WRITE,
-    WRITE_RESULT,
-    INTERSECT,
-    KMEANS_INIT_CANDIDATES,
-    WINDOW
-}
+create type clusterby_test.ReviewType as closed {
+  id : integer,
+  reviewEmbedding : [double]
+};
+create dataset Reviews(ReviewType) primary key id;
+
+set `cluster_by_runtime_init` "true";
+
+from Reviews as r
+cluster by r.reviewEmbedding as sc
+with { "NumClusters": 2 }
+select sc.cluster_id as cid, sc.centroid as centroid;

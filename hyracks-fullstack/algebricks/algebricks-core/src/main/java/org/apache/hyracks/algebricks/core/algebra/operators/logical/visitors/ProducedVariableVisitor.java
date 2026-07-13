@@ -47,6 +47,7 @@ import org.apache.hyracks.algebricks.core.algebra.operators.logical.IndexInsertD
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.InnerJoinOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.InsertDeleteUpsertOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.IntersectOperator;
+import org.apache.hyracks.algebricks.core.algebra.operators.logical.KMeansInitCandidatesOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.LeftOuterJoinOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.LeftOuterUnnestMapOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.LeftOuterUnnestOperator;
@@ -225,6 +226,13 @@ public class ProducedVariableVisitor implements ILogicalOperatorVisitor<Void, Vo
         if (op.hasExtraVariables()) {
             producedVariables.addAll(op.getOutputExtraVariables());
         }
+        return null;
+    }
+
+    @Override
+    public Void visitKMeansInitCandidatesOperator(KMeansInitCandidatesOperator op, Void arg)
+            throws AlgebricksException {
+        producedVariables.add(op.getCandidateVariable());
         return null;
     }
 

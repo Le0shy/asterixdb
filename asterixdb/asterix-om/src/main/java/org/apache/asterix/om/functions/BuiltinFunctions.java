@@ -1241,10 +1241,21 @@ public class BuiltinFunctions {
             FunctionConstants.newAsterix("ann-distance", FunctionIdentifier.VARARGS);
     // CLUSTER BY: nearest_centroid(point, centroids) -> AINT32 index of the closest centroid.
     public static final FunctionIdentifier NEAREST_CENTROID = FunctionConstants.newAsterix("nearest-centroid", 2);
-    // CLUSTER BY: nearest_centroid_distance(point, centroids) -> ADOUBLE squared distance from the point to
-    // its closest centroid.
+    // CLUSTER BY: nearest_centroid_distance(point, centroids) -> ADOUBLE squared distance to the closest centroid
+    // (the k-means|| sampling score d2(x, C)).
     public static final FunctionIdentifier NEAREST_CENTROID_DISTANCE =
             FunctionConstants.newAsterix("nearest-centroid-distance", 2);
+    // CLUSTER BY: internal marker realized by the translator as the k-means|| init runtime operator
+    // (one oversampling round): kmeans-init-candidates(vectors, pool, l) -> [candidate vectors].
+    public static final FunctionIdentifier KMEANS_INIT_CANDIDATES =
+            FunctionConstants.newAsterix("kmeans-init-candidates", 3);
+    // kmeans-weigh-candidates(vectors, pool, l): per-partition (count, sum) partials per pool member.
+    public static final FunctionIdentifier KMEANS_WEIGH_CANDIDATES =
+            FunctionConstants.newAsterix("kmeans-weigh-candidates", 3);
+    // kmeans-recluster(vectors, partials, k): merge partials, emit the k heaviest means (C0).
+    public static final FunctionIdentifier KMEANS_RECLUSTER = FunctionConstants.newAsterix("kmeans-recluster", 3);
+    // kmeans-lloyd-merge(vectors, partials, k): merge partials, emit every non-empty member's mean.
+    public static final FunctionIdentifier KMEANS_LLOYD_MERGE = FunctionConstants.newAsterix("kmeans-lloyd-merge", 3);
 
     // Temporal functions
     public static final FunctionIdentifier UNIX_TIME_FROM_DATE_IN_DAYS =
@@ -1997,6 +2008,10 @@ public class BuiltinFunctions {
 
         addFunction(NEAREST_CENTROID, AInt32TypeComputer.INSTANCE_NULLABLE, true);
         addFunction(NEAREST_CENTROID_DISTANCE, ADoubleTypeComputer.INSTANCE_NULLABLE, true);
+        addPrivateFunction(KMEANS_INIT_CANDIDATES, OrderedListOfAnyTypeComputer.INSTANCE, true);
+        addPrivateFunction(KMEANS_WEIGH_CANDIDATES, OrderedListOfAnyTypeComputer.INSTANCE, true);
+        addPrivateFunction(KMEANS_RECLUSTER, OrderedListOfAnyTypeComputer.INSTANCE, true);
+        addPrivateFunction(KMEANS_LLOYD_MERGE, OrderedListOfAnyTypeComputer.INSTANCE, true);
         // Window functions
 
         addFunction(CUME_DIST, ADoubleTypeComputer.INSTANCE, false);

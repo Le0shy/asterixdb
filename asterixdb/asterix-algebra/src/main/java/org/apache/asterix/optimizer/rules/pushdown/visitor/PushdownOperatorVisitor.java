@@ -70,6 +70,7 @@ import org.apache.hyracks.algebricks.core.algebra.operators.logical.IndexInsertD
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.InnerJoinOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.InsertDeleteUpsertOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.IntersectOperator;
+import org.apache.hyracks.algebricks.core.algebra.operators.logical.KMeansInitCandidatesOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.LeftOuterJoinOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.LeftOuterUnnestMapOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.LeftOuterUnnestOperator;
@@ -532,6 +533,13 @@ public class PushdownOperatorVisitor implements ILogicalOperatorVisitor<Void, Vo
 
     @Override
     public Void visitIntersectOperator(IntersectOperator op, Void arg) throws AlgebricksException {
+        visitInputs(op);
+        return null;
+    }
+
+    @Override
+    public Void visitKMeansInitCandidatesOperator(KMeansInitCandidatesOperator op, Void arg)
+            throws AlgebricksException {
         visitInputs(op);
         return null;
     }

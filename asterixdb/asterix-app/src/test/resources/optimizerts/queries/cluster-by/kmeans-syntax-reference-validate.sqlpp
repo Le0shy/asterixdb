@@ -16,47 +16,22 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.hyracks.algebricks.core.algebra.base;
+-- CLUSTER BY REFERENCE-path plan validation: with runtime init disabled, the clause desugars into
+-- the pure-SQL++ k-means shape — the executable spec the operator tower is gated against.
+-- aggregate, centroid list broadcast into nearest_centroid) + a final GROUP BY labeling pass.
+drop dataverse clusterby_test if exists;
+create dataverse clusterby_test;
+use clusterby_test;
 
-public enum LogicalOperatorTag {
-    AGGREGATE,
-    ASSIGN,
-    DATASOURCESCAN,
-    DISTINCT,
-    DISTRIBUTE_RESULT,
-    EMPTYTUPLESOURCE,
-    EXCHANGE,
-    DELEGATE_OPERATOR,
-    EXTERNAL_LOOKUP,
-    FORWARD,
-    GROUP,
-    INDEX_INSERT_DELETE_UPSERT,
-    INNERJOIN,
-    INSERT_DELETE_UPSERT,
-    LEFTOUTERJOIN,
-    LEFT_OUTER_UNNEST_MAP,
-    LIMIT,
-    MATERIALIZE,
-    NESTEDTUPLESOURCE,
-    ORDER,
-    PROJECT,
-    REPLICATE,
-    RUNNINGAGGREGATE,
-    SCRIPT,
-    SELECT,
-    SINK,
-    SPLIT,
-    SWITCH,
-    SUBPLAN,
-    TOKENIZE,
-    UNIONALL,
-    UNNEST,
-    LEFT_OUTER_UNNEST,
-    UNNEST_MAP,
-    UPDATE,
-    WRITE,
-    WRITE_RESULT,
-    INTERSECT,
-    KMEANS_INIT_CANDIDATES,
-    WINDOW
-}
+set `cluster_by_runtime_init` "false";
+
+create type clusterby_test.ReviewType as closed {
+  id : integer,
+  reviewEmbedding : [double]
+};
+create dataset Reviews(ReviewType) primary key id;
+
+from Reviews as r
+cluster by r.reviewEmbedding as sc
+with { "NumClusters": 2 }
+select sc.cluster_id as cid, sc.centroid as centroid;

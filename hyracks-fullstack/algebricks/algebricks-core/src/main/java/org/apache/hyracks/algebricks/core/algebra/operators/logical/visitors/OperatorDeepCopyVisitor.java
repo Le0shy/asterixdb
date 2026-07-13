@@ -34,6 +34,7 @@ import org.apache.hyracks.algebricks.core.algebra.base.ILogicalOperator;
 import org.apache.hyracks.algebricks.core.algebra.base.ILogicalPlan;
 import org.apache.hyracks.algebricks.core.algebra.base.LogicalVariable;
 import org.apache.hyracks.algebricks.core.algebra.expressions.AbstractLogicalExpression;
+import org.apache.hyracks.algebricks.core.algebra.expressions.VariableReferenceExpression;
 import org.apache.hyracks.algebricks.core.algebra.metadata.IProjectionFiltrationInfo;
 import org.apache.hyracks.algebricks.core.algebra.metadata.IWriteDataSink;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.AggregateOperator;
@@ -50,6 +51,7 @@ import org.apache.hyracks.algebricks.core.algebra.operators.logical.IndexInsertD
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.InnerJoinOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.InsertDeleteUpsertOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.IntersectOperator;
+import org.apache.hyracks.algebricks.core.algebra.operators.logical.KMeansInitCandidatesOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.LeftOuterJoinOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.LeftOuterUnnestMapOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.LeftOuterUnnestOperator;
@@ -237,6 +239,18 @@ public class OperatorDeepCopyVisitor implements ILogicalOperatorVisitor<ILogical
                 partitionsMap == null ? null : Arrays.stream(partitionsMap).map(int[]::clone).toArray(int[][]::new);
         return new IntersectOperator(newOutputCompareVars, newOutputExtraVars, newInputCompareVars, newInputExtraVars,
                 partitionsMapCopy);
+    }
+
+    @Override
+    public ILogicalOperator visitKMeansInitCandidatesOperator(KMeansInitCandidatesOperator op, Void arg)
+            throws AlgebricksException {
+        KMeansInitCandidatesOperator opCopy = new KMeansInitCandidatesOperator(
+                new MutableObject<ILogicalExpression>(new VariableReferenceExpression(op.getVectorVariable())),
+                new MutableObject<ILogicalExpression>(new VariableReferenceExpression(op.getPoolVariable())),
+                op.getCandidateVariable(), op.getCandidateVarType(), op.getTopCount());
+        opCopy.setPoolFromPriorRound(op.isPoolFromPriorRound());
+        opCopy.setMode(op.getMode());
+        return opCopy;
     }
 
     @Override

@@ -16,47 +16,15 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.hyracks.algebricks.core.algebra.base;
+-- CLUSTER BY execution test: distributed k-means (SQL++ form) on a tiny 2-D dataset. Two well-separated
+-- clusters {A,B,E} near origin and {C,D,F} near (8,8); k=2.
+drop dataverse test if exists;
+create dataverse test;
+use test;
+set `cluster_by_runtime_init` "true";
 
-public enum LogicalOperatorTag {
-    AGGREGATE,
-    ASSIGN,
-    DATASOURCESCAN,
-    DISTINCT,
-    DISTRIBUTE_RESULT,
-    EMPTYTUPLESOURCE,
-    EXCHANGE,
-    DELEGATE_OPERATOR,
-    EXTERNAL_LOOKUP,
-    FORWARD,
-    GROUP,
-    INDEX_INSERT_DELETE_UPSERT,
-    INNERJOIN,
-    INSERT_DELETE_UPSERT,
-    LEFTOUTERJOIN,
-    LEFT_OUTER_UNNEST_MAP,
-    LIMIT,
-    MATERIALIZE,
-    NESTEDTUPLESOURCE,
-    ORDER,
-    PROJECT,
-    REPLICATE,
-    RUNNINGAGGREGATE,
-    SCRIPT,
-    SELECT,
-    SINK,
-    SPLIT,
-    SWITCH,
-    SUBPLAN,
-    TOKENIZE,
-    UNIONALL,
-    UNNEST,
-    LEFT_OUTER_UNNEST,
-    UNNEST_MAP,
-    UPDATE,
-    WRITE,
-    WRITE_RESULT,
-    INTERSECT,
-    KMEANS_INIT_CANDIDATES,
-    WINDOW
-}
+create type PointType as closed {
+  id : integer,
+  vec : [double]
+};
+create dataset Points(PointType) primary key id;
