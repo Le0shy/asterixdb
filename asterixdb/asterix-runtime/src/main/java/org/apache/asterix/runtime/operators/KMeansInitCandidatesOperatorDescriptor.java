@@ -123,16 +123,39 @@ public class KMeansInitCandidatesOperatorDescriptor extends AbstractOperatorDesc
     private final int poolColumn;
     // Whether input 1 carries envelopes from a prior tower stage (vs plain vectors, e.g. the seed).
     private final boolean poolIsEnvelope;
+    // Shared-vector materialization (optimization). When non-null, the ROUND/WEIGH stages of one tower read
+    // ONE run file registered (joblet-scoped) under this per-tower key + partition, instead of each stage
+    // materializing its own copy. Exactly one stage is the writer: it materializes the run file with
+    // sharedConsumerCount readers (the file self-deletes after that many reads); the other stages drain
+    // their vector input without writing and read the writer's file. Null = original per-stage behavior
+    // (also used by RECLUSTER/LLOYD/FINALIZE, whose vector input is a LIMIT-1 dummy).
+    private final String sharedVectorsKey;
+    private final boolean vectorsWriter;
+    private final int sharedConsumerCount;
 
     public KMeansInitCandidatesOperatorDescriptor(IOperatorDescriptorRegistry spec, RecordDescriptor vectorRecDesc,
             Mode mode, int count, int vectorColumn, int poolColumn, boolean poolIsEnvelope) {
+        this(spec, vectorRecDesc, mode, count, vectorColumn, poolColumn, poolIsEnvelope, null, false, 0);
+    }
+
+    public KMeansInitCandidatesOperatorDescriptor(IOperatorDescriptorRegistry spec, RecordDescriptor vectorRecDesc,
+            Mode mode, int count, int vectorColumn, int poolColumn, boolean poolIsEnvelope, String sharedVectorsKey,
+            boolean vectorsWriter, int sharedConsumerCount) {
         super(spec, 2, 1);
         this.mode = mode;
         this.count = count;
         this.vectorColumn = vectorColumn;
         this.poolColumn = poolColumn;
         this.poolIsEnvelope = poolIsEnvelope;
+        this.sharedVectorsKey = sharedVectorsKey;
+        this.vectorsWriter = vectorsWriter;
+        this.sharedConsumerCount = sharedConsumerCount;
         outRecDescs[0] = vectorRecDesc;
+    }
+
+    /** Joblet-scoped state id for this tower's shared vector run file on a given partition. */
+    private Object sharedVectorsStateId(int partition) {
+        return sharedVectorsKey + "#vec#" + partition;
     }
 
     @Override
@@ -164,13 +187,43 @@ public class KMeansInitCandidatesOperatorDescriptor extends AbstractOperatorDesc
         @Override
         public IOperatorNodePushable createPushRuntime(IHyracksTaskContext ctx,
                 IRecordDescriptorProvider recordDescProvider, int partition, int nPartitions) {
+            boolean vectorsSink = getActivityId().getLocalId() == STORE_VECTORS_ACTIVITY_ID;
+            final boolean shared = vectorsSink && sharedVectorsKey != null;
+            // Shared-vectors READER stage: drain input 0 (satisfy the blocking edge) without materializing;
+            // its Score reads the writer's shared run file instead.
+            if (shared && !vectorsWriter) {
+                return new AbstractUnaryInputSinkOperatorNodePushable() {
+                    @Override
+                    public void open() throws HyracksDataException {
+                    }
+
+                    @Override
+                    public void nextFrame(ByteBuffer buffer) throws HyracksDataException {
+                    }
+
+                    @Override
+                    public void close() throws HyracksDataException {
+                    }
+
+                    @Override
+                    public void fail() throws HyracksDataException {
+                    }
+                };
+            }
             return new AbstractUnaryInputSinkOperatorNodePushable() {
                 private MaterializerTaskState state;
 
                 @Override
                 public void open() throws HyracksDataException {
-                    state = new MaterializerTaskState(ctx.getJobletContext().getJobId(),
-                            new TaskId(getActivityId(), partition));
+                    if (shared) {
+                        // WRITER: one run file for the whole tower; self-deletes after sharedConsumerCount reads.
+                        state = new MaterializerTaskState(ctx.getJobletContext().getJobId(),
+                                new TaskId(getActivityId(), partition), sharedConsumerCount);
+                        state.setId(sharedVectorsStateId(partition));
+                    } else {
+                        state = new MaterializerTaskState(ctx.getJobletContext().getJobId(),
+                                new TaskId(getActivityId(), partition));
+                    }
                     state.open(ctx);
                 }
 
@@ -249,8 +302,11 @@ public class KMeansInitCandidatesOperatorDescriptor extends AbstractOperatorDesc
                     try {
                         MaterializerTaskState poolState = (MaterializerTaskState) ctx.getStateObject(
                                 new TaskId(new ActivityId(getOperatorId(), STORE_POOL_ACTIVITY_ID), partition));
-                        MaterializerTaskState vecState = (MaterializerTaskState) ctx.getStateObject(
-                                new TaskId(new ActivityId(getOperatorId(), STORE_VECTORS_ACTIVITY_ID), partition));
+                        // Shared-vectors stages (ROUND/WEIGH) read the writer's single run file by the shared
+                        // key; other stages read their own materialized vectors as before.
+                        Object vecId = sharedVectorsKey != null ? sharedVectorsStateId(partition)
+                                : new TaskId(new ActivityId(getOperatorId(), STORE_VECTORS_ACTIVITY_ID), partition);
+                        MaterializerTaskState vecState = (MaterializerTaskState) ctx.getStateObject(vecId);
                         collectPool(poolState);
                         Emitter emitter = new Emitter();
                         switch (mode) {

@@ -143,6 +143,7 @@ import org.apache.hyracks.algebricks.core.algebra.plan.ALogicalPlanImpl;
 import org.apache.hyracks.algebricks.core.algebra.util.OperatorManipulationUtil;
 import org.apache.hyracks.api.exceptions.SourceLocation;
 import org.apache.hyracks.util.LogRedactionUtil;
+import org.apache.hyracks.util.annotations.AiProvenance;
 
 /**
  * Each visit returns a pair of an operator and a variable. The variable
@@ -240,10 +241,40 @@ public class SqlppExpressionToPlanTranslator extends LangExpressionToPlanTransla
      * nested calls translate recursively into a chain of operators — round r's pool input is round r−1's
      * output stream — and only the OUTERMOST call gets the listify.
      */
+    // Per-tower counter for the shared-vector-materialization key (unique within one compiled query/job).
+    private int kmeansTowerCounter = 0;
+
+    /**
+     * Collects the vector-reading stages (ROUND/WEIGH) of one k-means|| tower so they can share ONE
+     * materialized vector run file instead of each materializing its own: the first-built stage (innermost,
+     * hence first to run) writes it; every stage reads it. See {@code KMeansInitCandidatesOperatorDescriptor}.
+     */
+    @AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI,
+            contributionKind = AiProvenance.ContributionKind.GENERATED,
+            notes = "shared-vector-materialization: per-tower collector of ROUND/WEIGH stages")
+    private static final class KMeansTowerShared {
+        private final String key;
+        private final java.util.List<KMeansInitCandidatesOperator> vectorStages = new java.util.ArrayList<>();
+
+        private KMeansTowerShared(String key) {
+            this.key = key;
+        }
+    }
+
     private Pair<ILogicalOperator, LogicalVariable> translateKMeansInitCandidates(CallExpr fcall,
             Mutable<ILogicalOperator> tupSource) throws CompilationException {
         SourceLocation loc = fcall.getSourceLocation();
-        Pair<ILogicalOperator, LogicalVariable> constructed = translateKMeansCallAsStream(fcall);
+        KMeansTowerShared shared = new KMeansTowerShared("kmeansVec" + (kmeansTowerCounter++));
+        Pair<ILogicalOperator, LogicalVariable> constructed = translateKMeansCallAsStream(fcall, shared);
+        // Shared-vector materialization: the ROUND/WEIGH stages all read one run file. The innermost stage
+        // (built first, runs first via the pool chain) writes it; the delete refcount = number of readers.
+        if (!shared.vectorStages.isEmpty()) {
+            int consumers = shared.vectorStages.size();
+            for (KMeansInitCandidatesOperator stage : shared.vectorStages) {
+                stage.setSharedConsumerCount(consumers);
+            }
+            shared.vectorStages.get(0).setVectorsWriter(true);
+        }
         Pair<ILogicalOperator, LogicalVariable> listified =
                 aggListifyForSubquery(constructed.second, new MutableObject<>(constructed.first), false);
         // The construct rides a SUBPLAN over the enclosing chain, so upstream LET variables keep flowing;
@@ -267,8 +298,8 @@ public class SqlppExpressionToPlanTranslator extends LangExpressionToPlanTransla
      * like any stream branch (see {@link #translateStreamBranch}); recurses when the pool arg is itself a
      * kmeans-init-candidates call (the round tower).
      */
-    private Pair<ILogicalOperator, LogicalVariable> translateKMeansCallAsStream(CallExpr fcall)
-            throws CompilationException {
+    private Pair<ILogicalOperator, LogicalVariable> translateKMeansCallAsStream(CallExpr fcall,
+            KMeansTowerShared shared) throws CompilationException {
         SourceLocation loc = fcall.getSourceLocation();
         Pair<ILogicalOperator, LogicalVariable> vecBranch =
                 translateStreamBranch((SelectExpression) fcall.getExprList().get(0));
@@ -278,7 +309,7 @@ public class SqlppExpressionToPlanTranslator extends LangExpressionToPlanTransla
         // ROUND and WEIGH stages emit envelopes; RECLUSTER/LLOYD/FINALIZE outputs are plain vectors.
         boolean poolFromPriorRound = isKMeansTowerCall(poolArg) && towerCallEmitsEnvelopes((CallExpr) poolArg);
         if (isKMeansTowerCall(poolArg)) {
-            poolBranch = translateKMeansCallAsStream((CallExpr) poolArg);
+            poolBranch = translateKMeansCallAsStream((CallExpr) poolArg, shared);
         } else {
             poolBranch = translateStreamBranch((SelectExpression) poolArg);
         }
@@ -309,6 +340,12 @@ public class SqlppExpressionToPlanTranslator extends LangExpressionToPlanTransla
                 candVar, org.apache.asterix.om.types.BuiltinType.ANY, topCount);
         kop.setPoolFromPriorRound(poolFromPriorRound);
         kop.setMode(mode);
+        // Only ROUND/WEIGH read the full vector stream; they share one materialized run file per tower.
+        // (RECLUSTER/LLOYD/FINALIZE read a LIMIT-1 dummy, so they keep their own per-operator materialization.)
+        if (mode == KMeansInitCandidatesOperator.Mode.ROUND || mode == KMeansInitCandidatesOperator.Mode.WEIGH) {
+            kop.setSharedVectorsKey(shared.key);
+            shared.vectorStages.add(kop);
+        }
         kop.setSourceLocation(loc);
         kop.getInputs().add(new MutableObject<>(vecBranch.first));
         kop.getInputs().add(new MutableObject<>(poolBranch.first));

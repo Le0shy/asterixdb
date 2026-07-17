@@ -76,6 +76,14 @@ public class KMeansInitCandidatesOperator extends AbstractLogicalOperator {
     // Whether input 1 is the output of another tower stage (envelope rows) vs plain vectors (the seed).
     private boolean poolFromPriorRound;
     private Mode mode = Mode.ROUND;
+    // Shared-vector materialization (optimization): the vector-reading stages of one tower (ROUND/WEIGH)
+    // all read the SAME materialized run file instead of each materializing its own. sharedVectorsKey is a
+    // per-tower token (null = not shared, i.e. this stage materializes its own vectors as before); exactly
+    // one stage is the writer (materializes under the shared key with sharedConsumerCount readers), the
+    // rest drain their vector input and read the shared run file. See the physical operator/descriptor.
+    private String sharedVectorsKey;
+    private boolean vectorsWriter;
+    private int sharedConsumerCount;
 
     public KMeansInitCandidatesOperator(Mutable<ILogicalExpression> vectorRef, Mutable<ILogicalExpression> poolRef,
             LogicalVariable candidateVar, Object candidateVarType, int topCount) {
@@ -180,5 +188,32 @@ public class KMeansInitCandidatesOperator extends AbstractLogicalOperator {
 
     public void setMode(Mode mode) {
         this.mode = mode;
+    }
+
+    /** Per-tower shared-materialization token, or null if this stage materializes its own vectors. */
+    public String getSharedVectorsKey() {
+        return sharedVectorsKey;
+    }
+
+    public void setSharedVectorsKey(String sharedVectorsKey) {
+        this.sharedVectorsKey = sharedVectorsKey;
+    }
+
+    /** True on the single stage that materializes the shared vector run file for its tower. */
+    public boolean isVectorsWriter() {
+        return vectorsWriter;
+    }
+
+    public void setVectorsWriter(boolean vectorsWriter) {
+        this.vectorsWriter = vectorsWriter;
+    }
+
+    /** Number of stages that read the shared run file (the writer sets this as the delete refcount). */
+    public int getSharedConsumerCount() {
+        return sharedConsumerCount;
+    }
+
+    public void setSharedConsumerCount(int sharedConsumerCount) {
+        this.sharedConsumerCount = sharedConsumerCount;
     }
 }

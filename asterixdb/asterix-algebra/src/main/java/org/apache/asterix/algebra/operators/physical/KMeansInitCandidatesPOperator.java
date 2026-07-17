@@ -116,7 +116,8 @@ public class KMeansInitCandidatesPOperator extends AbstractPhysicalOperator {
                 break;
         }
         KMeansInitCandidatesOperatorDescriptor opDesc = new KMeansInitCandidatesOperatorDescriptor(builder.getJobSpec(),
-                recDesc, mode, kop.getTopCount(), vectorColumn, poolColumn, kop.isPoolFromPriorRound());
+                recDesc, mode, kop.getTopCount(), vectorColumn, poolColumn, kop.isPoolFromPriorRound(),
+                kop.getSharedVectorsKey(), kop.isVectorsWriter(), kop.getSharedConsumerCount());
         contributeOpDesc(builder, (AbstractLogicalOperator) op, opDesc);
         ILogicalOperator src0 = op.getInputs().get(0).getValue();
         builder.contributeGraphEdge(src0, 0, op, 0);
