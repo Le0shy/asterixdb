@@ -24,6 +24,14 @@
             <output-dir compare="Text">kmeans-exec</output-dir>
         </compilation-unit>
     </test-case>
+    <!-- CLUSTER BY initMode "kmeansPP-exact": the paper-faithful (Bahmani et al. VLDB'12, Algorithm 2)
+         Bernoulli oversampling operator tower (COST reduces the global potential phi; SAMPLE draws each point
+         with p_x = l*d2/phi) recovers the two expected clusters on the tiny 2-D dataset. Seeded => deterministic. -->
+    <test-case FilePath="cluster-by">
+        <compilation-unit name="kmeans-exact">
+            <output-dir compare="Text">kmeans-exact</output-dir>
+        </compilation-unit>
+    </test-case>
     <!-- CLUSTER BY syntax end-to-end: the SqlppClusterByVisitor rewrite desugars CLUSTER BY (sc descriptor +
          CLUSTER AS members) into the distributed k-means query and runs it on the tiny 2-D dataset. -->
     <test-case FilePath="cluster-by">

@@ -59,7 +59,12 @@ public class KMeansInitCandidatesOperator extends AbstractLogicalOperator {
         FINALIZE,
         WEIGH,
         RECLUSTER,
-        LLOYD
+        LLOYD,
+        // Paper-exact Bernoulli oversampling (Bahmani et al. VLDB'12, Algorithm 2), a two-stage round:
+        // COST emits each partition's local Sigma d^2(x, pool) as a partial (broadcast -> global phi);
+        // SAMPLE draws each vector with p_x = topCount * d^2(x, pool) / phi (seeded), keeping every draw.
+        COST,
+        SAMPLE
     }
 
     // References to the vector-valued variable of input 0 (the qualified points) and of input 1 (the
@@ -84,6 +89,11 @@ public class KMeansInitCandidatesOperator extends AbstractLogicalOperator {
     private String sharedVectorsKey;
     private boolean vectorsWriter;
     private int sharedConsumerCount;
+    // SAMPLE only: base seed for the per-round, per-partition Bernoulli RNG (reproducible on a fixed
+    // topology). keepAllCandidates: exact-path stages (COST + the terminal WEIGH after the last SAMPLE)
+    // keep every candidate from the pool input instead of the deterministic top-`topCount` re-limit.
+    private long seed;
+    private boolean keepAllCandidates;
 
     public KMeansInitCandidatesOperator(Mutable<ILogicalExpression> vectorRef, Mutable<ILogicalExpression> poolRef,
             LogicalVariable candidateVar, Object candidateVarType, int topCount) {
@@ -215,5 +225,23 @@ public class KMeansInitCandidatesOperator extends AbstractLogicalOperator {
 
     public void setSharedConsumerCount(int sharedConsumerCount) {
         this.sharedConsumerCount = sharedConsumerCount;
+    }
+
+    /** SAMPLE only: base seed for the per-round, per-partition Bernoulli RNG. */
+    public long getSeed() {
+        return seed;
+    }
+
+    public void setSeed(long seed) {
+        this.seed = seed;
+    }
+
+    /** True on exact-path stages that must keep every candidate (no top-`topCount` re-limit). */
+    public boolean isKeepAllCandidates() {
+        return keepAllCandidates;
+    }
+
+    public void setKeepAllCandidates(boolean keepAllCandidates) {
+        this.keepAllCandidates = keepAllCandidates;
     }
 }

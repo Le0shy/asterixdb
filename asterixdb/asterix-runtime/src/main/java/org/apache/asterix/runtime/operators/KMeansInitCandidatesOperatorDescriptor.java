@@ -104,7 +104,16 @@ public class KMeansInitCandidatesOperatorDescriptor extends AbstractOperatorDesc
         FINALIZE,
         WEIGH,
         RECLUSTER,
-        LLOYD
+        LLOYD,
+        // Paper-exact k-means|| oversampling (Bahmani et al. VLDB'12, Algorithm 2), a two-stage round:
+        // COST computes each partition's local Sigma d^2(x, pool) and emits it as one partial (the pool
+        // echo carries the pool forward); the broadcast reduces those partials to the global potential
+        // phi. SAMPLE then merges the cost partials into phi and draws each resident vector independently
+        // with probability p_x = l * d^2(x, pool) / phi (seeded RNG), emitting the survivors as candidates.
+        // Unlike ROUND, SAMPLE keeps EVERY drawn candidate (no top-l re-limit) -- the count is random with
+        // expectation l, exactly the paper's C <- C U C'.
+        COST,
+        SAMPLE
     }
 
     private static final int STORE_VECTORS_ACTIVITY_ID = 0;
@@ -132,15 +141,30 @@ public class KMeansInitCandidatesOperatorDescriptor extends AbstractOperatorDesc
     private final String sharedVectorsKey;
     private final boolean vectorsWriter;
     private final int sharedConsumerCount;
+    // SAMPLE only: base seed for the per-round, per-partition Bernoulli RNG (seed*P + partition). Fixed
+    // (set from the compiler.vector.trainseed-style config) so a run is reproducible on a fixed topology;
+    // unused by the other modes.
+    private final long seed;
+    // Exact path (COST stages + the terminal WEIGH that follows the last SAMPLE): keep EVERY candidate from
+    // the pool input instead of the deterministic path's global top-`count` re-limit. Bernoulli oversampling
+    // is already globally correct (normalized by phi), so C = union of all draws must survive to weighting.
+    private final boolean keepAllCandidates;
 
     public KMeansInitCandidatesOperatorDescriptor(IOperatorDescriptorRegistry spec, RecordDescriptor vectorRecDesc,
             Mode mode, int count, int vectorColumn, int poolColumn, boolean poolIsEnvelope) {
-        this(spec, vectorRecDesc, mode, count, vectorColumn, poolColumn, poolIsEnvelope, null, false, 0);
+        this(spec, vectorRecDesc, mode, count, vectorColumn, poolColumn, poolIsEnvelope, null, false, 0, 0L, false);
     }
 
     public KMeansInitCandidatesOperatorDescriptor(IOperatorDescriptorRegistry spec, RecordDescriptor vectorRecDesc,
             Mode mode, int count, int vectorColumn, int poolColumn, boolean poolIsEnvelope, String sharedVectorsKey,
             boolean vectorsWriter, int sharedConsumerCount) {
+        this(spec, vectorRecDesc, mode, count, vectorColumn, poolColumn, poolIsEnvelope, sharedVectorsKey,
+                vectorsWriter, sharedConsumerCount, 0L, false);
+    }
+
+    public KMeansInitCandidatesOperatorDescriptor(IOperatorDescriptorRegistry spec, RecordDescriptor vectorRecDesc,
+            Mode mode, int count, int vectorColumn, int poolColumn, boolean poolIsEnvelope, String sharedVectorsKey,
+            boolean vectorsWriter, int sharedConsumerCount, long seed, boolean keepAllCandidates) {
         super(spec, 2, 1);
         this.mode = mode;
         this.count = count;
@@ -150,6 +174,8 @@ public class KMeansInitCandidatesOperatorDescriptor extends AbstractOperatorDesc
         this.sharedVectorsKey = sharedVectorsKey;
         this.vectorsWriter = vectorsWriter;
         this.sharedConsumerCount = sharedConsumerCount;
+        this.seed = seed;
+        this.keepAllCandidates = keepAllCandidates;
         outRecDescs[0] = vectorRecDesc;
     }
 
@@ -325,6 +351,12 @@ public class KMeansInitCandidatesOperatorDescriptor extends AbstractOperatorDesc
                             case LLOYD:
                                 emitLloyd(emitter);
                                 break;
+                            case COST:
+                                emitCost(vecState, emitter);
+                                break;
+                            case SAMPLE:
+                                emitSample(vecState, emitter);
+                                break;
                         }
                         emitter.flush();
                     } catch (Exception e) {
@@ -398,7 +430,8 @@ public class KMeansInitCandidatesOperatorDescriptor extends AbstractOperatorDesc
                     for (Row r : poolRows) {
                         pool.add(r.vec);
                     }
-                    for (int i = 0; i < Math.min(count, candRows.size()); i++) {
+                    int candLimit = keepAllCandidates ? candRows.size() : Math.min(count, candRows.size());
+                    for (int i = 0; i < candLimit; i++) {
                         pool.add(candRows.get(i).vec);
                     }
                 }
@@ -524,6 +557,80 @@ public class KMeansInitCandidatesOperatorDescriptor extends AbstractOperatorDesc
                         if (counts[i] > 0) {
                             emitter.envelope(new Row(KIND_PARTIAL, partition, i, counts[i], sums[i]));
                         }
+                    }
+                }
+
+                /**
+                 * Paper (Bahmani et al. Algorithm 2) COST half of an exact oversampling round: compute this
+                 * partition's local potential {@code localSum = Sigma_x d^2(x, pool)} over the resident
+                 * vectors, and emit it as ONE partial. Partition 0 echoes the pool so it survives to the
+                 * SAMPLE stage; the broadcast sums the partials into the global potential phi.
+                 */
+                private void emitCost(MaterializerTaskState state, Emitter emitter) throws Exception {
+                    final double[] localSum = { 0.0d };
+                    streamVectors(state, vec -> {
+                        double best = Double.POSITIVE_INFINITY;
+                        for (int i = 0; i < pool.size(); i++) {
+                            double d = VectorDistanceCalculation.euclideanSquared(vec, pool.get(i));
+                            if (d < best) {
+                                best = d;
+                            }
+                        }
+                        if (!Double.isNaN(best) && best != Double.POSITIVE_INFINITY) {
+                            localSum[0] += best;
+                        }
+                    });
+                    if (partition == 0) {
+                        for (int i = 0; i < pool.size(); i++) {
+                            emitter.envelope(new Row(KIND_POOL, 0, i, 0.0d, pool.get(i)));
+                        }
+                    }
+                    // One cost partial: score = localSum (the SAMPLE merge reads score only; seq/vec unused).
+                    emitter.envelope(new Row(KIND_PARTIAL, partition, 0, localSum[0], new double[] { 0.0d }));
+                }
+
+                /**
+                 * Paper Algorithm 2 SAMPLE half: phi = Sigma of the broadcast cost partials (the global
+                 * potential), then draw each resident vector x independently with probability
+                 * {@code p_x = l * d^2(x, pool) / phi} (l = count). Survivors become candidates; partition 0
+                 * echoes the pool. Deterministic per (seed, partition) on a fixed topology. NB: every draw is
+                 * kept (no top-l re-limit) -- the count is random with expectation l, exactly C <- C U C'.
+                 */
+                private void emitSample(MaterializerTaskState state, Emitter emitter) throws Exception {
+                    double phiAcc = 0.0d;
+                    for (Row p : partials) {
+                        phiAcc += p.score;
+                    }
+                    final double phi = phiAcc;
+                    final double l = count;
+                    final java.util.Random rng = new java.util.Random(seed * 1000003L + partition);
+                    if (partition == 0) {
+                        for (int i = 0; i < pool.size(); i++) {
+                            emitter.envelope(new Row(KIND_POOL, 0, i, 0.0d, pool.get(i)));
+                        }
+                    }
+                    if (phi <= 0.0d) {
+                        return; // pool already covers every point (all d^2 = 0): nothing to sample
+                    }
+                    final List<double[]> drawn = new ArrayList<>();
+                    streamVectors(state, vec -> {
+                        double best = Double.POSITIVE_INFINITY;
+                        for (int i = 0; i < pool.size(); i++) {
+                            double d = VectorDistanceCalculation.euclideanSquared(vec, pool.get(i));
+                            if (d < best) {
+                                best = d;
+                            }
+                        }
+                        if (Double.isNaN(best) || best == Double.POSITIVE_INFINITY || best <= 0.0d) {
+                            return; // p_x = 0 for points already in the pool (paper never re-draws them)
+                        }
+                        if (rng.nextDouble() < l * best / phi) {
+                            drawn.add(vec.clone());
+                        }
+                    });
+                    long seq = 0L;
+                    for (double[] cand : drawn) {
+                        emitter.envelope(new Row(KIND_CANDIDATE, partition, seq++, 0.0d, cand));
                     }
                 }
 

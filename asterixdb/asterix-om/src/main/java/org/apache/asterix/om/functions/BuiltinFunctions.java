@@ -1256,6 +1256,13 @@ public class BuiltinFunctions {
     public static final FunctionIdentifier KMEANS_RECLUSTER = FunctionConstants.newAsterix("kmeans-recluster", 3);
     // kmeans-lloyd-merge(vectors, partials, k): merge partials, emit every non-empty member's mean.
     public static final FunctionIdentifier KMEANS_LLOYD_MERGE = FunctionConstants.newAsterix("kmeans-lloyd-merge", 3);
+    // Paper-exact k-means|| oversampling (Bahmani et al. VLDB'12, Algorithm 2), a two-stage round:
+    // kmeans-cost(vectors, pool, l): per-partition local Sigma d^2(x, pool) partial (l unused); the broadcast
+    // sums these into the global potential phi.
+    public static final FunctionIdentifier KMEANS_COST = FunctionConstants.newAsterix("kmeans-cost", 3);
+    // kmeans-sample(vectors, pool, l, seed): draw each vector with prob p_x = l * d^2(x, pool) / phi
+    // (phi from the broadcast cost partials), seeded for reproducibility. Keeps every draw (C <- C U C').
+    public static final FunctionIdentifier KMEANS_SAMPLE = FunctionConstants.newAsterix("kmeans-sample", 4);
 
     // Temporal functions
     public static final FunctionIdentifier UNIX_TIME_FROM_DATE_IN_DAYS =
@@ -2012,6 +2019,8 @@ public class BuiltinFunctions {
         addPrivateFunction(KMEANS_WEIGH_CANDIDATES, OrderedListOfAnyTypeComputer.INSTANCE, true);
         addPrivateFunction(KMEANS_RECLUSTER, OrderedListOfAnyTypeComputer.INSTANCE, true);
         addPrivateFunction(KMEANS_LLOYD_MERGE, OrderedListOfAnyTypeComputer.INSTANCE, true);
+        addPrivateFunction(KMEANS_COST, OrderedListOfAnyTypeComputer.INSTANCE, true);
+        addPrivateFunction(KMEANS_SAMPLE, OrderedListOfAnyTypeComputer.INSTANCE, true);
         // Window functions
 
         addFunction(CUME_DIST, ADoubleTypeComputer.INSTANCE, false);

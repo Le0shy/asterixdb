@@ -207,20 +207,28 @@ public class SqlppExpressionToPlanTranslator extends LangExpressionToPlanTransla
 
     /** The internal CLUSTER BY tower markers: one init round, the weighting pass, or the recluster. */
     private static boolean isKMeansTowerCall(Expression expr) {
-        if (!(expr instanceof CallExpr) || ((CallExpr) expr).getExprList().size() != 3) {
+        if (!(expr instanceof CallExpr)) {
             return false;
         }
+        int arity = ((CallExpr) expr).getExprList().size();
         String name = ((CallExpr) expr).getFunctionSignature().getName();
-        return BuiltinFunctions.KMEANS_INIT_CANDIDATES.getName().equals(name)
+        // The 3-arg tower markers, plus the 4-arg exact-sampling marker (vectors, pool, l, seed).
+        boolean three = arity == 3 && (BuiltinFunctions.KMEANS_INIT_CANDIDATES.getName().equals(name)
                 || BuiltinFunctions.KMEANS_WEIGH_CANDIDATES.getName().equals(name)
                 || BuiltinFunctions.KMEANS_RECLUSTER.getName().equals(name)
-                || BuiltinFunctions.KMEANS_LLOYD_MERGE.getName().equals(name);
+                || BuiltinFunctions.KMEANS_LLOYD_MERGE.getName().equals(name)
+                || BuiltinFunctions.KMEANS_COST.getName().equals(name));
+        boolean four = arity == 4 && BuiltinFunctions.KMEANS_SAMPLE.getName().equals(name);
+        return three || four;
     }
 
     /** Whether a nested tower call's OUTPUT rows are envelopes (vs plain vectors). */
     private static boolean towerCallEmitsEnvelopes(CallExpr nested) {
         String name = nested.getFunctionSignature().getName();
-        if (BuiltinFunctions.KMEANS_WEIGH_CANDIDATES.getName().equals(name)) {
+        if (BuiltinFunctions.KMEANS_WEIGH_CANDIDATES.getName().equals(name)
+                || BuiltinFunctions.KMEANS_COST.getName().equals(name)
+                || BuiltinFunctions.KMEANS_SAMPLE.getName().equals(name)) {
+            // COST emits pool echo + a cost partial; SAMPLE emits pool echo + candidates -- both envelopes.
             return true;
         }
         if (BuiltinFunctions.KMEANS_INIT_CANDIDATES.getName().equals(name)) {
@@ -249,9 +257,7 @@ public class SqlppExpressionToPlanTranslator extends LangExpressionToPlanTransla
      * materialized vector run file instead of each materializing its own: the first-built stage (innermost,
      * hence first to run) writes it; every stage reads it. See {@code KMeansInitCandidatesOperatorDescriptor}.
      */
-    @AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI,
-            contributionKind = AiProvenance.ContributionKind.GENERATED,
-            notes = "shared-vector-materialization: per-tower collector of ROUND/WEIGH stages")
+    @AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.GENERATED, notes = "shared-vector-materialization: per-tower collector of ROUND/WEIGH stages")
     private static final class KMeansTowerShared {
         private final String key;
         private final java.util.List<KMeansInitCandidatesOperator> vectorStages = new java.util.ArrayList<>();
@@ -324,11 +330,20 @@ public class SqlppExpressionToPlanTranslator extends LangExpressionToPlanTransla
             mode = KMeansInitCandidatesOperator.Mode.RECLUSTER;
         } else if (BuiltinFunctions.KMEANS_LLOYD_MERGE.getName().equals(fnName)) {
             mode = KMeansInitCandidatesOperator.Mode.LLOYD;
+        } else if (BuiltinFunctions.KMEANS_COST.getName().equals(fnName)) {
+            mode = KMeansInitCandidatesOperator.Mode.COST;
+        } else if (BuiltinFunctions.KMEANS_SAMPLE.getName().equals(fnName)) {
+            mode = KMeansInitCandidatesOperator.Mode.SAMPLE;
         } else {
             // kmeans-init-candidates: a negative l marks the FINALIZE variant.
             mode = countArg < 0 ? KMeansInitCandidatesOperator.Mode.FINALIZE : KMeansInitCandidatesOperator.Mode.ROUND;
         }
         int topCount = Math.abs(countArg);
+        // Exact-path stages whose pool input is a SAMPLE (i.e. carries candidates that must all survive):
+        // the COST of the next round and the terminal WEIGH after the last SAMPLE. They skip the top-l
+        // re-limit. (SAMPLE's own pool input is a COST -- no candidates -- so this is harmless there.)
+        boolean keepAllCandidates = poolArg instanceof CallExpr && BuiltinFunctions.KMEANS_SAMPLE.getName()
+                .equals(((CallExpr) poolArg).getFunctionSignature().getName());
         LogicalVariable candVar = context.newVar();
         VariableReferenceExpression vecRef = new VariableReferenceExpression(vecBranch.second);
         vecRef.setSourceLocation(loc);
@@ -340,9 +355,18 @@ public class SqlppExpressionToPlanTranslator extends LangExpressionToPlanTransla
                 candVar, org.apache.asterix.om.types.BuiltinType.ANY, topCount);
         kop.setPoolFromPriorRound(poolFromPriorRound);
         kop.setMode(mode);
-        // Only ROUND/WEIGH read the full vector stream; they share one materialized run file per tower.
-        // (RECLUSTER/LLOYD/FINALIZE read a LIMIT-1 dummy, so they keep their own per-operator materialization.)
-        if (mode == KMeansInitCandidatesOperator.Mode.ROUND || mode == KMeansInitCandidatesOperator.Mode.WEIGH) {
+        kop.setKeepAllCandidates(keepAllCandidates);
+        // SAMPLE's 4th arg is the per-round seed literal.
+        if (mode == KMeansInitCandidatesOperator.Mode.SAMPLE) {
+            long seed =
+                    ((org.apache.asterix.lang.common.literal.IntegerLiteral) ((org.apache.asterix.lang.common.expression.LiteralExpr) fcall
+                            .getExprList().get(3)).getValue()).getValue().longValue();
+            kop.setSeed(seed);
+        }
+        // ROUND/WEIGH/COST/SAMPLE read the full vector stream; they share one materialized run file per
+        // tower. (RECLUSTER/LLOYD/FINALIZE read a LIMIT-1 dummy, so they keep their own materialization.)
+        if (mode == KMeansInitCandidatesOperator.Mode.ROUND || mode == KMeansInitCandidatesOperator.Mode.WEIGH
+                || mode == KMeansInitCandidatesOperator.Mode.COST || mode == KMeansInitCandidatesOperator.Mode.SAMPLE) {
             kop.setSharedVectorsKey(shared.key);
             shared.vectorStages.add(kop);
         }

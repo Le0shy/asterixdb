@@ -150,7 +150,16 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
     // quality is exactly what kmeansPP exists for).
     private static final String INIT_MODE_KMEANSPP = "kmeanspp";
     private static final String INIT_MODE_RANDOM = "random";
-    private static final Set<String> KNOWN_INIT_MODES = Set.of(INIT_MODE_KMEANSPP, INIT_MODE_RANDOM);
+    // "kmeanspp-exact" = the paper-faithful (Bahmani et al. VLDB'12, Algorithm 2) Bernoulli oversampling:
+    // per round a global potential phi = Sigma d^2(x, pool) is reduced and each point is drawn independently
+    // with probability p_x = l * d^2(x, pool) / phi. The default "kmeanspp" uses the deterministic top-l
+    // approximation of that draw. Exact requires runtime init (the operator tower); it has no desugar form.
+    private static final String INIT_MODE_KMEANSPP_EXACT = "kmeanspp-exact";
+    private static final Set<String> KNOWN_INIT_MODES =
+            Set.of(INIT_MODE_KMEANSPP, INIT_MODE_RANDOM, INIT_MODE_KMEANSPP_EXACT);
+    // Fixed base for the per-round exact-sampling seed (seed_r = EXACT_SEED_BASE + r). Fixed -> a run is
+    // reproducible on a fixed topology; the descriptor mixes in the partition id.
+    private static final int EXACT_SEED_BASE = 1_000_003;
 
     // Fixed number of Lloyd iterations (unrolled as nested centroid subqueries).
     private static final int LLOYD_ITERATIONS = 3;
@@ -312,6 +321,15 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
         boolean runtimeInit = context.getMetadataProvider() != null
                 && context.getMetadataProvider().getBooleanProperty(CLUSTER_BY_RUNTIME_INIT_OPTION, true);
         boolean randomInit = INIT_MODE_RANDOM.equals(getInitMode(cbc));
+        boolean exactInit = INIT_MODE_KMEANSPP_EXACT.equals(getInitMode(cbc));
+        // Exact Bernoulli sampling exists only as the runtime operator tower (the per-round global-phi
+        // reduce has no efficient pure-SQL++ desugar). Reject it when runtime init is disabled rather than
+        // silently falling back to the deterministic top-l desugar.
+        if (exactInit && !runtimeInit) {
+            throw new CompilationException(ErrorCode.COMPILATION_ERROR, cbc.getSourceLocation(),
+                    "CLUSTER BY initMode 'kmeansPP-exact' requires runtime init; it has no desugar reference "
+                            + "path. Enable cluster_by_runtime_init (the default) or use initMode 'kmeansPP'.");
+        }
         VarIdentifier pool;
         VarIdentifier prev = null;
         if (runtimeInit) {
@@ -340,8 +358,20 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
                 Expression poolStream = selectValueFrom(copy(vecsQuery), pv, pv, null, null,
                         ascOrder(varRef(pv.getVar(), loc)), null, seedLimit, loc);
                 for (int r = 0; r < INIT_OVERSAMPLING_ROUNDS; r++) {
-                    poolStream = call(BuiltinFunctions.KMEANS_INIT_CANDIDATES, loc, copy(vecsQuery), poolStream,
-                            intLit(OVERSAMPLING_FACTOR_PER_K * k, loc));
+                    if (exactInit) {
+                        // Paper Algorithm 2 round: COST reduces the global potential phi = Sigma d^2(x, pool),
+                        // then SAMPLE draws each point with p_x = l * d^2(x, pool) / phi (distinct per-round
+                        // seed for reproducibility). Keeps every draw -- the operator's intake does not
+                        // re-limit a SAMPLE's candidates. This is the faithful Bernoulli oversampling; the
+                        // deterministic top-l branch below is the approximation.
+                        Expression cost = call(BuiltinFunctions.KMEANS_COST, loc, copy(vecsQuery), poolStream,
+                                intLit(OVERSAMPLING_FACTOR_PER_K * k, loc));
+                        poolStream = call(BuiltinFunctions.KMEANS_SAMPLE, loc, copy(vecsQuery), cost,
+                                intLit(OVERSAMPLING_FACTOR_PER_K * k, loc), intLit(EXACT_SEED_BASE + r, loc));
+                    } else {
+                        poolStream = call(BuiltinFunctions.KMEANS_INIT_CANDIDATES, loc, copy(vecsQuery), poolStream,
+                                intLit(OVERSAMPLING_FACTOR_PER_K * k, loc));
+                    }
                 }
                 // WEIGH: consumes the round tower directly (its intake applies the terminal global
                 // re-limit), scores every point once against the decoded pool, and emits per-partition
@@ -735,7 +765,7 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
         String initMode = opts.get(OPT_INIT_MODE);
         if (initMode != null && !KNOWN_INIT_MODES.contains(initMode.toLowerCase())) {
             throw new CompilationException(ErrorCode.COMPILATION_ERROR, cbc.getSourceLocation(),
-                    "Unknown CLUSTER BY initMode '" + initMode + "'. Supported: kmeansPP, random.");
+                    "Unknown CLUSTER BY initMode '" + initMode + "'. Supported: kmeansPP, kmeansPP-exact, random.");
         }
         // CrossPollination / CrossPollinationDistanceRatio are accepted but inert in this release.
         return k;
