@@ -197,9 +197,12 @@ public class KMeansCostControllerOperatorDescriptor extends AbstractOperatorDesc
                 @Override
                 public void close() throws HyracksDataException {
                     flushToState();
-                    // Do NOT close the pool writer: Release appends to it across the loop. The vector writer is
-                    // fully written, but readers open their own handles, so we leave both open to be reclaimed
-                    // when the joblet completes. Register so the co-located loop operators can find it.
+                    if (vectors) {
+                        // The vector file is fully written; close the writer handle now (readers open their own
+                        // independent handles via createReader). The POOL writer must stay open across the loop
+                        // for Release's per-round appends -- CostLoop closes it after the final read.
+                        state.close();
+                    }
                     ctx.setStateObject(state);
                 }
 
@@ -254,6 +257,10 @@ public class KMeansCostControllerOperatorDescriptor extends AbstractOperatorDesc
                                 .await(ctx::getStateObject, LoopControlState.vectorsStateId(loopKey, partition));
                         runLoop(control, poolState, vectorState, sigmaWriter);
                         emitFinalPool(poolState, poolWriter);
+                        // The loop is done: Release has appended every round and Sample/Cost have read for the
+                        // last time, so close the pool writer handle (every partition; StoreVectors already closed
+                        // the vector writer). Managed workspace files themselves are reclaimed at joblet cleanup.
+                        poolState.close();
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
                         poolWriter.fail();

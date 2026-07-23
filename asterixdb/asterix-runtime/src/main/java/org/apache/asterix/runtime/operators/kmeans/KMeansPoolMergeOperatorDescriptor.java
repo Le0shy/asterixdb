@@ -131,10 +131,15 @@ public class KMeansPoolMergeOperatorDescriptor extends AbstractSingleActivityOpe
             }
 
             private void emitUnion(int round) throws HyracksDataException {
-                List<Draw> draws = drawsByRound.getOrDefault(round, List.of());
-                draws.sort(UNION_ORDER);
-                for (Draw d : draws) {
-                    emitDraw(round, d.part, d.seq, d.vec);
+                // A round may draw nothing (e.g. the pool already covers every point -> phi = 0): still emit the
+                // end marker so Release wakes Cost for the next round. (getOrDefault(List.of()) would be immutable
+                // -> sort throws; guard on null instead.)
+                List<Draw> draws = drawsByRound.get(round);
+                if (draws != null) {
+                    draws.sort(UNION_ORDER);
+                    for (Draw d : draws) {
+                        emitDraw(round, d.part, d.seq, d.vec);
+                    }
                 }
                 emitEnd(round);
                 appender.write(writer, true);
