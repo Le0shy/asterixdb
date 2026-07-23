@@ -18,7 +18,18 @@
  */
 package org.apache.asterix.algebra.operators.physical;
 
+import java.util.Arrays;
+
+import org.apache.asterix.metadata.declared.MetadataProvider;
 import org.apache.asterix.runtime.operators.KMeansInitCandidatesOperatorDescriptor;
+import org.apache.asterix.runtime.operators.kmeans.KMeansCostControllerOperatorDescriptor;
+import org.apache.asterix.runtime.operators.kmeans.KMeansLoopIO;
+import org.apache.asterix.runtime.operators.kmeans.KMeansPhiMergeOperatorDescriptor;
+import org.apache.asterix.runtime.operators.kmeans.KMeansPoolMergeOperatorDescriptor;
+import org.apache.asterix.runtime.operators.kmeans.KMeansReleaseOperatorDescriptor;
+import org.apache.asterix.runtime.operators.kmeans.KMeansSampleOperatorDescriptor;
+import org.apache.hyracks.algebricks.common.constraints.AlgebricksAbsolutePartitionConstraint;
+import org.apache.hyracks.algebricks.common.constraints.AlgebricksCountPartitionConstraint;
 import org.apache.hyracks.algebricks.common.exceptions.AlgebricksException;
 import org.apache.hyracks.algebricks.core.algebra.base.IHyracksJobBuilder;
 import org.apache.hyracks.algebricks.core.algebra.base.ILogicalOperator;
@@ -36,6 +47,8 @@ import org.apache.hyracks.algebricks.core.algebra.properties.StructuralPropertie
 import org.apache.hyracks.algebricks.core.jobgen.impl.JobGenContext;
 import org.apache.hyracks.algebricks.core.jobgen.impl.JobGenHelper;
 import org.apache.hyracks.api.dataflow.value.RecordDescriptor;
+import org.apache.hyracks.api.job.JobSpecification;
+import org.apache.hyracks.dataflow.std.connectors.MToNBroadcastConnectorDescriptor;
 import org.apache.hyracks.util.annotations.AiProvenance;
 
 /**
@@ -97,6 +110,21 @@ public class KMeansInitCandidatesPOperator extends AbstractPhysicalOperator {
         // positionally, using the (possibly stale) variable lookup only as a cross-check.
         int vectorColumn = resolveSingleColumn(inputSchemas[0], kop.getVectorVariable());
         int poolColumn = resolveSingleColumn(inputSchemas[1], kop.getPoolVariable());
+        ILogicalOperator src0 = op.getInputs().get(0).getValue();
+        ILogicalOperator src1 = op.getInputs().get(1).getValue();
+        // Route B: an OVERSAMPLE_LOOP spanning more than one NC cannot use Route A's in-JVM barrier, so it is
+        // realized as the systolic 5-operator sub-graph injected here. A single-NC OVERSAMPLE_LOOP keeps the
+        // leaner barrier operator (the default path below); every other mode is always the default path.
+        if (kop.getMode() == KMeansInitCandidatesOperator.Mode.OVERSAMPLE_LOOP) {
+            String[] clusterLocations =
+                    ((MetadataProvider) context.getMetadataProvider()).getClusterLocations().getLocations();
+            int nNC = (int) Arrays.stream(clusterLocations).distinct().count();
+            if (nNC > 1) {
+                contributeSystolicLoop(builder, kop, (AbstractLogicalOperator) op, recDesc, vectorColumn, poolColumn,
+                        clusterLocations, src0, src1);
+                return;
+            }
+        }
         KMeansInitCandidatesOperatorDescriptor.Mode mode;
         switch (kop.getMode()) {
             case FINALIZE:
@@ -129,10 +157,64 @@ public class KMeansInitCandidatesPOperator extends AbstractPhysicalOperator {
                 kop.getSharedVectorsKey(), kop.isVectorsWriter(), kop.getSharedConsumerCount(), kop.getSeed(),
                 kop.isKeepAllCandidates(), kop.getScoresKey(), kop.isScoresWriter(), kop.getLoopRounds());
         contributeOpDesc(builder, (AbstractLogicalOperator) op, opDesc);
-        ILogicalOperator src0 = op.getInputs().get(0).getValue();
         builder.contributeGraphEdge(src0, 0, op, 0);
-        ILogicalOperator src1 = op.getInputs().get(1).getValue();
         builder.contributeGraphEdge(src1, 0, op, 1);
+    }
+
+    /**
+     * Route B (multi-NC): inject the systolic 5-operator sub-graph for one {@code OVERSAMPLE_LOOP} onto the job
+     * spec. Op1 (Cost/Controller) is the registered descriptor, so the builder wires the vectors (input 0) and
+     * seed (input 1) into it and the parent WEIGH reads the final pool from its output 0; the per-round potential
+     * (output 1) and Op2..Op5 are internal edges wired here with pipelined broadcast connectors. Op1/Op3/Op5 are
+     * pinned to the SAME cluster locations so partition i of each co-locates on one NC (sharing that NC's permit +
+     * pool/vector run files via joblet state); the PhiMerge/PoolMerge nodes are single-partition. Op5 is a sink
+     * dead-end, so it is registered as a job root to ensure its branch is scheduled.
+     */
+    private void contributeSystolicLoop(IHyracksJobBuilder builder, KMeansInitCandidatesOperator kop,
+            AbstractLogicalOperator op, RecordDescriptor poolEnvelopeRecDesc, int vectorColumn, int seedColumn,
+            String[] clusterLocations, ILogicalOperator src0, ILogicalOperator src1) throws AlgebricksException {
+        JobSpecification spec = builder.getJobSpec();
+        // Unique + stable per loop instance (one per query); baked into all five descriptors so every partition
+        // and NC agrees on the joblet-state keys.
+        String loopKey = "kmeansSystolicLoop#" + kop.getCandidateVariable();
+        int participants = clusterLocations.length;
+
+        // Op1 Cost/Controller — the registered descriptor (inputs land here; WEIGH reads output 0 = the pool).
+        KMeansCostControllerOperatorDescriptor op1 = new KMeansCostControllerOperatorDescriptor(spec,
+                poolEnvelopeRecDesc, KMeansLoopIO.SCALAR_RD, loopKey, vectorColumn, seedColumn, kop.getLoopRounds());
+        contributeOpDesc(builder, op, op1);
+        builder.contributeGraphEdge(src0, 0, op, 0);
+        builder.contributeGraphEdge(src1, 0, op, 1);
+
+        // The internal loop operators.
+        KMeansPhiMergeOperatorDescriptor op2 =
+                new KMeansPhiMergeOperatorDescriptor(spec, KMeansLoopIO.SCALAR_RD, participants);
+        KMeansSampleOperatorDescriptor op3 = new KMeansSampleOperatorDescriptor(spec, KMeansLoopIO.DRAW_RD, loopKey,
+                kop.getTopCount(), kop.getSeed());
+        KMeansPoolMergeOperatorDescriptor op4 =
+                new KMeansPoolMergeOperatorDescriptor(spec, KMeansLoopIO.DRAW_RD, participants);
+        KMeansReleaseOperatorDescriptor op5 = new KMeansReleaseOperatorDescriptor(spec, loopKey);
+
+        // Partition constraints (registered via the builder so the job-gen finalizer does not double-assign a
+        // default). Op1/Op3/Op5 share identical absolute locations -> co-located per partition; merges single-node.
+        AlgebricksAbsolutePartitionConstraint coLocated = new AlgebricksAbsolutePartitionConstraint(clusterLocations);
+        builder.contributeAlgebricksPartitionConstraint(op1, coLocated);
+        builder.contributeAlgebricksPartitionConstraint(op3, coLocated);
+        builder.contributeAlgebricksPartitionConstraint(op5, coLocated);
+        builder.contributeAlgebricksPartitionConstraint(op2, new AlgebricksCountPartitionConstraint(1));
+        builder.contributeAlgebricksPartitionConstraint(op4, new AlgebricksCountPartitionConstraint(1));
+
+        // Internal pipelined broadcast edges: Op1.localSigma -> PhiMerge -> Sample -> PoolMerge -> Release.
+        // (Broadcast into a single-partition merge is a CONCURRENT M-to-1; never the sequential merging connector,
+        // which would deadlock against the permit-paced producers.)
+        spec.connect(new MToNBroadcastConnectorDescriptor(spec), op1, 1, op2, 0);
+        spec.connect(new MToNBroadcastConnectorDescriptor(spec), op2, 0, op3, 0);
+        spec.connect(new MToNBroadcastConnectorDescriptor(spec), op3, 0, op4, 0);
+        spec.connect(new MToNBroadcastConnectorDescriptor(spec), op4, 0, op5, 0);
+
+        // Release is a sink dead-end (its "output" is side-effects: pool append + permit release), not upstream of
+        // the main result, so register it as a root or its branch would not be scheduled.
+        spec.addRoot(op5);
     }
 
     private static int resolveSingleColumn(IOperatorSchema schema,
