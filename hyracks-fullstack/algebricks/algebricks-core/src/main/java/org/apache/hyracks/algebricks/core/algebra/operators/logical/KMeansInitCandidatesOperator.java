@@ -94,6 +94,13 @@ public class KMeansInitCandidatesOperator extends AbstractLogicalOperator {
     // keep every candidate from the pool input instead of the deterministic top-`topCount` re-limit.
     private long seed;
     private boolean keepAllCandidates;
+    // Exact-path per-round score reuse (optimization): within one oversample round, COST computes each
+    // vector's d^2 to the pool to sum the global potential; SAMPLE needs the same d^2 for its Bernoulli
+    // coin flip. Instead of SAMPLE recomputing it (a second full distance pass), COST writes each d^2 to a
+    // per-round scratch sidecar and SAMPLE reads it back in lockstep. scoresKey is the per-COST/SAMPLE-pair
+    // token (null = not wired, SAMPLE recomputes as before); COST is the writer, SAMPLE the reader.
+    private String scoresKey;
+    private boolean scoresWriter;
 
     public KMeansInitCandidatesOperator(Mutable<ILogicalExpression> vectorRef, Mutable<ILogicalExpression> poolRef,
             LogicalVariable candidateVar, Object candidateVarType, int topCount) {
@@ -225,6 +232,24 @@ public class KMeansInitCandidatesOperator extends AbstractLogicalOperator {
 
     public void setSharedConsumerCount(int sharedConsumerCount) {
         this.sharedConsumerCount = sharedConsumerCount;
+    }
+
+    /** Per-round score-reuse token shared by a COST (writer) and its SAMPLE (reader); null = not wired. */
+    public String getScoresKey() {
+        return scoresKey;
+    }
+
+    public void setScoresKey(String scoresKey) {
+        this.scoresKey = scoresKey;
+    }
+
+    /** True on the COST stage (writes the per-vector d^2 sidecar); false on SAMPLE (reads it). */
+    public boolean isScoresWriter() {
+        return scoresWriter;
+    }
+
+    public void setScoresWriter(boolean scoresWriter) {
+        this.scoresWriter = scoresWriter;
     }
 
     /** SAMPLE only: base seed for the per-round, per-partition Bernoulli RNG. */

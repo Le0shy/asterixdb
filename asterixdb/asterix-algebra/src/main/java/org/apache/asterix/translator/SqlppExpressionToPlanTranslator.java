@@ -251,6 +251,7 @@ public class SqlppExpressionToPlanTranslator extends LangExpressionToPlanTransla
      */
     // Per-tower counter for the shared-vector-materialization key (unique within one compiled query/job).
     private int kmeansTowerCounter = 0;
+    private int kmeansScoresCounter = 0;
 
     /**
      * Collects the vector-reading stages (ROUND/WEIGH) of one k-means|| tower so they can share ONE
@@ -271,7 +272,7 @@ public class SqlppExpressionToPlanTranslator extends LangExpressionToPlanTransla
             Mutable<ILogicalOperator> tupSource) throws CompilationException {
         SourceLocation loc = fcall.getSourceLocation();
         KMeansTowerShared shared = new KMeansTowerShared("kmeansVec" + (kmeansTowerCounter++));
-        Pair<ILogicalOperator, LogicalVariable> constructed = translateKMeansCallAsStream(fcall, shared);
+        Pair<ILogicalOperator, LogicalVariable> constructed = translateKMeansCallAsStream(fcall, shared, null);
         // Shared-vector materialization: the ROUND/WEIGH stages all read one run file. The innermost stage
         // (built first, runs first via the pool chain) writes it; the delete refcount = number of readers.
         if (!shared.vectorStages.isEmpty()) {
@@ -305,7 +306,7 @@ public class SqlppExpressionToPlanTranslator extends LangExpressionToPlanTransla
      * kmeans-init-candidates call (the round tower).
      */
     private Pair<ILogicalOperator, LogicalVariable> translateKMeansCallAsStream(CallExpr fcall,
-            KMeansTowerShared shared) throws CompilationException {
+            KMeansTowerShared shared, String scoresWriterKey) throws CompilationException {
         SourceLocation loc = fcall.getSourceLocation();
         Pair<ILogicalOperator, LogicalVariable> vecBranch =
                 translateStreamBranch((SelectExpression) fcall.getExprList().get(0));
@@ -314,8 +315,12 @@ public class SqlppExpressionToPlanTranslator extends LangExpressionToPlanTransla
         // "Prior round" at the operator level means: the pool input carries ENVELOPE rows. Only the
         // ROUND and WEIGH stages emit envelopes; RECLUSTER/LLOYD/FINALIZE outputs are plain vectors.
         boolean poolFromPriorRound = isKMeansTowerCall(poolArg) && towerCallEmitsEnvelopes((CallExpr) poolArg);
+        // Score reuse: a SAMPLE's pool arg is its round's COST. Mint a per-pair key here and pass it down so
+        // that COST becomes the score writer; this SAMPLE reads it (set below). Any other stage passes null.
+        boolean thisIsSample = BuiltinFunctions.KMEANS_SAMPLE.getName().equals(fcall.getFunctionSignature().getName());
+        String pairScoresKey = thisIsSample ? ("kmeansScores" + (kmeansScoresCounter++)) : null;
         if (isKMeansTowerCall(poolArg)) {
-            poolBranch = translateKMeansCallAsStream((CallExpr) poolArg, shared);
+            poolBranch = translateKMeansCallAsStream((CallExpr) poolArg, shared, pairScoresKey);
         } else {
             poolBranch = translateStreamBranch((SelectExpression) poolArg);
         }
@@ -369,6 +374,15 @@ public class SqlppExpressionToPlanTranslator extends LangExpressionToPlanTransla
                 || mode == KMeansInitCandidatesOperator.Mode.COST || mode == KMeansInitCandidatesOperator.Mode.SAMPLE) {
             kop.setSharedVectorsKey(shared.key);
             shared.vectorStages.add(kop);
+        }
+        // Per-round score reuse: this COST writes the sidecar its parent SAMPLE will read; this SAMPLE reads
+        // the sidecar its pool COST wrote. Same key on both halves of the pair.
+        if (mode == KMeansInitCandidatesOperator.Mode.COST && scoresWriterKey != null) {
+            kop.setScoresKey(scoresWriterKey);
+            kop.setScoresWriter(true);
+        } else if (mode == KMeansInitCandidatesOperator.Mode.SAMPLE && pairScoresKey != null) {
+            kop.setScoresKey(pairScoresKey);
+            kop.setScoresWriter(false);
         }
         kop.setSourceLocation(loc);
         kop.getInputs().add(new MutableObject<>(vecBranch.first));

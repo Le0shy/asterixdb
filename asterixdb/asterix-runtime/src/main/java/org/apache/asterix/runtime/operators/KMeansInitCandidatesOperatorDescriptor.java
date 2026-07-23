@@ -40,15 +40,19 @@ import org.apache.hyracks.api.dataflow.IActivityGraphBuilder;
 import org.apache.hyracks.api.dataflow.IOperatorNodePushable;
 import org.apache.hyracks.api.dataflow.TaskId;
 import org.apache.hyracks.api.dataflow.value.IRecordDescriptorProvider;
+import org.apache.hyracks.api.dataflow.value.ISerializerDeserializer;
 import org.apache.hyracks.api.dataflow.value.RecordDescriptor;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
 import org.apache.hyracks.api.job.IOperatorDescriptorRegistry;
+import org.apache.hyracks.data.std.primitive.DoublePointable;
 import org.apache.hyracks.data.std.primitive.VoidPointable;
 import org.apache.hyracks.data.std.util.ArrayBackedValueStorage;
 import org.apache.hyracks.dataflow.common.comm.io.ArrayTupleBuilder;
 import org.apache.hyracks.dataflow.common.comm.io.FrameTupleAccessor;
 import org.apache.hyracks.dataflow.common.comm.io.FrameTupleAppender;
 import org.apache.hyracks.dataflow.common.data.accessors.FrameTupleReference;
+import org.apache.hyracks.dataflow.common.data.marshalling.DoubleSerializerDeserializer;
+import org.apache.hyracks.dataflow.common.io.RunFileReader;
 import org.apache.hyracks.dataflow.std.base.AbstractActivityNode;
 import org.apache.hyracks.dataflow.std.base.AbstractOperatorDescriptor;
 import org.apache.hyracks.dataflow.std.base.AbstractUnaryInputSinkOperatorNodePushable;
@@ -149,6 +153,16 @@ public class KMeansInitCandidatesOperatorDescriptor extends AbstractOperatorDesc
     // the pool input instead of the deterministic path's global top-`count` re-limit. Bernoulli oversampling
     // is already globally correct (normalized by phi), so C = union of all draws must survive to weighting.
     private final boolean keepAllCandidates;
+    // Per-round score reuse (exact-path optimization). When non-null on a COST/SAMPLE pair: COST (scoresWriter
+    // = true) writes each vector's best d^2 to a scratch sidecar keyed (joblet-scoped) by this per-round token
+    // + partition; the paired SAMPLE (scoresWriter = false) reads it back in vector order instead of recomputing
+    // the pool distance. Null = SAMPLE recomputes (original behavior).
+    private final String scoresKey;
+    private final boolean scoresWriter;
+
+    // The score sidecar is a run of single raw-double tuples (one best d^2 per vector, in vector order).
+    private static final RecordDescriptor SCORES_REC_DESC =
+            new RecordDescriptor(new ISerializerDeserializer[] { DoubleSerializerDeserializer.INSTANCE });
 
     public KMeansInitCandidatesOperatorDescriptor(IOperatorDescriptorRegistry spec, RecordDescriptor vectorRecDesc,
             Mode mode, int count, int vectorColumn, int poolColumn, boolean poolIsEnvelope) {
@@ -165,6 +179,14 @@ public class KMeansInitCandidatesOperatorDescriptor extends AbstractOperatorDesc
     public KMeansInitCandidatesOperatorDescriptor(IOperatorDescriptorRegistry spec, RecordDescriptor vectorRecDesc,
             Mode mode, int count, int vectorColumn, int poolColumn, boolean poolIsEnvelope, String sharedVectorsKey,
             boolean vectorsWriter, int sharedConsumerCount, long seed, boolean keepAllCandidates) {
+        this(spec, vectorRecDesc, mode, count, vectorColumn, poolColumn, poolIsEnvelope, sharedVectorsKey,
+                vectorsWriter, sharedConsumerCount, seed, keepAllCandidates, null, false);
+    }
+
+    public KMeansInitCandidatesOperatorDescriptor(IOperatorDescriptorRegistry spec, RecordDescriptor vectorRecDesc,
+            Mode mode, int count, int vectorColumn, int poolColumn, boolean poolIsEnvelope, String sharedVectorsKey,
+            boolean vectorsWriter, int sharedConsumerCount, long seed, boolean keepAllCandidates, String scoresKey,
+            boolean scoresWriter) {
         super(spec, 2, 1);
         this.mode = mode;
         this.count = count;
@@ -176,7 +198,14 @@ public class KMeansInitCandidatesOperatorDescriptor extends AbstractOperatorDesc
         this.sharedConsumerCount = sharedConsumerCount;
         this.seed = seed;
         this.keepAllCandidates = keepAllCandidates;
+        this.scoresKey = scoresKey;
+        this.scoresWriter = scoresWriter;
         outRecDescs[0] = vectorRecDesc;
+    }
+
+    /** Joblet-scoped state id for this COST/SAMPLE pair's per-round score sidecar on a given partition. */
+    private Object scoresStateId(int partition) {
+        return scoresKey + "#scores#" + partition;
     }
 
     /** Joblet-scoped state id for this tower's shared vector run file on a given partition. */
@@ -568,6 +597,11 @@ public class KMeansInitCandidatesOperatorDescriptor extends AbstractOperatorDesc
                  */
                 private void emitCost(MaterializerTaskState state, Emitter emitter) throws Exception {
                     final double[] localSum = { 0.0d };
+                    // Optimization: persist each vector's best d^2 (in vector order) so the paired SAMPLE reuses
+                    // it instead of re-scanning the pool. Written verbatim, INCLUDING the +inf/NaN sentinels, so
+                    // SAMPLE's guard + RNG consumption stay byte-identical. Null when not wired (SAMPLE recomputes).
+                    final ScoreSidecarWriter scores =
+                            (scoresKey != null && scoresWriter) ? new ScoreSidecarWriter(partition) : null;
                     streamVectors(state, vec -> {
                         double best = Double.POSITIVE_INFINITY;
                         for (int i = 0; i < pool.size(); i++) {
@@ -579,7 +613,13 @@ public class KMeansInitCandidatesOperatorDescriptor extends AbstractOperatorDesc
                         if (!Double.isNaN(best) && best != Double.POSITIVE_INFINITY) {
                             localSum[0] += best;
                         }
+                        if (scores != null) {
+                            scores.write(best);
+                        }
                     });
+                    if (scores != null) {
+                        scores.finish();
+                    }
                     if (partition == 0) {
                         for (int i = 0; i < pool.size(); i++) {
                             emitter.envelope(new Row(KIND_POOL, 0, i, 0.0d, pool.get(i)));
@@ -613,21 +653,37 @@ public class KMeansInitCandidatesOperatorDescriptor extends AbstractOperatorDesc
                         return; // pool already covers every point (all d^2 = 0): nothing to sample
                     }
                     final List<double[]> drawn = new ArrayList<>();
-                    streamVectors(state, vec -> {
-                        double best = Double.POSITIVE_INFINITY;
-                        for (int i = 0; i < pool.size(); i++) {
-                            double d = VectorDistanceCalculation.euclideanSquared(vec, pool.get(i));
-                            if (d < best) {
-                                best = d;
+                    // Optimization: reuse the per-vector d^2 that the paired COST already computed, read in
+                    // lockstep with the vector stream (same file, same order), instead of re-scanning the pool.
+                    // Null when not wired -> recompute exactly as before. Draws are byte-identical either way.
+                    final ScoreSidecarReader scores =
+                            (scoresKey != null && !scoresWriter) ? new ScoreSidecarReader(partition) : null;
+                    try {
+                        streamVectors(state, vec -> {
+                            double best;
+                            if (scores != null) {
+                                best = scores.next();
+                            } else {
+                                best = Double.POSITIVE_INFINITY;
+                                for (int i = 0; i < pool.size(); i++) {
+                                    double d = VectorDistanceCalculation.euclideanSquared(vec, pool.get(i));
+                                    if (d < best) {
+                                        best = d;
+                                    }
+                                }
                             }
+                            if (Double.isNaN(best) || best == Double.POSITIVE_INFINITY || best <= 0.0d) {
+                                return; // p_x = 0 for points already in the pool (paper never re-draws them)
+                            }
+                            if (rng.nextDouble() < l * best / phi) {
+                                drawn.add(vec.clone());
+                            }
+                        });
+                    } finally {
+                        if (scores != null) {
+                            scores.close();
                         }
-                        if (Double.isNaN(best) || best == Double.POSITIVE_INFINITY || best <= 0.0d) {
-                            return; // p_x = 0 for points already in the pool (paper never re-draws them)
-                        }
-                        if (rng.nextDouble() < l * best / phi) {
-                            drawn.add(vec.clone());
-                        }
-                    });
+                    }
                     long seq = 0L;
                     for (double[] cand : drawn) {
                         emitter.envelope(new Row(KIND_CANDIDATE, partition, seq++, 0.0d, cand));
@@ -804,6 +860,90 @@ public class KMeansInitCandidatesOperatorDescriptor extends AbstractOperatorDesc
 
                     private void flush() throws HyracksDataException {
                         appender.write(writer, true);
+                    }
+                }
+
+                /**
+                 * Writes the per-vector best d^2 (one raw double per tuple, in vector order) to a scratch run
+                 * file registered joblet-scoped under this pair's score key, for the paired SAMPLE to reuse.
+                 */
+                final class ScoreSidecarWriter {
+                    private final MaterializerTaskState st;
+                    private final VSizeFrame frame = new VSizeFrame(ctx);
+                    private final FrameTupleAppender appender = new FrameTupleAppender(frame);
+                    private final ArrayTupleBuilder tb = new ArrayTupleBuilder(1);
+
+                    private ScoreSidecarWriter(int partition) throws HyracksDataException {
+                        st = new MaterializerTaskState(ctx.getJobletContext().getJobId(),
+                                new TaskId(getActivityId(), partition));
+                        st.setId(scoresStateId(partition));
+                        st.open(ctx);
+                    }
+
+                    private void write(double best) throws HyracksDataException {
+                        tb.reset();
+                        tb.addField(DoubleSerializerDeserializer.INSTANCE, best);
+                        if (!appender.append(tb.getFieldEndOffsets(), tb.getByteArray(), 0, tb.getSize())) {
+                            st.appendFrame(appender.getBuffer());
+                            appender.reset(frame, true);
+                            if (!appender.append(tb.getFieldEndOffsets(), tb.getByteArray(), 0, tb.getSize())) {
+                                throw HyracksDataException.create(new IllegalStateException("score exceeds a frame"));
+                            }
+                        }
+                    }
+
+                    private void finish() throws HyracksDataException {
+                        if (appender.getTupleCount() > 0) {
+                            st.appendFrame(appender.getBuffer());
+                        }
+                        st.close();
+                        ctx.setStateObject(st);
+                    }
+                }
+
+                /**
+                 * Pull-reads the paired COST's score sidecar one double at a time, in the same vector order,
+                 * so SAMPLE consumes it in lockstep with the vector stream (one frame buffered, not the whole
+                 * file). {@link #next()} returns the next vector's best d^2, advancing frames as needed.
+                 */
+                final class ScoreSidecarReader {
+                    private final RunFileReader reader;
+                    private final VSizeFrame frame = new VSizeFrame(ctx);
+                    private final FrameTupleAccessor acc = new FrameTupleAccessor(SCORES_REC_DESC);
+                    private final FrameTupleReference t = new FrameTupleReference();
+                    private int idx;
+                    private int cnt;
+
+                    private ScoreSidecarReader(int partition) throws HyracksDataException {
+                        MaterializerTaskState st = (MaterializerTaskState) ctx.getStateObject(scoresStateId(partition));
+                        reader = st.createReader();
+                        reader.open();
+                        loadFrame();
+                    }
+
+                    private void loadFrame() throws HyracksDataException {
+                        idx = 0;
+                        cnt = 0;
+                        while (cnt == 0 && reader.nextFrame(frame)) {
+                            acc.reset(frame.getBuffer());
+                            cnt = acc.getTupleCount();
+                        }
+                    }
+
+                    private double next() throws HyracksDataException {
+                        if (idx >= cnt) {
+                            loadFrame();
+                            if (cnt == 0) {
+                                throw HyracksDataException
+                                        .create(new IllegalStateException("score sidecar shorter than vector stream"));
+                            }
+                        }
+                        t.reset(acc, idx++);
+                        return DoublePointable.getDouble(t.getFieldData(0), t.getFieldStart(0));
+                    }
+
+                    private void close() throws HyracksDataException {
+                        reader.close();
                     }
                 }
             };
