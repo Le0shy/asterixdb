@@ -20,14 +20,22 @@ package org.apache.asterix.runtime.operators.kmeans;
 
 import java.io.DataOutput;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 
+import org.apache.hyracks.api.comm.VSizeFrame;
+import org.apache.hyracks.api.context.IHyracksTaskContext;
 import org.apache.hyracks.api.dataflow.value.ISerializerDeserializer;
 import org.apache.hyracks.api.dataflow.value.RecordDescriptor;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
 import org.apache.hyracks.data.std.primitive.DoublePointable;
 import org.apache.hyracks.dataflow.common.comm.io.ArrayTupleBuilder;
+import org.apache.hyracks.dataflow.common.comm.io.FrameTupleAccessor;
+import org.apache.hyracks.dataflow.common.data.accessors.FrameTupleReference;
 import org.apache.hyracks.dataflow.common.data.marshalling.DoubleSerializerDeserializer;
 import org.apache.hyracks.dataflow.common.data.marshalling.IntegerSerializerDeserializer;
+import org.apache.hyracks.dataflow.common.io.RunFileReader;
+import org.apache.hyracks.dataflow.std.misc.MaterializerTaskState;
 import org.apache.hyracks.util.annotations.AiProvenance;
 
 /**
@@ -92,5 +100,54 @@ public final class KMeansLoopIO {
             v[i] = DoublePointable.getDouble(data, start + i * Double.BYTES);
         }
         return v;
+    }
+
+    /** Sink for {@link #streamRawVectors}: receives each stored vector, may throw on cancellation/error. */
+    @FunctionalInterface
+    public interface RawVectorConsumer {
+        void accept(double[] vec) throws HyracksDataException;
+    }
+
+    /**
+     * Streams every raw-double vector out of a {@link MaterializerTaskState} run file (pool or resident vectors,
+     * both {@link #POOL_RD}) via a fresh reader — repeatable, non-deleting, one frame buffered at a time. Polls
+     * the task-thread interrupt per frame so a cancelled job's pure-CPU scan aborts promptly.
+     */
+    public static void streamRawVectors(MaterializerTaskState state, IHyracksTaskContext ctx, RawVectorConsumer sink)
+            throws HyracksDataException {
+        FrameTupleAccessor accessor = new FrameTupleAccessor(POOL_RD);
+        FrameTupleReference tuple = new FrameTupleReference();
+        VSizeFrame frame = new VSizeFrame(ctx);
+        RunFileReader reader = state.createReader();
+        reader.open();
+        try {
+            while (reader.nextFrame(frame)) {
+                if (Thread.currentThread().isInterrupted()) {
+                    throw HyracksDataException.create(new InterruptedException());
+                }
+                accessor.reset(frame.getBuffer());
+                int tupleCount = accessor.getTupleCount();
+                for (int i = 0; i < tupleCount; i++) {
+                    tuple.reset(accessor, i);
+                    sink.accept(readRawVector(tuple.getFieldData(0), tuple.getFieldStart(0), tuple.getFieldLength(0)));
+                }
+            }
+        } finally {
+            reader.close();
+        }
+    }
+
+    /** Reads a whole (small) run file — e.g. the candidate pool — into memory. */
+    public static List<double[]> readAllRawVectors(MaterializerTaskState state, IHyracksTaskContext ctx)
+            throws HyracksDataException {
+        List<double[]> out = new ArrayList<>();
+        streamRawVectors(state, ctx, out::add);
+        return out;
+    }
+
+    /** Appends one raw-double vector as a {@link #POOL_RD} tuple into {@code appender} (caller flushes frames). */
+    public static void appendPoolVector(ArrayTupleBuilder tb, double[] vec) throws HyracksDataException {
+        tb.reset();
+        writeRawVector(tb, vec);
     }
 }
