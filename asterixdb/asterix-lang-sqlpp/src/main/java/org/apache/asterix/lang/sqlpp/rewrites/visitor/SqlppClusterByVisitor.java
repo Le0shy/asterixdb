@@ -155,8 +155,14 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
     // with probability p_x = l * d^2(x, pool) / phi. The default "kmeanspp" uses the deterministic top-l
     // approximation of that draw. Exact requires runtime init (the operator tower); it has no desugar form.
     private static final String INIT_MODE_KMEANSPP_EXACT = "kmeanspp-exact";
+    // "kmeanspp-exact-loop" = the SAME exact Bernoulli oversampling as "kmeanspp-exact", but realized as a
+    // single self-iterating operator (EXPERIMENTAL, single-NC): instead of unrolling the cost/sample rounds
+    // into a tower of broadcast-connected operators, the desugar emits ONE kmeans-oversample-loop call that
+    // loops internally, all-reducing the per-round global phi and the drawn candidates through an in-operator
+    // cross-partition barrier. Draws match "kmeanspp-exact" (same per-round seeds). Runtime-init only.
+    private static final String INIT_MODE_KMEANSPP_EXACT_LOOP = "kmeanspp-exact-loop";
     private static final Set<String> KNOWN_INIT_MODES =
-            Set.of(INIT_MODE_KMEANSPP, INIT_MODE_RANDOM, INIT_MODE_KMEANSPP_EXACT);
+            Set.of(INIT_MODE_KMEANSPP, INIT_MODE_RANDOM, INIT_MODE_KMEANSPP_EXACT, INIT_MODE_KMEANSPP_EXACT_LOOP);
     // Fixed base for the per-round exact-sampling seed (seed_r = EXACT_SEED_BASE + r). Fixed -> a run is
     // reproducible on a fixed topology; the descriptor mixes in the partition id.
     private static final int EXACT_SEED_BASE = 1_000_003;
@@ -322,13 +328,16 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
                 && context.getMetadataProvider().getBooleanProperty(CLUSTER_BY_RUNTIME_INIT_OPTION, true);
         boolean randomInit = INIT_MODE_RANDOM.equals(getInitMode(cbc));
         boolean exactInit = INIT_MODE_KMEANSPP_EXACT.equals(getInitMode(cbc));
-        // Exact Bernoulli sampling exists only as the runtime operator tower (the per-round global-phi
-        // reduce has no efficient pure-SQL++ desugar). Reject it when runtime init is disabled rather than
-        // silently falling back to the deterministic top-l desugar.
-        if (exactInit && !runtimeInit) {
+        // Same exact Bernoulli oversampling, but as one self-iterating operator instead of the unrolled tower.
+        boolean exactLoop = INIT_MODE_KMEANSPP_EXACT_LOOP.equals(getInitMode(cbc));
+        // Exact Bernoulli sampling (either realization) exists only as a runtime operator (the per-round
+        // global-phi reduce has no efficient pure-SQL++ desugar). Reject it when runtime init is disabled
+        // rather than silently falling back to the deterministic top-l desugar.
+        if ((exactInit || exactLoop) && !runtimeInit) {
             throw new CompilationException(ErrorCode.COMPILATION_ERROR, cbc.getSourceLocation(),
-                    "CLUSTER BY initMode 'kmeansPP-exact' requires runtime init; it has no desugar reference "
-                            + "path. Enable cluster_by_runtime_init (the default) or use initMode 'kmeansPP'.");
+                    "CLUSTER BY initMode '" + getInitMode(cbc) + "' requires runtime init; it has no desugar "
+                            + "reference path. Enable cluster_by_runtime_init (the default) or use initMode "
+                            + "'kmeansPP'.");
         }
         VarIdentifier pool;
         VarIdentifier prev = null;
@@ -357,20 +366,29 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
                 // Deterministic seed: the lexicographically smallest vector (see the seedQuery comment).
                 Expression poolStream = selectValueFrom(copy(vecsQuery), pv, pv, null, null,
                         ascOrder(varRef(pv.getVar(), loc)), null, seedLimit, loc);
-                for (int r = 0; r < INIT_OVERSAMPLING_ROUNDS; r++) {
-                    if (exactInit) {
-                        // Paper Algorithm 2 round: COST reduces the global potential phi = Sigma d^2(x, pool),
-                        // then SAMPLE draws each point with p_x = l * d^2(x, pool) / phi (distinct per-round
-                        // seed for reproducibility). Keeps every draw -- the operator's intake does not
-                        // re-limit a SAMPLE's candidates. This is the faithful Bernoulli oversampling; the
-                        // deterministic top-l branch below is the approximation.
-                        Expression cost = call(BuiltinFunctions.KMEANS_COST, loc, copy(vecsQuery), poolStream,
-                                intLit(OVERSAMPLING_FACTOR_PER_K * k, loc));
-                        poolStream = call(BuiltinFunctions.KMEANS_SAMPLE, loc, copy(vecsQuery), cost,
-                                intLit(OVERSAMPLING_FACTOR_PER_K * k, loc), intLit(EXACT_SEED_BASE + r, loc));
-                    } else {
-                        poolStream = call(BuiltinFunctions.KMEANS_INIT_CANDIDATES, loc, copy(vecsQuery), poolStream,
-                                intLit(OVERSAMPLING_FACTOR_PER_K * k, loc));
+                if (exactLoop) {
+                    // Single self-iterating operator: it loops INIT_OVERSAMPLING_ROUNDS times internally,
+                    // all-reducing phi and the draws through an in-operator barrier, and echoes the final pool.
+                    // Same seed base as the unrolled exact tower, so the draws are the same.
+                    poolStream = call(BuiltinFunctions.KMEANS_OVERSAMPLE_LOOP, loc, copy(vecsQuery), poolStream,
+                            intLit(OVERSAMPLING_FACTOR_PER_K * k, loc), intLit(INIT_OVERSAMPLING_ROUNDS, loc),
+                            intLit(EXACT_SEED_BASE, loc));
+                } else {
+                    for (int r = 0; r < INIT_OVERSAMPLING_ROUNDS; r++) {
+                        if (exactInit) {
+                            // Paper Algorithm 2 round: COST reduces the global potential phi = Sigma d^2(x,
+                            // pool), then SAMPLE draws each point with p_x = l * d^2(x, pool) / phi (distinct
+                            // per-round seed for reproducibility). Keeps every draw -- the operator's intake does
+                            // not re-limit a SAMPLE's candidates. This is the faithful Bernoulli oversampling;
+                            // the deterministic top-l branch below is the approximation.
+                            Expression cost = call(BuiltinFunctions.KMEANS_COST, loc, copy(vecsQuery), poolStream,
+                                    intLit(OVERSAMPLING_FACTOR_PER_K * k, loc));
+                            poolStream = call(BuiltinFunctions.KMEANS_SAMPLE, loc, copy(vecsQuery), cost,
+                                    intLit(OVERSAMPLING_FACTOR_PER_K * k, loc), intLit(EXACT_SEED_BASE + r, loc));
+                        } else {
+                            poolStream = call(BuiltinFunctions.KMEANS_INIT_CANDIDATES, loc, copy(vecsQuery), poolStream,
+                                    intLit(OVERSAMPLING_FACTOR_PER_K * k, loc));
+                        }
                     }
                 }
                 // WEIGH: consumes the round tower directly (its intake applies the terminal global

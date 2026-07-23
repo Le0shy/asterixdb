@@ -219,7 +219,9 @@ public class SqlppExpressionToPlanTranslator extends LangExpressionToPlanTransla
                 || BuiltinFunctions.KMEANS_LLOYD_MERGE.getName().equals(name)
                 || BuiltinFunctions.KMEANS_COST.getName().equals(name));
         boolean four = arity == 4 && BuiltinFunctions.KMEANS_SAMPLE.getName().equals(name);
-        return three || four;
+        // The 5-arg self-iterating exact loop (vectors, seedPool, l, rounds, seedBase).
+        boolean five = arity == 5 && BuiltinFunctions.KMEANS_OVERSAMPLE_LOOP.getName().equals(name);
+        return three || four || five;
     }
 
     /** Whether a nested tower call's OUTPUT rows are envelopes (vs plain vectors). */
@@ -227,8 +229,10 @@ public class SqlppExpressionToPlanTranslator extends LangExpressionToPlanTransla
         String name = nested.getFunctionSignature().getName();
         if (BuiltinFunctions.KMEANS_WEIGH_CANDIDATES.getName().equals(name)
                 || BuiltinFunctions.KMEANS_COST.getName().equals(name)
-                || BuiltinFunctions.KMEANS_SAMPLE.getName().equals(name)) {
-            // COST emits pool echo + a cost partial; SAMPLE emits pool echo + candidates -- both envelopes.
+                || BuiltinFunctions.KMEANS_SAMPLE.getName().equals(name)
+                || BuiltinFunctions.KMEANS_OVERSAMPLE_LOOP.getName().equals(name)) {
+            // COST emits pool echo + a cost partial; SAMPLE emits pool echo + candidates; OVERSAMPLE_LOOP
+            // emits the final pool as pool-echo rows -- all envelopes.
             return true;
         }
         if (BuiltinFunctions.KMEANS_INIT_CANDIDATES.getName().equals(name)) {
@@ -339,6 +343,8 @@ public class SqlppExpressionToPlanTranslator extends LangExpressionToPlanTransla
             mode = KMeansInitCandidatesOperator.Mode.COST;
         } else if (BuiltinFunctions.KMEANS_SAMPLE.getName().equals(fnName)) {
             mode = KMeansInitCandidatesOperator.Mode.SAMPLE;
+        } else if (BuiltinFunctions.KMEANS_OVERSAMPLE_LOOP.getName().equals(fnName)) {
+            mode = KMeansInitCandidatesOperator.Mode.OVERSAMPLE_LOOP;
         } else {
             // kmeans-init-candidates: a negative l marks the FINALIZE variant.
             mode = countArg < 0 ? KMeansInitCandidatesOperator.Mode.FINALIZE : KMeansInitCandidatesOperator.Mode.ROUND;
@@ -367,6 +373,17 @@ public class SqlppExpressionToPlanTranslator extends LangExpressionToPlanTransla
                     ((org.apache.asterix.lang.common.literal.IntegerLiteral) ((org.apache.asterix.lang.common.expression.LiteralExpr) fcall
                             .getExprList().get(3)).getValue()).getValue().longValue();
             kop.setSeed(seed);
+        }
+        // OVERSAMPLE_LOOP: 4th arg is the iteration count, 5th the seed base (per-round seed = base + r).
+        if (mode == KMeansInitCandidatesOperator.Mode.OVERSAMPLE_LOOP) {
+            int rounds =
+                    (int) ((org.apache.asterix.lang.common.literal.IntegerLiteral) ((org.apache.asterix.lang.common.expression.LiteralExpr) fcall
+                            .getExprList().get(3)).getValue()).getValue().longValue();
+            long seedBase =
+                    ((org.apache.asterix.lang.common.literal.IntegerLiteral) ((org.apache.asterix.lang.common.expression.LiteralExpr) fcall
+                            .getExprList().get(4)).getValue()).getValue().longValue();
+            kop.setLoopRounds(rounds);
+            kop.setSeed(seedBase);
         }
         // ROUND/WEIGH/COST/SAMPLE read the full vector stream; they share one materialized run file per
         // tower. (RECLUSTER/LLOYD/FINALIZE read a LIMIT-1 dummy, so they keep their own materialization.)

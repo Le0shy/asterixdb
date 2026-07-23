@@ -24,6 +24,12 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.PriorityQueue;
+import java.util.concurrent.BrokenBarrierException;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.asterix.builders.OrderedListBuilder;
 import org.apache.asterix.dataflow.data.nontagged.serde.ADoubleSerializerDeserializer;
@@ -117,7 +123,17 @@ public class KMeansInitCandidatesOperatorDescriptor extends AbstractOperatorDesc
         // Unlike ROUND, SAMPLE keeps EVERY drawn candidate (no top-l re-limit) -- the count is random with
         // expectation l, exactly the paper's C <- C U C'.
         COST,
-        SAMPLE
+        SAMPLE,
+        // EXPERIMENTAL, single-NC. The whole exact oversample loop as ONE operator that iterates internally
+        // (loopRounds times) instead of the unrolled COST/SAMPLE tower. Each iteration: (1) each partition
+        // sums its local potential Sigma d^2(x, currentPool); (2) a shared-object barrier all-reduces those to
+        // the global phi; (3) each partition draws its residents Bernoulli-style with p = l*d^2/phi (same
+        // per-round seed as SAMPLE); (4) a second barrier all-reduces the drawn candidates into every
+        // partition's currentPool (identical union order -> the pools stay byte-identical across partitions).
+        // Partition 0 then emits the final currentPool as pool-echo envelopes for the terminal WEIGH. Because
+        // the barrier rendezvous is joblet-scoped (single JVM), all partitions must run on ONE NC; on a
+        // multi-NC deployment the barrier never fills and fails on a timeout.
+        OVERSAMPLE_LOOP
     }
 
     private static final int STORE_VECTORS_ACTIVITY_ID = 0;
@@ -159,10 +175,80 @@ public class KMeansInitCandidatesOperatorDescriptor extends AbstractOperatorDesc
     // the pool distance. Null = SAMPLE recomputes (original behavior).
     private final String scoresKey;
     private final boolean scoresWriter;
+    // OVERSAMPLE_LOOP only: number of internal oversample iterations (0 for every other mode).
+    private final int loopRounds;
 
     // The score sidecar is a run of single raw-double tuples (one best d^2 per vector, in vector order).
     private static final RecordDescriptor SCORES_REC_DESC =
             new RecordDescriptor(new ISerializerDeserializer[] { DoubleSerializerDeserializer.INSTANCE });
+
+    // OVERSAMPLE_LOOP: max time a partition waits at a barrier before declaring the rendezvous dead. On a
+    // correct single-NC run every party arrives within one round's compute; a stuck party (a failed sibling,
+    // or a multi-NC deployment where the other NC's partitions live in a different JVM and never join) trips
+    // this instead of hanging the job forever.
+    private static final long BARRIER_TIMEOUT_MINUTES = 30L;
+
+    // OVERSAMPLE_LOOP: the single-JVM rendezvous shared by all partition-tasks of one loop operator instance.
+    // Keyed by (jobId, operatorId) so distinct jobs/operators don't collide; created once via computeIfAbsent
+    // (the barrier is sized to the total partition count) and removed by the last partition to finish.
+    private static final ConcurrentHashMap<String, LoopCoordinator> LOOP_COORDINATORS = new ConcurrentHashMap<>();
+
+    /**
+     * Cross-partition all-reduce scratch for one OVERSAMPLE_LOOP instance, shared in-JVM by every partition
+     * task. The {@link CyclicBarrier} (reused for both of a round's two rendezvous, across all rounds) gives
+     * the happens-before that makes the plain arrays safe: each partition writes only its own slot before a
+     * barrier trip, and reads every slot after it. {@code localPhi[p]} carries partition p's local potential;
+     * {@code drawn[p]} carries partition p's draws for the current round. Both are overwritten each round --
+     * safe because the next round's first barrier can't trip until every partition has finished reading the
+     * previous round's slots (see the loop body).
+     */
+    @AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.GENERATED, notes = "OVERSAMPLE_LOOP single-NC all-reduce coordinator")
+    private static final class LoopCoordinator {
+        private final int nParties;
+        private final CyclicBarrier barrier;
+        private final double[] localPhi;
+        private final List<double[]>[] drawn;
+        private final AtomicInteger finishers = new AtomicInteger();
+        private volatile boolean aborted;
+
+        @SuppressWarnings("unchecked")
+        private LoopCoordinator(int nParties) {
+            this.nParties = nParties;
+            this.barrier = new CyclicBarrier(nParties);
+            this.localPhi = new double[nParties];
+            this.drawn = new List[nParties];
+        }
+
+        /** Rendezvous all partitions; fail-fast (not hang) if a sibling died or this is a multi-NC run. */
+        private void await() throws HyracksDataException {
+            if (aborted) {
+                throw HyracksDataException.create(new IllegalStateException("kmeans OVERSAMPLE_LOOP aborted"));
+            }
+            try {
+                barrier.await(BARRIER_TIMEOUT_MINUTES, TimeUnit.MINUTES);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw HyracksDataException.create(e);
+            } catch (BrokenBarrierException e) {
+                throw HyracksDataException.create(e);
+            } catch (TimeoutException e) {
+                throw HyracksDataException
+                        .create(new IllegalStateException(
+                                "kmeans OVERSAMPLE_LOOP barrier timed out after " + BARRIER_TIMEOUT_MINUTES
+                                        + " min; this mode requires a single-NC deployment (all partitions in one JVM)",
+                                e));
+            }
+            if (aborted) {
+                throw HyracksDataException.create(new IllegalStateException("kmeans OVERSAMPLE_LOOP aborted"));
+            }
+        }
+
+        /** A failing partition trips the barrier so any blocked sibling fails fast instead of timing out. */
+        private void abort() {
+            aborted = true;
+            barrier.reset();
+        }
+    }
 
     public KMeansInitCandidatesOperatorDescriptor(IOperatorDescriptorRegistry spec, RecordDescriptor vectorRecDesc,
             Mode mode, int count, int vectorColumn, int poolColumn, boolean poolIsEnvelope) {
@@ -187,6 +273,14 @@ public class KMeansInitCandidatesOperatorDescriptor extends AbstractOperatorDesc
             Mode mode, int count, int vectorColumn, int poolColumn, boolean poolIsEnvelope, String sharedVectorsKey,
             boolean vectorsWriter, int sharedConsumerCount, long seed, boolean keepAllCandidates, String scoresKey,
             boolean scoresWriter) {
+        this(spec, vectorRecDesc, mode, count, vectorColumn, poolColumn, poolIsEnvelope, sharedVectorsKey,
+                vectorsWriter, sharedConsumerCount, seed, keepAllCandidates, scoresKey, scoresWriter, 0);
+    }
+
+    public KMeansInitCandidatesOperatorDescriptor(IOperatorDescriptorRegistry spec, RecordDescriptor vectorRecDesc,
+            Mode mode, int count, int vectorColumn, int poolColumn, boolean poolIsEnvelope, String sharedVectorsKey,
+            boolean vectorsWriter, int sharedConsumerCount, long seed, boolean keepAllCandidates, String scoresKey,
+            boolean scoresWriter, int loopRounds) {
         super(spec, 2, 1);
         this.mode = mode;
         this.count = count;
@@ -200,6 +294,7 @@ public class KMeansInitCandidatesOperatorDescriptor extends AbstractOperatorDesc
         this.keepAllCandidates = keepAllCandidates;
         this.scoresKey = scoresKey;
         this.scoresWriter = scoresWriter;
+        this.loopRounds = loopRounds;
         outRecDescs[0] = vectorRecDesc;
     }
 
@@ -385,6 +480,9 @@ public class KMeansInitCandidatesOperatorDescriptor extends AbstractOperatorDesc
                                 break;
                             case SAMPLE:
                                 emitSample(vecState, emitter);
+                                break;
+                            case OVERSAMPLE_LOOP:
+                                emitOversampleLoop(vecState, emitter, nPartitions);
                                 break;
                         }
                         emitter.flush();
@@ -690,6 +788,105 @@ public class KMeansInitCandidatesOperatorDescriptor extends AbstractOperatorDesc
                     }
                 }
 
+                /**
+                 * EXPERIMENTAL single-NC init: the entire exact oversample loop in one operator. {@code pool}
+                 * holds the seed (built by collectPool from the plain-vector input 1). Each of {@code loopRounds}
+                 * iterations does a COST pass (local Sigma d^2 over the resident run file, caching each best d^2
+                 * so the same round's SAMPLE pass need not recompute it), a barrier all-reduce to the global phi,
+                 * a SAMPLE pass drawing residents with p = count*d^2/phi (same per-round seed as {@link Mode#SAMPLE}
+                 * so draws match the unrolled tower), and a second barrier all-reduce unioning every partition's
+                 * draws into {@code currentPool}. The union order is identical on every partition (seed, then draws
+                 * by ascending partition then draw order), so all partitions hold byte-identical pools throughout
+                 * and agree on phi. Partition 0 finally emits the pool as KIND_POOL envelopes for the terminal
+                 * WEIGH. Vectors are read via {@link MaterializerTaskState#createReader()} (not writeOut) so the run
+                 * file survives all 2*loopRounds passes.
+                 */
+                private void emitOversampleLoop(MaterializerTaskState state, Emitter emitter, int nPartitions)
+                        throws Exception {
+                    final List<double[]> currentPool = new ArrayList<>(pool);
+                    final String coordKey = ctx.getJobletContext().getJobId() + "#" + getOperatorId();
+                    final LoopCoordinator coord =
+                            LOOP_COORDINATORS.computeIfAbsent(coordKey, k -> new LoopCoordinator(nPartitions));
+                    try {
+                        // Per-resident best d^2 cache, filled by each round's COST pass and reused by its SAMPLE
+                        // pass (currentPool is unchanged between the two). Grown on the first round, then reused.
+                        final double[][] best = { new double[1024] };
+                        final double l = count;
+                        for (int r = 0; r < loopRounds; r++) {
+                            // (1) COST: local potential over the resident vectors against the current pool.
+                            final List<double[]> poolSnapshot = currentPool;
+                            final double[] localSum = { 0.0d };
+                            final int[] idx = { 0 };
+                            streamVectorsRepeatable(state, vec -> {
+                                double b = Double.POSITIVE_INFINITY;
+                                for (double[] c : poolSnapshot) {
+                                    double d = VectorDistanceCalculation.euclideanSquared(vec, c);
+                                    if (d < b) {
+                                        b = d;
+                                    }
+                                }
+                                if (!Double.isNaN(b) && b != Double.POSITIVE_INFINITY) {
+                                    localSum[0] += b;
+                                }
+                                if (idx[0] == best[0].length) {
+                                    best[0] = java.util.Arrays.copyOf(best[0], best[0].length * 2);
+                                }
+                                best[0][idx[0]++] = b;
+                            });
+                            final int residentCount = idx[0];
+                            // (2) all-reduce to the global potential phi.
+                            coord.localPhi[partition] = localSum[0];
+                            coord.await();
+                            double phiAcc = 0.0d;
+                            for (double v : coord.localPhi) {
+                                phiAcc += v;
+                            }
+                            final double phi = phiAcc;
+                            // (3) SAMPLE: draw residents Bernoulli-style (reusing the cached best d^2). Same seed
+                            // rule as Mode.SAMPLE (per-round base + partition), so draws match the unrolled tower.
+                            final List<double[]> myDraws = new ArrayList<>();
+                            if (phi > 0.0d) {
+                                final java.util.Random rng = new java.util.Random((seed + r) * 1000003L + partition);
+                                final int[] j = { 0 };
+                                streamVectorsRepeatable(state, vec -> {
+                                    double b = best[0][j[0]++];
+                                    if (Double.isNaN(b) || b == Double.POSITIVE_INFINITY || b <= 0.0d) {
+                                        return; // p_x = 0 for points already covered by the pool
+                                    }
+                                    if (rng.nextDouble() < l * b / phi) {
+                                        myDraws.add(vec.clone());
+                                    }
+                                });
+                                if (j[0] != residentCount) {
+                                    throw HyracksDataException.create(new IllegalStateException(
+                                            "kmeans OVERSAMPLE_LOOP: resident count changed between passes"));
+                                }
+                            }
+                            // (4) all-reduce union: fold every partition's draws into the pool, identical order.
+                            coord.drawn[partition] = myDraws;
+                            coord.await();
+                            for (int p = 0; p < nPartitions; p++) {
+                                currentPool.addAll(coord.drawn[p]);
+                            }
+                        }
+                        // Emit the final pool as pool-echo envelopes (partition 0 only -- it is complete and
+                        // identical everywhere; the terminal WEIGH broadcasts it back to every partition).
+                        if (partition == 0) {
+                            for (int i = 0; i < currentPool.size(); i++) {
+                                emitter.envelope(new Row(KIND_POOL, 0, i, 0.0d, currentPool.get(i)));
+                            }
+                        }
+                    } catch (Exception e) {
+                        coord.abort(); // wake any sibling blocked at the barrier -> it fails fast, not on timeout
+                        throw e;
+                    } finally {
+                        // Last partition to finish reclaims the shared coordinator (jobId+opId is single-use).
+                        if (coord.finishers.incrementAndGet() == coord.nParties) {
+                            LOOP_COORDINATORS.remove(coordKey);
+                        }
+                    }
+                }
+
                 private void emitRecluster(Emitter emitter) throws Exception {
                     if (partition != 0) {
                         return; // the merged result is identical everywhere; one partition speaks
@@ -804,6 +1001,32 @@ public class KMeansInitCandidatesOperatorDescriptor extends AbstractOperatorDesc
                         public void close() {
                         }
                     }, new VSizeFrame(ctx), false);
+                }
+
+                /**
+                 * Like {@link #streamVectors} but via {@link MaterializerTaskState#createReader()} instead of
+                 * writeOut, so it can be called repeatedly (OVERSAMPLE_LOOP re-reads the residents 2*loopRounds
+                 * times) without the writeOut consumer-count self-delete consuming the run file after one pass.
+                 */
+                private void streamVectorsRepeatable(MaterializerTaskState state, VectorSink sink)
+                        throws HyracksDataException {
+                    final FrameTupleAccessor vecAccessor = new FrameTupleAccessor(vecRecDesc);
+                    final VSizeFrame frame = new VSizeFrame(ctx);
+                    RunFileReader reader = state.createReader();
+                    reader.open();
+                    try {
+                        while (reader.nextFrame(frame)) {
+                            failIfInterrupted();
+                            vecAccessor.reset(frame.getBuffer());
+                            int tupleCount = vecAccessor.getTupleCount();
+                            for (int i = 0; i < tupleCount; i++) {
+                                tupleRef.reset(vecAccessor, i);
+                                sink.accept(decodeVector(tupleRef, vectorColumn));
+                            }
+                        }
+                    } finally {
+                        reader.close();
+                    }
                 }
 
                 /** Serialization state for one emit pass; every value is an OPEN list (tagged items). */

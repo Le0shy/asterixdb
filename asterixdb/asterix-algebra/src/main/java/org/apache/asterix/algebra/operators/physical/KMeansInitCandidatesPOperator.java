@@ -117,6 +117,9 @@ public class KMeansInitCandidatesPOperator extends AbstractPhysicalOperator {
             case SAMPLE:
                 mode = KMeansInitCandidatesOperatorDescriptor.Mode.SAMPLE;
                 break;
+            case OVERSAMPLE_LOOP:
+                mode = KMeansInitCandidatesOperatorDescriptor.Mode.OVERSAMPLE_LOOP;
+                break;
             default:
                 mode = KMeansInitCandidatesOperatorDescriptor.Mode.ROUND;
                 break;
@@ -124,7 +127,7 @@ public class KMeansInitCandidatesPOperator extends AbstractPhysicalOperator {
         KMeansInitCandidatesOperatorDescriptor opDesc = new KMeansInitCandidatesOperatorDescriptor(builder.getJobSpec(),
                 recDesc, mode, kop.getTopCount(), vectorColumn, poolColumn, kop.isPoolFromPriorRound(),
                 kop.getSharedVectorsKey(), kop.isVectorsWriter(), kop.getSharedConsumerCount(), kop.getSeed(),
-                kop.isKeepAllCandidates(), kop.getScoresKey(), kop.isScoresWriter());
+                kop.isKeepAllCandidates(), kop.getScoresKey(), kop.isScoresWriter(), kop.getLoopRounds());
         contributeOpDesc(builder, (AbstractLogicalOperator) op, opDesc);
         ILogicalOperator src0 = op.getInputs().get(0).getValue();
         builder.contributeGraphEdge(src0, 0, op, 0);

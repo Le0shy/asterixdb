@@ -64,7 +64,14 @@ public class KMeansInitCandidatesOperator extends AbstractLogicalOperator {
         // COST emits each partition's local Sigma d^2(x, pool) as a partial (broadcast -> global phi);
         // SAMPLE draws each vector with p_x = topCount * d^2(x, pool) / phi (seeded), keeping every draw.
         COST,
-        SAMPLE
+        SAMPLE,
+        // EXPERIMENTAL (single-NC): the whole exact oversample loop as ONE operator that iterates
+        // internally instead of the unrolled COST/SAMPLE tower. Each of loopRounds iterations does a local
+        // cost + a shared-object all-reduce to global phi + a local Bernoulli sample + a shared-object
+        // all-reduce union into the next pool; the final pool is emitted for WEIGH. The two all-reduces
+        // rendezvous partitions via a joblet-scoped barrier, so this is correct only when all partitions run
+        // on one NC (the barrier is sized to the total partition count). See the operator descriptor.
+        OVERSAMPLE_LOOP
     }
 
     // References to the vector-valued variable of input 0 (the qualified points) and of input 1 (the
@@ -101,6 +108,9 @@ public class KMeansInitCandidatesOperator extends AbstractLogicalOperator {
     // token (null = not wired, SAMPLE recomputes as before); COST is the writer, SAMPLE the reader.
     private String scoresKey;
     private boolean scoresWriter;
+    // OVERSAMPLE_LOOP only: number of oversample iterations the operator runs internally (the desugar emits
+    // ONE loop call instead of an unrolled COST/SAMPLE tower). Unused by every other mode.
+    private int loopRounds;
 
     public KMeansInitCandidatesOperator(Mutable<ILogicalExpression> vectorRef, Mutable<ILogicalExpression> poolRef,
             LogicalVariable candidateVar, Object candidateVarType, int topCount) {
@@ -268,5 +278,14 @@ public class KMeansInitCandidatesOperator extends AbstractLogicalOperator {
 
     public void setKeepAllCandidates(boolean keepAllCandidates) {
         this.keepAllCandidates = keepAllCandidates;
+    }
+
+    /** OVERSAMPLE_LOOP only: how many oversample iterations the operator runs internally. */
+    public int getLoopRounds() {
+        return loopRounds;
+    }
+
+    public void setLoopRounds(int loopRounds) {
+        this.loopRounds = loopRounds;
     }
 }

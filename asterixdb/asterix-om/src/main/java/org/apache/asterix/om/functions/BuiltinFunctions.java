@@ -1263,6 +1263,11 @@ public class BuiltinFunctions {
     // kmeans-sample(vectors, pool, l, seed): draw each vector with prob p_x = l * d^2(x, pool) / phi
     // (phi from the broadcast cost partials), seeded for reproducibility. Keeps every draw (C <- C U C').
     public static final FunctionIdentifier KMEANS_SAMPLE = FunctionConstants.newAsterix("kmeans-sample", 4);
+    // kmeans-oversample-loop(vectors, seedPool, l, rounds, seedBase): EXPERIMENTAL single-NC init that runs the
+    // whole exact oversample loop (the cost/sample tower) inside ONE operator, iterating `rounds` times with an
+    // in-operator cross-partition barrier instead of an unrolled chain of broadcast connectors.
+    public static final FunctionIdentifier KMEANS_OVERSAMPLE_LOOP =
+            FunctionConstants.newAsterix("kmeans-oversample-loop", 5);
 
     // Temporal functions
     public static final FunctionIdentifier UNIX_TIME_FROM_DATE_IN_DAYS =
@@ -2021,6 +2026,7 @@ public class BuiltinFunctions {
         addPrivateFunction(KMEANS_LLOYD_MERGE, OrderedListOfAnyTypeComputer.INSTANCE, true);
         addPrivateFunction(KMEANS_COST, OrderedListOfAnyTypeComputer.INSTANCE, true);
         addPrivateFunction(KMEANS_SAMPLE, OrderedListOfAnyTypeComputer.INSTANCE, true);
+        addPrivateFunction(KMEANS_OVERSAMPLE_LOOP, OrderedListOfAnyTypeComputer.INSTANCE, true);
         // Window functions
 
         addFunction(CUME_DIST, ADoubleTypeComputer.INSTANCE, false);
