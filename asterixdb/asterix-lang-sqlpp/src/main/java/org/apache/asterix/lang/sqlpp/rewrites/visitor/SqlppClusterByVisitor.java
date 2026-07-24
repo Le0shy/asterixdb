@@ -42,7 +42,6 @@ import org.apache.asterix.lang.common.expression.CallExpr;
 import org.apache.asterix.lang.common.expression.FieldAccessor;
 import org.apache.asterix.lang.common.expression.GbyVariableExpressionPair;
 import org.apache.asterix.lang.common.expression.IndexAccessor;
-import org.apache.asterix.lang.common.expression.ListConstructor;
 import org.apache.asterix.lang.common.expression.LiteralExpr;
 import org.apache.asterix.lang.common.expression.OperatorExpr;
 import org.apache.asterix.lang.common.expression.VariableExpr;
@@ -85,19 +84,10 @@ import org.apache.hyracks.util.annotations.AiProvenance;
  *
  * <pre>
  *   LET __vecs = (FROM src AS v SELECT VALUE v.vec),
- *       __seed = (FROM __vecs AS v SELECT VALUE v LIMIT 1),                     -- k-means|| step 1 (first point)
- *       __cand_r = (FROM __vecs AS v
- *                   WHERE nearest_centroid_distance(v, __pool_{r-1}) &gt; 0
- *                   SELECT VALUE v
- *                   ORDER BY nearest_centroid_distance(v, __pool_{r-1}) DESC
- *                   LIMIT 2k),                                                  -- oversampling rounds r = 1..5
- *       __pool_r = array_concat(__pool_{r-1}, __cand_r),                        -- C &lt;- C u C'  (__pool_0 = __seed)
- *       __wpairs = (FROM __vecs AS v GROUP BY nearest_centroid(v, __pool_R) AS ci
- *                   SELECT VALUE [centroid(v), count(v)]),                      -- step 6: weight the candidates
- *       __top = (FROM __wpairs AS g SELECT VALUE g[0]
- *                ORDER BY g[1] DESC LIMIT k),                                   -- step 7: top-k group means
- *       C0 = (FROM array_concat(__top, __vecs) AS c
- *             SELECT VALUE c LIMIT k),                                          -- pad so |C0| = k
+ *       __pool = kmeans_oversample_loop(__vecs, __seed, 2k, 5, seedBase),       -- initMode "kmeansPP": exact
+ *                                                                               --   k-means|| oversampling
+ *                                                                               --   (VLDB'12), run at runtime
+ *       C0 = kmeans_recluster(__vecs, __pool, k),                               -- weight the pool, reduce to k
  *       C1 = (FROM __vecs AS v SELECT VALUE centroid(v) GROUP BY nearest_centroid(v, C0)), -- Lloyd iter 1
  *       C2 = (... nearest_centroid(v, C1)),                                                -- iter 2
  *       C3 = (... nearest_centroid(v, C2))                                                 -- iter 3
@@ -105,6 +95,10 @@ import org.apache.hyracks.util.annotations.AiProvenance;
  *   GROUP BY nearest_centroid(t.vec, C3) AS $cid [GROUP AS members]
  *   SELECT ...   -- sc.cluster_id -&gt; nearest_centroid(t.vec, C3), sc.centroid -&gt; centroid(t.vec), radius -&gt; 0.0
  * </pre>
+ *
+ * For {@code initMode "random"} the {@code kmeans_oversample_loop}/{@code kmeans_recluster} init is skipped
+ * entirely and Lloyd seeds directly from an arbitrary {@code k}-subset of {@code __vecs} (pure SQL++, no runtime
+ * init operator).
  *
  * The centroid lists {@code C0..C3} are query-level LETs (constants, in scope after the GROUP BY). The two-step
  * distributed CENTROID aggregate + {@code nearest_centroid} broadcast labeling are supplied by the downstream
@@ -118,12 +112,12 @@ import org.apache.hyracks.util.annotations.AiProvenance;
  * optimizer type-inference failure when {@code CLUSTER AS members} is also referenced.
  * <p>
  * Supports a single FROM term (no explicit joins), K-Means only, Euclidean(-squared) distance, and a fixed
- * number of Lloyd iterations. Seeding is the k-means|| initialization (VLDB'12 "Scalable K-Means++"): a
- * deterministic first-point seed, then unrolled top-{@code 2k}-by-distance-to-pool oversampling rounds standing
- * in for the paper's Bernoulli draw (whose expected picks per round is also {@code 2k}); the weighting/recluster
- * steps are approximated by ranking the pool by weight and padding to k. The probabilistic draw with the
- * potential {@code psi}, and sampling or materializing the initialization input, remain future work. The WITH
- * options are also validated.
+ * number of Lloyd iterations. Two init modes are supported: {@code kmeansPP} (the default) runs the exact
+ * k-means|| initialization (VLDB'12 "Scalable K-Means++") as the {@code kmeans_oversample_loop} runtime operator
+ * -- a seeded-Bernoulli oversampling loop with the potential {@code psi}, whose pool is then weighted and reduced
+ * to {@code k} centroids by {@code kmeans_recluster} -- and requires {@code cluster_by_runtime_init} (on by
+ * default); {@code random} skips init and seeds Lloyd from an arbitrary {@code k}-subset. The WITH options are
+ * also validated.
  */
 @AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.GENERATED, notes = "CLUSTER BY -> k-means SQL++ desugar")
 public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor {
@@ -145,24 +139,15 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
     // so they are rejected until that is implemented. Names are the builtins VectorDistanceMetric resolves to.
     private static final Set<String> SUPPORTED_DISTANCE_BUILTINS = Set.of(BuiltinFunctions.EUCLIDEAN_DISTANCE.getName(),
             BuiltinFunctions.EUCLIDEAN_SQUARED_DISTANCE.getName());
-    // initMode "kmeanspp" (default) = the k-means|| oversampling initialization; "random" = the k
-    // lexicographically smallest vectors as C0 (arbitrary-but-DETERMINISTIC; cheap, but seeding
-    // quality is exactly what kmeansPP exists for).
+    // initMode "kmeanspp" (default) = the k-means|| initialization, realized as the paper-faithful (Bahmani et
+    // al. VLDB'12, Algorithm 2) exact Bernoulli oversampling: per round a global potential phi = Sigma d^2(x,
+    // pool) is reduced and each point is drawn independently with probability p_x = l * d^2(x, pool) / phi. It
+    // runs as the self-iterating systolic operator sub-graph (KMEANS_OVERSAMPLE_LOOP) and requires runtime init.
+    // "random" = the k lexicographically smallest vectors as C0 (skip init; cheap, but seeding quality is what
+    // kmeansPP exists for). These are the only two initModes.
     private static final String INIT_MODE_KMEANSPP = "kmeanspp";
     private static final String INIT_MODE_RANDOM = "random";
-    // "kmeanspp-exact" = the paper-faithful (Bahmani et al. VLDB'12, Algorithm 2) Bernoulli oversampling:
-    // per round a global potential phi = Sigma d^2(x, pool) is reduced and each point is drawn independently
-    // with probability p_x = l * d^2(x, pool) / phi. The default "kmeanspp" uses the deterministic top-l
-    // approximation of that draw. Exact requires runtime init (the operator tower); it has no desugar form.
-    private static final String INIT_MODE_KMEANSPP_EXACT = "kmeanspp-exact";
-    // "kmeanspp-exact-loop" = the SAME exact Bernoulli oversampling as "kmeanspp-exact", but realized as a
-    // single self-iterating operator (EXPERIMENTAL, single-NC): instead of unrolling the cost/sample rounds
-    // into a tower of broadcast-connected operators, the desugar emits ONE kmeans-oversample-loop call that
-    // loops internally, all-reducing the per-round global phi and the drawn candidates through an in-operator
-    // cross-partition barrier. Draws match "kmeanspp-exact" (same per-round seeds). Runtime-init only.
-    private static final String INIT_MODE_KMEANSPP_EXACT_LOOP = "kmeanspp-exact-loop";
-    private static final Set<String> KNOWN_INIT_MODES =
-            Set.of(INIT_MODE_KMEANSPP, INIT_MODE_RANDOM, INIT_MODE_KMEANSPP_EXACT, INIT_MODE_KMEANSPP_EXACT_LOOP);
+    private static final Set<String> KNOWN_INIT_MODES = Set.of(INIT_MODE_KMEANSPP, INIT_MODE_RANDOM);
     // Fixed base for the per-round exact-sampling seed (seed_r = EXACT_SEED_BASE + r). Fixed -> a run is
     // reproducible on a fixed topology; the descriptor mixes in the partition id.
     private static final int EXACT_SEED_BASE = 1_000_003;
@@ -327,17 +312,13 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
         boolean runtimeInit = context.getMetadataProvider() != null
                 && context.getMetadataProvider().getBooleanProperty(CLUSTER_BY_RUNTIME_INIT_OPTION, true);
         boolean randomInit = INIT_MODE_RANDOM.equals(getInitMode(cbc));
-        boolean exactInit = INIT_MODE_KMEANSPP_EXACT.equals(getInitMode(cbc));
-        // Same exact Bernoulli oversampling, but as one self-iterating operator instead of the unrolled tower.
-        boolean exactLoop = INIT_MODE_KMEANSPP_EXACT_LOOP.equals(getInitMode(cbc));
-        // Exact Bernoulli sampling (either realization) exists only as a runtime operator (the per-round
-        // global-phi reduce has no efficient pure-SQL++ desugar). Reject it when runtime init is disabled
-        // rather than silently falling back to the deterministic top-l desugar.
-        if ((exactInit || exactLoop) && !runtimeInit) {
+        // kmeansPP is the exact Bernoulli k-means|| init, realized only as the runtime systolic loop (the
+        // per-round global-phi reduce has no efficient pure-SQL++ desugar). Reject it when runtime init is
+        // disabled rather than silently doing something else. ("random" still has a pure-desugar reference path.)
+        if (!randomInit && !runtimeInit) {
             throw new CompilationException(ErrorCode.COMPILATION_ERROR, cbc.getSourceLocation(),
-                    "CLUSTER BY initMode '" + getInitMode(cbc) + "' requires runtime init; it has no desugar "
-                            + "reference path. Enable cluster_by_runtime_init (the default) or use initMode "
-                            + "'kmeansPP'.");
+                    "CLUSTER BY initMode 'kmeansPP' requires runtime init; it has no desugar reference path. "
+                            + "Enable cluster_by_runtime_init (the default) or use initMode 'random'.");
         }
         VarIdentifier pool;
         VarIdentifier prev = null;
@@ -366,40 +347,12 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
                 // Deterministic seed: the lexicographically smallest vector (see the seedQuery comment).
                 Expression poolStream = selectValueFrom(copy(vecsQuery), pv, pv, null, null,
                         ascOrder(varRef(pv.getVar(), loc)), null, seedLimit, loc);
-                Expression weighed;
-                if (exactLoop) {
-                    // Single self-iterating operator that ALSO folds in the terminal WEIGH: it loops
-                    // INIT_OVERSAMPLING_ROUNDS times internally (all-reducing phi and the draws through an
-                    // in-operator barrier), then weighs every point against the final candidate pool and emits
-                    // the (count,sum) partials directly -- no separate KMEANS_WEIGH_CANDIDATES node. RECLUSTER
-                    // consumes these exactly as it consumed WEIGH's output. Same seed base as the unrolled exact
-                    // tower, so the draws are identical.
-                    weighed = call(BuiltinFunctions.KMEANS_OVERSAMPLE_LOOP, loc, copy(vecsQuery), poolStream,
-                            intLit(OVERSAMPLING_FACTOR_PER_K * k, loc), intLit(INIT_OVERSAMPLING_ROUNDS, loc),
-                            intLit(EXACT_SEED_BASE, loc));
-                } else {
-                    for (int r = 0; r < INIT_OVERSAMPLING_ROUNDS; r++) {
-                        if (exactInit) {
-                            // Paper Algorithm 2 round: COST reduces the global potential phi = Sigma d^2(x,
-                            // pool), then SAMPLE draws each point with p_x = l * d^2(x, pool) / phi (distinct
-                            // per-round seed for reproducibility). Keeps every draw -- the operator's intake does
-                            // not re-limit a SAMPLE's candidates. This is the faithful Bernoulli oversampling;
-                            // the deterministic top-l branch below is the approximation.
-                            Expression cost = call(BuiltinFunctions.KMEANS_COST, loc, copy(vecsQuery), poolStream,
-                                    intLit(OVERSAMPLING_FACTOR_PER_K * k, loc));
-                            poolStream = call(BuiltinFunctions.KMEANS_SAMPLE, loc, copy(vecsQuery), cost,
-                                    intLit(OVERSAMPLING_FACTOR_PER_K * k, loc), intLit(EXACT_SEED_BASE + r, loc));
-                        } else {
-                            poolStream = call(BuiltinFunctions.KMEANS_INIT_CANDIDATES, loc, copy(vecsQuery), poolStream,
-                                    intLit(OVERSAMPLING_FACTOR_PER_K * k, loc));
-                        }
-                    }
-                    // WEIGH: consumes the round tower directly (its intake applies the terminal global
-                    // re-limit), scores every point once against the decoded pool, and emits per-partition
-                    // (count, sum) partials per pool member — the runtime realization of the __wpairs GROUP BY.
-                    weighed = call(BuiltinFunctions.KMEANS_WEIGH_CANDIDATES, loc, copy(vecsQuery), poolStream,
-                            intLit(OVERSAMPLING_FACTOR_PER_K * k, loc));
-                }
+                // kmeansPP: the self-iterating systolic loop. It loops INIT_OVERSAMPLING_ROUNDS times internally
+                // (exact Bernoulli oversampling — all-reducing the per-round global phi and the drawn candidates),
+                // then folds in the terminal WEIGH and emits the (count,sum) partials directly for RECLUSTER.
+                Expression weighed = call(BuiltinFunctions.KMEANS_OVERSAMPLE_LOOP, loc, copy(vecsQuery), poolStream,
+                        intLit(OVERSAMPLING_FACTOR_PER_K * k, loc), intLit(INIT_OVERSAMPLING_ROUNDS, loc),
+                        intLit(EXACT_SEED_BASE, loc));
                 // RECLUSTER: merges the (broadcast) partials and emits the k heaviest means — C0 — padded
                 // from pool members if fewer than k attracted points. Its vector input is unused: LIMIT 1.
                 VariableExpr rv = newVar(loc);
@@ -436,32 +389,6 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
             }
             pool = seed;
         }
-        int desugarRounds = runtimeInit || randomInit ? 0 : INIT_OVERSAMPLING_ROUNDS;
-        for (int r = 0; r < desugarRounds; r++) {
-            VariableExpr sampVar = newVar(loc);
-            Expression whereScore = call(BuiltinFunctions.NEAREST_CENTROID_DISTANCE, loc, varRef(sampVar.getVar(), loc),
-                    varRef(pool, loc));
-            Expression positiveScore = binaryOp(OperatorType.GT, whereScore, doubleLit(0.0d, loc), loc);
-            Expression orderScore = call(BuiltinFunctions.NEAREST_CENTROID_DISTANCE, loc, varRef(sampVar.getVar(), loc),
-                    varRef(pool, loc));
-            List<OrderbyClause.NullOrderModifier> defaultNullOrder = new ArrayList<>();
-            defaultNullOrder.add(null);
-            OrderbyClause topLOrder = new OrderbyClause(new ArrayList<>(List.of(orderScore)),
-                    new ArrayList<>(List.of(OrderbyClause.OrderModifier.DESC)), defaultNullOrder);
-            topLOrder.setSourceLocation(loc);
-            LimitClause limitL = new LimitClause(intLit(OVERSAMPLING_FACTOR_PER_K * k, loc), null);
-            limitL.setSourceLocation(loc);
-            VarIdentifier cand = context.newVariable();
-            centroidLets.add(letClause(cand, selectValueFrom(varRef(vecs, loc), sampVar, sampVar, null, positiveScore,
-                    topLOrder, null, limitL, loc), loc));
-            context.markNoInlineLetVar(cand);
-            VarIdentifier nextPool = context.newVariable();
-            centroidLets.add(letClause(nextPool,
-                    call(BuiltinFunctions.ARRAY_CONCAT, loc, varRef(pool, loc), varRef(cand, loc)), loc));
-            context.markNoInlineLetVar(nextPool);
-            pool = nextPool;
-        }
-
         // Steps 6-7: weight every pool candidate by the number of points nearest to it (one more parallel-map +
         // central-reduce round, riding the same two-step GROUP BY machinery as the Lloyd iterations) and keep the
         // k heaviest. Recluster approximation: instead of the paper's central weighted k-means++,
@@ -482,53 +409,6 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
                     ascOrder(varRef(rcVar.getVar(), loc)), null, limitKC0, loc), loc));
             context.markNoInlineLetVar(prev);
         }
-        if (!runtimeInit && !randomInit) {
-            VariableExpr weighVar = newVar(loc);
-            Expression weighAssign = call(BuiltinFunctions.NEAREST_CENTROID, loc, weighVar, varRef(pool, loc));
-            GroupbyClause weighGby = groupBy(weighAssign, newVar(loc), null, null, loc);
-            // count(v) is emitted name-based (as the parser would), NOT via a builtin fid: the group-by aggregation
-            // sugar only resolves the parsed form; a direct SCALAR_SQL_COUNT fid dies with "Illegal state:
-            // array_sql-count" (centroid tolerates the fid form only because its array_* variants are registered).
-            CallExpr countCall = new CallExpr(new FunctionSignature(null, null, "count", 1),
-                    List.of(varRef(weighVar.getVar(), loc)));
-            countCall.setSourceLocation(loc);
-            ListConstructor weighPair = new ListConstructor(ListConstructor.Type.ORDERED_LIST_CONSTRUCTOR,
-                    new ArrayList<>(List.of(call(BuiltinFunctions.SCALAR_CENTROID, loc, weighVar), countCall)));
-            weighPair.setSourceLocation(loc);
-            VarIdentifier wpairs = context.newVariable();
-            centroidLets.add(letClause(wpairs,
-                    selectValueFrom(varRef(vecs, loc), weighVar, weighPair, null, null, null, weighGby, null, loc),
-                    loc));
-            context.markNoInlineLetVar(wpairs);
-
-            LimitClause limitK = new LimitClause(intLit(k, loc), null);
-            limitK.setSourceLocation(loc);
-            VariableExpr pairVar = newVar(loc);
-            List<OrderbyClause.NullOrderModifier> weightNullOrder = new ArrayList<>();
-            weightNullOrder.add(null);
-            OrderbyClause byWeight = new OrderbyClause(new ArrayList<>(List.of(elementAt(pairVar, 1, loc))),
-                    new ArrayList<>(List.of(OrderbyClause.OrderModifier.DESC)), weightNullOrder);
-            byWeight.setSourceLocation(loc);
-            VarIdentifier top = context.newVariable();
-            centroidLets.add(letClause(top, selectValueFrom(varRef(wpairs, loc), pairVar, elementAt(pairVar, 0, loc),
-                    null, null, byWeight, null, limitK, loc), loc));
-            context.markNoInlineLetVar(top);
-
-            // Pad with __vecs so C0 always has k entries even when the data has fewer than k occupied candidate groups
-            // (duplicates are tolerable: nearest_centroid resolves ties to the first occurrence).
-            //   C0 = (FROM array_concat(__top, __vecs) AS c SELECT VALUE c LIMIT k)
-            VariableExpr seedVar = newVar(loc);
-            LimitClause limitKPad = new LimitClause(intLit(k, loc), null);
-            limitKPad.setSourceLocation(loc);
-            Expression c0Pool = call(BuiltinFunctions.ARRAY_CONCAT, loc, varRef(top, loc), varRef(vecs, loc));
-            SelectExpression c0Query =
-                    selectValueFrom(c0Pool, seedVar, seedVar, null, null, null, null, limitKPad, loc);
-
-            prev = context.newVariable();
-            centroidLets.add(letClause(prev, c0Query, loc));
-            context.markNoInlineLetVar(prev);
-        }
-
         // C1..C3 = (FROM __vecs AS v SELECT VALUE centroid(v) GROUP BY nearest_centroid(v, Cprev))
         // (in runtime-init mode the Lloyd iterations are folded into the operator tower above)
         int lloydIterations = runtimeInit ? 0 : LLOYD_ITERATIONS;

@@ -24,22 +24,6 @@
             <output-dir compare="Text">kmeans-exec</output-dir>
         </compilation-unit>
     </test-case>
-    <!-- CLUSTER BY initMode "kmeansPP-exact": the paper-faithful (Bahmani et al. VLDB'12, Algorithm 2)
-         Bernoulli oversampling operator tower (COST reduces the global potential phi; SAMPLE draws each point
-         with p_x = l*d2/phi) recovers the two expected clusters on the tiny 2-D dataset. Seeded => deterministic. -->
-    <test-case FilePath="cluster-by">
-        <compilation-unit name="kmeans-exact">
-            <output-dir compare="Text">kmeans-exact</output-dir>
-        </compilation-unit>
-    </test-case>
-    <!-- CLUSTER BY initMode "kmeansPP-exact-loop": the SAME exact Bernoulli oversampling as kmeansPP-exact but as
-         the systolic in-operator loop. On the 2-NC test harness this exercises the multi-NC Route B sub-graph
-         (Cost/PhiMerge/Sample/PoolMerge/Release); must recover the same clusters as the tower. -->
-    <test-case FilePath="cluster-by">
-        <compilation-unit name="kmeans-exact-loop">
-            <output-dir compare="Text">kmeans-exact-loop</output-dir>
-        </compilation-unit>
-    </test-case>
     <!-- CLUSTER BY syntax end-to-end: the SqlppClusterByVisitor rewrite desugars CLUSTER BY (sc descriptor +
          CLUSTER AS members) into the distributed k-means query and runs it on the tiny 2-D dataset. -->
     <test-case FilePath="cluster-by">
@@ -67,13 +51,6 @@
     <test-case FilePath="cluster-by">
         <compilation-unit name="kmeans-syntax-random">
             <output-dir compare="Text">kmeans-syntax-random</output-dir>
-        </compilation-unit>
-    </test-case>
-    <!-- The pure-desugar REFERENCE path (runtime init disabled): the executable spec the operator
-         tower is gated against; results must stay byte-identical to kmeans-syntax. -->
-    <test-case FilePath="cluster-by">
-        <compilation-unit name="kmeans-syntax-reference">
-            <output-dir compare="Text">kmeans-syntax-reference</output-dir>
         </compilation-unit>
     </test-case>
     <test-case FilePath="cluster-by">
