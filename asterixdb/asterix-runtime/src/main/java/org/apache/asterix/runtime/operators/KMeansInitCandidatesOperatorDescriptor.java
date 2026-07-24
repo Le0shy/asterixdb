@@ -23,7 +23,6 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.PriorityQueue;
 
 import org.apache.asterix.builders.OrderedListBuilder;
 import org.apache.asterix.dataflow.data.nontagged.serde.ADoubleSerializerDeserializer;
@@ -40,19 +39,15 @@ import org.apache.hyracks.api.dataflow.IActivityGraphBuilder;
 import org.apache.hyracks.api.dataflow.IOperatorNodePushable;
 import org.apache.hyracks.api.dataflow.TaskId;
 import org.apache.hyracks.api.dataflow.value.IRecordDescriptorProvider;
-import org.apache.hyracks.api.dataflow.value.ISerializerDeserializer;
 import org.apache.hyracks.api.dataflow.value.RecordDescriptor;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
 import org.apache.hyracks.api.job.IOperatorDescriptorRegistry;
-import org.apache.hyracks.data.std.primitive.DoublePointable;
 import org.apache.hyracks.data.std.primitive.VoidPointable;
 import org.apache.hyracks.data.std.util.ArrayBackedValueStorage;
 import org.apache.hyracks.dataflow.common.comm.io.ArrayTupleBuilder;
 import org.apache.hyracks.dataflow.common.comm.io.FrameTupleAccessor;
 import org.apache.hyracks.dataflow.common.comm.io.FrameTupleAppender;
 import org.apache.hyracks.dataflow.common.data.accessors.FrameTupleReference;
-import org.apache.hyracks.dataflow.common.data.marshalling.DoubleSerializerDeserializer;
-import org.apache.hyracks.dataflow.common.io.RunFileReader;
 import org.apache.hyracks.dataflow.std.base.AbstractActivityNode;
 import org.apache.hyracks.dataflow.std.base.AbstractOperatorDescriptor;
 import org.apache.hyracks.dataflow.std.base.AbstractUnaryInputSinkOperatorNodePushable;
@@ -63,16 +58,14 @@ import org.apache.hyracks.util.annotations.AiProvenance;
 /**
  * The CLUSTER BY k-means|| runtime stages as one Store+Store+Score operator, selected by {@link Mode}:
  * <ul>
- * <li><b>ROUND</b> — one oversampling round: score every stored vector by squared-Euclidean distance to
- * its nearest pool member and emit the local top-{@code count} (score DESC, arrival order on ties — the
- * same deterministic rule as the desugar's ORDER BY ... LIMIT), preceded by the pool echo.</li>
- * <li><b>FINALIZE</b> — re-limit the intake and unwrap to plain vectors for generic consumers.</li>
- * <li><b>WEIGH</b> — re-limit the intake (this is the tower's terminal re-limit), then stream the local
- * vectors ONCE against the decoded pool and accumulate per-pool-member (count, sum) partials; emits the
- * pool echo (partition 0) plus this partition's partials.</li>
+ * <li><b>WEIGH</b> — re-limit the intake (the tower's terminal re-limit), then stream the local vectors
+ * ONCE against the decoded pool and accumulate per-pool-member (count, sum) partials; emits the pool echo
+ * (partition 0) plus this partition's partials.</li>
  * <li><b>RECLUSTER</b> — merge the (broadcast) partials deterministically and emit the {@code count}
  * heaviest members' means (weight DESC, pool position on ties) as plain vectors: the initial centroids
  * C0. Padded with pool members when fewer than {@code count} members attracted points.</li>
+ * <li><b>LLOYD</b> — merge the (broadcast) partials and emit EVERY non-empty member's mean in pool order
+ * (one Lloyd iteration's recomputed centroids) as plain vectors.</li>
  * </ul>
  * <p>
  * Three activities; points never move: <b>StoreVectors</b> (input 0, sink) and <b>StorePool</b>
@@ -87,16 +80,16 @@ import org.apache.hyracks.util.annotations.AiProvenance;
  * Partition 0 echoes the (broadcast, hence complete) pool through, so the output stream is directly the
  * next stage's pool.
  * <p>
- * <b>Global re-limit at intake.</b> A ROUND keeps a LOCAL top-l per partition, so its output holds up
- * to P·l candidates. The consumer restores the algorithm's global l: the pool input is broadcast, so
- * every partition sees the identical row set and independently normalizes it — pool rows ordered by
- * {@code seq}, plus the GLOBAL top-{@code count} candidates ordered by (score DESC, partition ASC,
- * seq ASC). All ordering derives from envelope fields, never from frame arrival order (which differs
- * per receiver), so all partitions agree byte-for-byte.
+ * <b>Global re-limit at intake.</b> The upstream OVERSAMPLE_LOOP emits up to P·l candidates (a LOCAL draw
+ * per partition). WEIGH restores the algorithm's global l: the pool input is broadcast, so every partition
+ * sees the identical row set and independently normalizes it — pool rows ordered by {@code seq}, plus the
+ * GLOBAL top-{@code count} candidates ordered by (score DESC, partition ASC, seq ASC). All ordering derives
+ * from envelope fields, never from frame arrival order (which differs per receiver), so all partitions
+ * agree byte-for-byte.
  * <p>
- * Plain-vector output (FINALIZE, RECLUSTER) is re-serialized as OPEN lists (tagged items): the output
- * column is typed ANY, and ANY-typed values must be self-describing — generic consumers (hash,
- * comparators) walk them by the compile-time type, so verbatim closed-format copies misparse.
+ * Plain-vector output (RECLUSTER, LLOYD) is re-serialized as OPEN lists (tagged items): the output column
+ * is typed ANY, and ANY-typed values must be self-describing — generic consumers (hash, comparators) walk
+ * them by the compile-time type, so verbatim closed-format copies misparse.
  */
 @AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.GENERATED, notes = "CLUSTER BY k-means|| init runtime, Store+Score stages")
 public class KMeansInitCandidatesOperatorDescriptor extends AbstractOperatorDescriptor {
@@ -104,24 +97,13 @@ public class KMeansInitCandidatesOperatorDescriptor extends AbstractOperatorDesc
 
     /** See the class comment. */
     public enum Mode {
-        ROUND,
-        FINALIZE,
         WEIGH,
         RECLUSTER,
-        LLOYD,
-        // Paper-exact k-means|| oversampling (Bahmani et al. VLDB'12, Algorithm 2), a two-stage round:
-        // COST computes each partition's local Sigma d^2(x, pool) and emits it as one partial (the pool
-        // echo carries the pool forward); the broadcast reduces those partials to the global potential
-        // phi. SAMPLE then merges the cost partials into phi and draws each resident vector independently
-        // with probability p_x = l * d^2(x, pool) / phi (seeded RNG), emitting the survivors as candidates.
-        // Unlike ROUND, SAMPLE keeps EVERY drawn candidate (no top-l re-limit) -- the count is random with
-        // expectation l, exactly the paper's C <- C U C'.
-        COST,
-        SAMPLE
-        // NB: the exact oversample loop (OVERSAMPLE_LOOP) is no longer a mode here — it is realized entirely as
-        // the systolic 5-operator sub-graph (KMeans{CostController,PhiMerge,Sample,PoolMerge,Release}), injected
-        // by KMeansInitCandidatesPOperator on every topology. The former single-NC in-JVM-barrier variant was
-        // retired to keep one code path.
+        LLOYD
+        // NB: the exact oversample loop (OVERSAMPLE_LOOP) is not a mode here — it is realized entirely as the
+        // systolic 5-operator sub-graph (KMeans{CostController,PhiMerge,Sample,PoolMerge,Release}), injected by
+        // KMeansInitCandidatesPOperator on every topology. The upstream loop produces the candidate pool this
+        // descriptor's WEIGH then weighs.
     }
 
     private static final int STORE_VECTORS_ACTIVITY_ID = 0;
@@ -133,75 +115,31 @@ public class KMeansInitCandidatesOperatorDescriptor extends AbstractOperatorDesc
     private static final double KIND_PARTIAL = 2.0d;
 
     private final Mode mode;
-    // ROUND: candidates per partition; FINALIZE/WEIGH: intake re-limit; RECLUSTER: k. Non-negative.
+    // WEIGH: intake re-limit; RECLUSTER/LLOYD: k. Non-negative.
     private final int count;
     // Column of the vector variable in input 0's tuples and of the pool variable in input 1's tuples.
     private final int vectorColumn;
     private final int poolColumn;
     // Whether input 1 carries envelopes from a prior tower stage (vs plain vectors, e.g. the seed).
     private final boolean poolIsEnvelope;
-    // Shared-vector materialization (optimization). When non-null, the ROUND/WEIGH stages of one tower read
-    // ONE run file registered (joblet-scoped) under this per-tower key + partition, instead of each stage
+    // Shared-vector materialization (optimization). When non-null, the WEIGH stages of one tower read ONE run
+    // file registered (joblet-scoped) under this per-tower key + partition, instead of each stage
     // materializing its own copy. Exactly one stage is the writer: it materializes the run file with
     // sharedConsumerCount readers (the file self-deletes after that many reads); the other stages drain
     // their vector input without writing and read the writer's file. Null = original per-stage behavior
-    // (also used by RECLUSTER/LLOYD/FINALIZE, whose vector input is a LIMIT-1 dummy).
+    // (also used by RECLUSTER/LLOYD, whose vector input is a LIMIT-1 dummy).
     private final String sharedVectorsKey;
     private final boolean vectorsWriter;
     private final int sharedConsumerCount;
-    // SAMPLE only: base seed for the per-round, per-partition Bernoulli RNG (seed*P + partition). Fixed
-    // (set from the compiler.vector.trainseed-style config) so a run is reproducible on a fixed topology;
-    // unused by the other modes.
-    private final long seed;
-    // Exact path (COST stages + the terminal WEIGH that follows the last SAMPLE): keep EVERY candidate from
-    // the pool input instead of the deterministic path's global top-`count` re-limit. Bernoulli oversampling
-    // is already globally correct (normalized by phi), so C = union of all draws must survive to weighting.
-    private final boolean keepAllCandidates;
-    // Per-round score reuse (exact-path optimization). When non-null on a COST/SAMPLE pair: COST (scoresWriter
-    // = true) writes each vector's best d^2 to a scratch sidecar keyed (joblet-scoped) by this per-round token
-    // + partition; the paired SAMPLE (scoresWriter = false) reads it back in vector order instead of recomputing
-    // the pool distance. Null = SAMPLE recomputes (original behavior).
-    private final String scoresKey;
-    private final boolean scoresWriter;
-    // Carried for the systolic loop's job-gen (unused by this descriptor's modes; the loop is a separate
-    // operator sub-graph). Kept on the shared ctor to avoid rippling the overload chain.
-    private final int loopRounds;
-
-    // The score sidecar is a run of single raw-double tuples (one best d^2 per vector, in vector order).
-    private static final RecordDescriptor SCORES_REC_DESC =
-            new RecordDescriptor(new ISerializerDeserializer[] { DoubleSerializerDeserializer.INSTANCE });
 
     public KMeansInitCandidatesOperatorDescriptor(IOperatorDescriptorRegistry spec, RecordDescriptor vectorRecDesc,
             Mode mode, int count, int vectorColumn, int poolColumn, boolean poolIsEnvelope) {
-        this(spec, vectorRecDesc, mode, count, vectorColumn, poolColumn, poolIsEnvelope, null, false, 0, 0L, false);
+        this(spec, vectorRecDesc, mode, count, vectorColumn, poolColumn, poolIsEnvelope, null, false, 0);
     }
 
     public KMeansInitCandidatesOperatorDescriptor(IOperatorDescriptorRegistry spec, RecordDescriptor vectorRecDesc,
             Mode mode, int count, int vectorColumn, int poolColumn, boolean poolIsEnvelope, String sharedVectorsKey,
             boolean vectorsWriter, int sharedConsumerCount) {
-        this(spec, vectorRecDesc, mode, count, vectorColumn, poolColumn, poolIsEnvelope, sharedVectorsKey,
-                vectorsWriter, sharedConsumerCount, 0L, false);
-    }
-
-    public KMeansInitCandidatesOperatorDescriptor(IOperatorDescriptorRegistry spec, RecordDescriptor vectorRecDesc,
-            Mode mode, int count, int vectorColumn, int poolColumn, boolean poolIsEnvelope, String sharedVectorsKey,
-            boolean vectorsWriter, int sharedConsumerCount, long seed, boolean keepAllCandidates) {
-        this(spec, vectorRecDesc, mode, count, vectorColumn, poolColumn, poolIsEnvelope, sharedVectorsKey,
-                vectorsWriter, sharedConsumerCount, seed, keepAllCandidates, null, false);
-    }
-
-    public KMeansInitCandidatesOperatorDescriptor(IOperatorDescriptorRegistry spec, RecordDescriptor vectorRecDesc,
-            Mode mode, int count, int vectorColumn, int poolColumn, boolean poolIsEnvelope, String sharedVectorsKey,
-            boolean vectorsWriter, int sharedConsumerCount, long seed, boolean keepAllCandidates, String scoresKey,
-            boolean scoresWriter) {
-        this(spec, vectorRecDesc, mode, count, vectorColumn, poolColumn, poolIsEnvelope, sharedVectorsKey,
-                vectorsWriter, sharedConsumerCount, seed, keepAllCandidates, scoresKey, scoresWriter, 0);
-    }
-
-    public KMeansInitCandidatesOperatorDescriptor(IOperatorDescriptorRegistry spec, RecordDescriptor vectorRecDesc,
-            Mode mode, int count, int vectorColumn, int poolColumn, boolean poolIsEnvelope, String sharedVectorsKey,
-            boolean vectorsWriter, int sharedConsumerCount, long seed, boolean keepAllCandidates, String scoresKey,
-            boolean scoresWriter, int loopRounds) {
         super(spec, 2, 1);
         this.mode = mode;
         this.count = count;
@@ -211,17 +149,7 @@ public class KMeansInitCandidatesOperatorDescriptor extends AbstractOperatorDesc
         this.sharedVectorsKey = sharedVectorsKey;
         this.vectorsWriter = vectorsWriter;
         this.sharedConsumerCount = sharedConsumerCount;
-        this.seed = seed;
-        this.keepAllCandidates = keepAllCandidates;
-        this.scoresKey = scoresKey;
-        this.scoresWriter = scoresWriter;
-        this.loopRounds = loopRounds;
         outRecDescs[0] = vectorRecDesc;
-    }
-
-    /** Joblet-scoped state id for this COST/SAMPLE pair's per-round score sidecar on a given partition. */
-    private Object scoresStateId(int partition) {
-        return scoresKey + "#scores#" + partition;
     }
 
     /** Joblet-scoped state id for this tower's shared vector run file on a given partition. */
@@ -381,12 +309,6 @@ public class KMeansInitCandidatesOperatorDescriptor extends AbstractOperatorDesc
                         collectPool(poolState);
                         Emitter emitter = new Emitter();
                         switch (mode) {
-                            case ROUND:
-                                emitRound(scoreVectors(vecState), emitter);
-                                break;
-                            case FINALIZE:
-                                emitPlainPool(emitter);
-                                break;
                             case WEIGH:
                                 emitWeigh(vecState, emitter);
                                 break;
@@ -395,12 +317,6 @@ public class KMeansInitCandidatesOperatorDescriptor extends AbstractOperatorDesc
                                 break;
                             case LLOYD:
                                 emitLloyd(emitter);
-                                break;
-                            case COST:
-                                emitCost(vecState, emitter);
-                                break;
-                            case SAMPLE:
-                                emitSample(vecState, emitter);
                                 break;
                         }
                         emitter.flush();
@@ -475,7 +391,7 @@ public class KMeansInitCandidatesOperatorDescriptor extends AbstractOperatorDesc
                     for (Row r : poolRows) {
                         pool.add(r.vec);
                     }
-                    int candLimit = keepAllCandidates ? candRows.size() : Math.min(count, candRows.size());
+                    int candLimit = Math.min(count, candRows.size());
                     for (int i = 0; i < candLimit; i++) {
                         pool.add(candRows.get(i).vec);
                     }
@@ -516,56 +432,6 @@ public class KMeansInitCandidatesOperatorDescriptor extends AbstractOperatorDesc
                     return ADoubleSerializerDeserializer.getDouble(bytes, offset + 1);
                 }
 
-                private PriorityQueue<Row> scoreVectors(MaterializerTaskState state) throws HyracksDataException {
-                    // Bounded min-heap: weakest retained candidate on top.
-                    PriorityQueue<Row> heap = new PriorityQueue<>(Math.max(1, count), CANDIDATE_ORDER.reversed());
-                    final long[] seq = { 0 };
-                    streamVectors(state, vec -> {
-                        double best = Double.POSITIVE_INFINITY;
-                        for (double[] c : pool) {
-                            double d = VectorDistanceCalculation.euclideanSquared(vec, c);
-                            if (d < best) {
-                                best = d;
-                            }
-                        }
-                        // Paper-faithful: p = 0 (already a pool member) is never drawn.
-                        if (!Double.isNaN(best) && best > 0.0d) {
-                            Row cand = new Row(KIND_CANDIDATE, partition, seq[0], best, vec);
-                            if (heap.size() < count) {
-                                heap.add(cand);
-                            } else if (CANDIDATE_ORDER.compare(cand, heap.peek()) < 0) {
-                                heap.poll();
-                                heap.add(cand);
-                            }
-                        }
-                        seq[0]++;
-                    });
-                    return heap;
-                }
-
-                private void emitRound(PriorityQueue<Row> heap, Emitter emitter) throws Exception {
-                    List<Row> kept = new ArrayList<>(heap);
-                    kept.sort(CANDIDATE_ORDER);
-                    // Pool echo first (partition 0 only — the pool is broadcast, so every partition holds
-                    // the complete copy and exactly one may re-emit it), then local candidates.
-                    if (partition == 0) {
-                        for (int i = 0; i < pool.size(); i++) {
-                            emitter.envelope(new Row(KIND_POOL, 0, i, 0.0d, pool.get(i)));
-                        }
-                    }
-                    for (Row cand : kept) {
-                        emitter.envelope(cand);
-                    }
-                }
-
-                private void emitPlainPool(Emitter emitter) throws Exception {
-                    if (partition == 0) {
-                        for (double[] member : pool) {
-                            emitter.plainVector(member);
-                        }
-                    }
-                }
-
                 private void emitWeigh(MaterializerTaskState state, Emitter emitter) throws Exception {
                     final long[] counts = new long[pool.size()];
                     final double[][] sums = new double[pool.size()][];
@@ -602,107 +468,6 @@ public class KMeansInitCandidatesOperatorDescriptor extends AbstractOperatorDesc
                         if (counts[i] > 0) {
                             emitter.envelope(new Row(KIND_PARTIAL, partition, i, counts[i], sums[i]));
                         }
-                    }
-                }
-
-                /**
-                 * Paper (Bahmani et al. Algorithm 2) COST half of an exact oversampling round: compute this
-                 * partition's local potential {@code localSum = Sigma_x d^2(x, pool)} over the resident
-                 * vectors, and emit it as ONE partial. Partition 0 echoes the pool so it survives to the
-                 * SAMPLE stage; the broadcast sums the partials into the global potential phi.
-                 */
-                private void emitCost(MaterializerTaskState state, Emitter emitter) throws Exception {
-                    final double[] localSum = { 0.0d };
-                    // Optimization: persist each vector's best d^2 (in vector order) so the paired SAMPLE reuses
-                    // it instead of re-scanning the pool. Written verbatim, INCLUDING the +inf/NaN sentinels, so
-                    // SAMPLE's guard + RNG consumption stay byte-identical. Null when not wired (SAMPLE recomputes).
-                    final ScoreSidecarWriter scores =
-                            (scoresKey != null && scoresWriter) ? new ScoreSidecarWriter(partition) : null;
-                    streamVectors(state, vec -> {
-                        double best = Double.POSITIVE_INFINITY;
-                        for (int i = 0; i < pool.size(); i++) {
-                            double d = VectorDistanceCalculation.euclideanSquared(vec, pool.get(i));
-                            if (d < best) {
-                                best = d;
-                            }
-                        }
-                        if (!Double.isNaN(best) && best != Double.POSITIVE_INFINITY) {
-                            localSum[0] += best;
-                        }
-                        if (scores != null) {
-                            scores.write(best);
-                        }
-                    });
-                    if (scores != null) {
-                        scores.finish();
-                    }
-                    if (partition == 0) {
-                        for (int i = 0; i < pool.size(); i++) {
-                            emitter.envelope(new Row(KIND_POOL, 0, i, 0.0d, pool.get(i)));
-                        }
-                    }
-                    // One cost partial: score = localSum (the SAMPLE merge reads score only; seq/vec unused).
-                    emitter.envelope(new Row(KIND_PARTIAL, partition, 0, localSum[0], new double[] { 0.0d }));
-                }
-
-                /**
-                 * Paper Algorithm 2 SAMPLE half: phi = Sigma of the broadcast cost partials (the global
-                 * potential), then draw each resident vector x independently with probability
-                 * {@code p_x = l * d^2(x, pool) / phi} (l = count). Survivors become candidates; partition 0
-                 * echoes the pool. Deterministic per (seed, partition) on a fixed topology. NB: every draw is
-                 * kept (no top-l re-limit) -- the count is random with expectation l, exactly C <- C U C'.
-                 */
-                private void emitSample(MaterializerTaskState state, Emitter emitter) throws Exception {
-                    double phiAcc = 0.0d;
-                    for (Row p : partials) {
-                        phiAcc += p.score;
-                    }
-                    final double phi = phiAcc;
-                    final double l = count;
-                    final java.util.Random rng = new java.util.Random(seed * 1000003L + partition);
-                    if (partition == 0) {
-                        for (int i = 0; i < pool.size(); i++) {
-                            emitter.envelope(new Row(KIND_POOL, 0, i, 0.0d, pool.get(i)));
-                        }
-                    }
-                    if (phi <= 0.0d) {
-                        return; // pool already covers every point (all d^2 = 0): nothing to sample
-                    }
-                    final List<double[]> drawn = new ArrayList<>();
-                    // Optimization: reuse the per-vector d^2 that the paired COST already computed, read in
-                    // lockstep with the vector stream (same file, same order), instead of re-scanning the pool.
-                    // Null when not wired -> recompute exactly as before. Draws are byte-identical either way.
-                    final ScoreSidecarReader scores =
-                            (scoresKey != null && !scoresWriter) ? new ScoreSidecarReader(partition) : null;
-                    try {
-                        streamVectors(state, vec -> {
-                            double best;
-                            if (scores != null) {
-                                best = scores.next();
-                            } else {
-                                best = Double.POSITIVE_INFINITY;
-                                for (int i = 0; i < pool.size(); i++) {
-                                    double d = VectorDistanceCalculation.euclideanSquared(vec, pool.get(i));
-                                    if (d < best) {
-                                        best = d;
-                                    }
-                                }
-                            }
-                            if (Double.isNaN(best) || best == Double.POSITIVE_INFINITY || best <= 0.0d) {
-                                return; // p_x = 0 for points already in the pool (paper never re-draws them)
-                            }
-                            if (rng.nextDouble() < l * best / phi) {
-                                drawn.add(vec.clone());
-                            }
-                        });
-                    } finally {
-                        if (scores != null) {
-                            scores.close();
-                        }
-                    }
-                    long seq = 0L;
-                    for (double[] cand : drawn) {
-                        emitter.envelope(new Row(KIND_CANDIDATE, partition, seq++, 0.0d, cand));
                     }
                 }
 
@@ -879,89 +644,6 @@ public class KMeansInitCandidatesOperatorDescriptor extends AbstractOperatorDesc
                     }
                 }
 
-                /**
-                 * Writes the per-vector best d^2 (one raw double per tuple, in vector order) to a scratch run
-                 * file registered joblet-scoped under this pair's score key, for the paired SAMPLE to reuse.
-                 */
-                final class ScoreSidecarWriter {
-                    private final MaterializerTaskState st;
-                    private final VSizeFrame frame = new VSizeFrame(ctx);
-                    private final FrameTupleAppender appender = new FrameTupleAppender(frame);
-                    private final ArrayTupleBuilder tb = new ArrayTupleBuilder(1);
-
-                    private ScoreSidecarWriter(int partition) throws HyracksDataException {
-                        st = new MaterializerTaskState(ctx.getJobletContext().getJobId(),
-                                new TaskId(getActivityId(), partition));
-                        st.setId(scoresStateId(partition));
-                        st.open(ctx);
-                    }
-
-                    private void write(double best) throws HyracksDataException {
-                        tb.reset();
-                        tb.addField(DoubleSerializerDeserializer.INSTANCE, best);
-                        if (!appender.append(tb.getFieldEndOffsets(), tb.getByteArray(), 0, tb.getSize())) {
-                            st.appendFrame(appender.getBuffer());
-                            appender.reset(frame, true);
-                            if (!appender.append(tb.getFieldEndOffsets(), tb.getByteArray(), 0, tb.getSize())) {
-                                throw HyracksDataException.create(new IllegalStateException("score exceeds a frame"));
-                            }
-                        }
-                    }
-
-                    private void finish() throws HyracksDataException {
-                        if (appender.getTupleCount() > 0) {
-                            st.appendFrame(appender.getBuffer());
-                        }
-                        st.close();
-                        ctx.setStateObject(st);
-                    }
-                }
-
-                /**
-                 * Pull-reads the paired COST's score sidecar one double at a time, in the same vector order,
-                 * so SAMPLE consumes it in lockstep with the vector stream (one frame buffered, not the whole
-                 * file). {@link #next()} returns the next vector's best d^2, advancing frames as needed.
-                 */
-                final class ScoreSidecarReader {
-                    private final RunFileReader reader;
-                    private final VSizeFrame frame = new VSizeFrame(ctx);
-                    private final FrameTupleAccessor acc = new FrameTupleAccessor(SCORES_REC_DESC);
-                    private final FrameTupleReference t = new FrameTupleReference();
-                    private int idx;
-                    private int cnt;
-
-                    private ScoreSidecarReader(int partition) throws HyracksDataException {
-                        MaterializerTaskState st = (MaterializerTaskState) ctx.getStateObject(scoresStateId(partition));
-                        reader = st.createReader();
-                        reader.open();
-                        loadFrame();
-                    }
-
-                    private void loadFrame() throws HyracksDataException {
-                        idx = 0;
-                        cnt = 0;
-                        while (cnt == 0 && reader.nextFrame(frame)) {
-                            acc.reset(frame.getBuffer());
-                            cnt = acc.getTupleCount();
-                        }
-                    }
-
-                    private double next() throws HyracksDataException {
-                        if (idx >= cnt) {
-                            loadFrame();
-                            if (cnt == 0) {
-                                throw HyracksDataException
-                                        .create(new IllegalStateException("score sidecar shorter than vector stream"));
-                            }
-                        }
-                        t.reset(acc, idx++);
-                        return DoublePointable.getDouble(t.getFieldData(0), t.getFieldStart(0));
-                    }
-
-                    private void close() throws HyracksDataException {
-                        reader.close();
-                    }
-                }
             };
         }
     }

@@ -123,9 +123,6 @@ public class KMeansInitCandidatesPOperator extends AbstractPhysicalOperator {
         }
         KMeansInitCandidatesOperatorDescriptor.Mode mode;
         switch (kop.getMode()) {
-            case FINALIZE:
-                mode = KMeansInitCandidatesOperatorDescriptor.Mode.FINALIZE;
-                break;
             case WEIGH:
                 mode = KMeansInitCandidatesOperatorDescriptor.Mode.WEIGH;
                 break;
@@ -135,21 +132,13 @@ public class KMeansInitCandidatesPOperator extends AbstractPhysicalOperator {
             case LLOYD:
                 mode = KMeansInitCandidatesOperatorDescriptor.Mode.LLOYD;
                 break;
-            case COST:
-                mode = KMeansInitCandidatesOperatorDescriptor.Mode.COST;
-                break;
-            case SAMPLE:
-                mode = KMeansInitCandidatesOperatorDescriptor.Mode.SAMPLE;
-                break;
             default:
                 // OVERSAMPLE_LOOP never reaches here (it early-returns to the systolic sub-graph above).
-                mode = KMeansInitCandidatesOperatorDescriptor.Mode.ROUND;
-                break;
+                throw new IllegalStateException("unexpected KMeansInitCandidates mode: " + kop.getMode());
         }
         KMeansInitCandidatesOperatorDescriptor opDesc = new KMeansInitCandidatesOperatorDescriptor(builder.getJobSpec(),
                 recDesc, mode, kop.getTopCount(), vectorColumn, poolColumn, kop.isPoolFromPriorRound(),
-                kop.getSharedVectorsKey(), kop.isVectorsWriter(), kop.getSharedConsumerCount(), kop.getSeed(),
-                kop.isKeepAllCandidates(), kop.getScoresKey(), kop.isScoresWriter(), kop.getLoopRounds());
+                kop.getSharedVectorsKey(), kop.isVectorsWriter(), kop.getSharedConsumerCount());
         contributeOpDesc(builder, (AbstractLogicalOperator) op, opDesc);
         builder.contributeGraphEdge(src0, 0, op, 0);
         builder.contributeGraphEdge(src1, 0, op, 1);

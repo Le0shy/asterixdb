@@ -367,10 +367,6 @@ public class LogicalOperatorPrettyPrintVisitor extends AbstractLogicalOperatorPr
         AlgebricksStringBuilderWriter out =
                 addIndent(indent).append("kmeans-init-candidates ").append(str(op.getCandidateVariable()));
         switch (op.getMode()) {
-            case FINALIZE:
-                out.append(" <- finalize pool ").append(str(op.getPoolVariable())).append(" (global top-")
-                        .append(String.valueOf(op.getTopCount())).append(" intake)");
-                break;
             case WEIGH:
                 out.append(" <- weigh ").append(str(op.getVectorVariable())).append(" vs pool ")
                         .append(str(op.getPoolVariable())).append(" (global top-")
@@ -387,17 +383,9 @@ public class LogicalOperatorPrettyPrintVisitor extends AbstractLogicalOperatorPr
                 out.append(" <- oversample-loop ").append(String.valueOf(op.getLoopRounds())).append(" rounds of ")
                         .append(str(op.getVectorVariable())).append(" vs seed ").append(str(op.getPoolVariable()));
                 break;
-            case COST:
-                out.append(" <- cost of ").append(str(op.getVectorVariable())).append(" vs pool ")
-                        .append(str(op.getPoolVariable()));
-                break;
-            case SAMPLE:
-                out.append(" <- sample ").append(str(op.getVectorVariable())).append(" vs pool ")
-                        .append(str(op.getPoolVariable()));
-                break;
             default:
-                out.append(" <- top-").append(String.valueOf(op.getTopCount())).append(" of ")
-                        .append(str(op.getVectorVariable())).append(" vs pool ").append(str(op.getPoolVariable()));
+                out.append(" <- ").append(String.valueOf(op.getMode())).append(' ').append(str(op.getVectorVariable()))
+                        .append(" vs pool ").append(str(op.getPoolVariable()));
                 break;
         }
         return null;

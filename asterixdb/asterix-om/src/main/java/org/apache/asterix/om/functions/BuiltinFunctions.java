@@ -1245,10 +1245,6 @@ public class BuiltinFunctions {
     // (the k-means|| sampling score d2(x, C)).
     public static final FunctionIdentifier NEAREST_CENTROID_DISTANCE =
             FunctionConstants.newAsterix("nearest-centroid-distance", 2);
-    // CLUSTER BY: internal marker realized by the translator as the k-means|| init runtime operator
-    // (one oversampling round): kmeans-init-candidates(vectors, pool, l) -> [candidate vectors].
-    public static final FunctionIdentifier KMEANS_INIT_CANDIDATES =
-            FunctionConstants.newAsterix("kmeans-init-candidates", 3);
     // kmeans-weigh-candidates(vectors, pool, l): per-partition (count, sum) partials per pool member.
     public static final FunctionIdentifier KMEANS_WEIGH_CANDIDATES =
             FunctionConstants.newAsterix("kmeans-weigh-candidates", 3);
@@ -1256,16 +1252,11 @@ public class BuiltinFunctions {
     public static final FunctionIdentifier KMEANS_RECLUSTER = FunctionConstants.newAsterix("kmeans-recluster", 3);
     // kmeans-lloyd-merge(vectors, partials, k): merge partials, emit every non-empty member's mean.
     public static final FunctionIdentifier KMEANS_LLOYD_MERGE = FunctionConstants.newAsterix("kmeans-lloyd-merge", 3);
-    // Paper-exact k-means|| oversampling (Bahmani et al. VLDB'12, Algorithm 2), a two-stage round:
-    // kmeans-cost(vectors, pool, l): per-partition local Sigma d^2(x, pool) partial (l unused); the broadcast
-    // sums these into the global potential phi.
-    public static final FunctionIdentifier KMEANS_COST = FunctionConstants.newAsterix("kmeans-cost", 3);
-    // kmeans-sample(vectors, pool, l, seed): draw each vector with prob p_x = l * d^2(x, pool) / phi
-    // (phi from the broadcast cost partials), seeded for reproducibility. Keeps every draw (C <- C U C').
-    public static final FunctionIdentifier KMEANS_SAMPLE = FunctionConstants.newAsterix("kmeans-sample", 4);
-    // kmeans-oversample-loop(vectors, seedPool, l, rounds, seedBase): EXPERIMENTAL single-NC init that runs the
-    // whole exact oversample loop (the cost/sample tower) inside ONE operator, iterating `rounds` times with an
-    // in-operator cross-partition barrier instead of an unrolled chain of broadcast connectors.
+    // CLUSTER BY initMode "kmeansPP": the exact k-means|| oversampling init (Bahmani et al. VLDB'12,
+    // Algorithm 2) as one self-iterating operator. kmeans-oversample-loop(vectors, seedPool, l, rounds,
+    // seedBase): runs the whole oversample loop internally, iterating `rounds` times and all-reducing the
+    // per-round global potential + draws across partitions; the physical operator realizes it as an injected
+    // pipelined systolic sub-graph. The final pool is weighed and emitted for kmeans-recluster.
     public static final FunctionIdentifier KMEANS_OVERSAMPLE_LOOP =
             FunctionConstants.newAsterix("kmeans-oversample-loop", 5);
 
@@ -2020,12 +2011,9 @@ public class BuiltinFunctions {
 
         addFunction(NEAREST_CENTROID, AInt32TypeComputer.INSTANCE_NULLABLE, true);
         addFunction(NEAREST_CENTROID_DISTANCE, ADoubleTypeComputer.INSTANCE_NULLABLE, true);
-        addPrivateFunction(KMEANS_INIT_CANDIDATES, OrderedListOfAnyTypeComputer.INSTANCE, true);
         addPrivateFunction(KMEANS_WEIGH_CANDIDATES, OrderedListOfAnyTypeComputer.INSTANCE, true);
         addPrivateFunction(KMEANS_RECLUSTER, OrderedListOfAnyTypeComputer.INSTANCE, true);
         addPrivateFunction(KMEANS_LLOYD_MERGE, OrderedListOfAnyTypeComputer.INSTANCE, true);
-        addPrivateFunction(KMEANS_COST, OrderedListOfAnyTypeComputer.INSTANCE, true);
-        addPrivateFunction(KMEANS_SAMPLE, OrderedListOfAnyTypeComputer.INSTANCE, true);
         addPrivateFunction(KMEANS_OVERSAMPLE_LOOP, OrderedListOfAnyTypeComputer.INSTANCE, true);
         // Window functions
 

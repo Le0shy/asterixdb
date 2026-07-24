@@ -47,30 +47,23 @@ import org.apache.hyracks.util.annotations.AiProvenance;
 public class KMeansInitCandidatesOperator extends AbstractLogicalOperator {
 
     /**
-     * What this instance computes. ROUND: one oversampling round (local top-{@code topCount} candidates
-     * plus the pool echo). FINALIZE: re-limit the intake and unwrap to plain vectors. WEIGH: score every
-     * point against the (re-limited) pool and emit per-partition (count, sum) partials per pool member.
-     * RECLUSTER: merge the broadcast partials and emit the {@code topCount} heaviest means (C0).
-     * LLOYD: merge the broadcast partials and emit EVERY non-empty member's mean in pool order — one
-     * Lloyd iteration's recomputed centroids (attracting nothing drops a centroid, as GROUP BY would).
+     * What this instance computes. WEIGH: score every point against the (re-limited) pool and emit
+     * per-partition (count, sum) partials per pool member. RECLUSTER: merge the broadcast partials and emit
+     * the {@code topCount} heaviest means (C0). LLOYD: merge the broadcast partials and emit EVERY non-empty
+     * member's mean in pool order — one Lloyd iteration's recomputed centroids (attracting nothing drops a
+     * centroid, as GROUP BY would). OVERSAMPLE_LOOP: the whole exact k-means|| oversampling init as one
+     * self-iterating operator (see below); it is realized as an injected systolic sub-graph by the physical
+     * operator, never by this descriptor's per-mode emit.
      */
     public enum Mode {
-        ROUND,
-        FINALIZE,
         WEIGH,
         RECLUSTER,
         LLOYD,
-        // Paper-exact Bernoulli oversampling (Bahmani et al. VLDB'12, Algorithm 2), a two-stage round:
-        // COST emits each partition's local Sigma d^2(x, pool) as a partial (broadcast -> global phi);
-        // SAMPLE draws each vector with p_x = topCount * d^2(x, pool) / phi (seeded), keeping every draw.
-        COST,
-        SAMPLE,
-        // EXPERIMENTAL (single-NC): the whole exact oversample loop as ONE operator that iterates
-        // internally instead of the unrolled COST/SAMPLE tower. Each of loopRounds iterations does a local
-        // cost + a shared-object all-reduce to global phi + a local Bernoulli sample + a shared-object
-        // all-reduce union into the next pool; the final pool is emitted for WEIGH. The two all-reduces
-        // rendezvous partitions via a joblet-scoped barrier, so this is correct only when all partitions run
-        // on one NC (the barrier is sized to the total partition count). See the operator descriptor.
+        // The exact Bernoulli oversampling init (Bahmani et al. VLDB'12, Algorithm 2) as ONE operator that
+        // iterates internally: each of loopRounds iterations does a local cost + all-reduce to the global
+        // potential phi + a local Bernoulli sample + an all-reduce union into the next pool; the final pool is
+        // weighed and emitted for RECLUSTER. The physical operator injects this as a pipelined systolic
+        // sub-graph (correct on any topology). See the operator descriptor / physical operator.
         OVERSAMPLE_LOOP
     }
 
@@ -82,34 +75,23 @@ public class KMeansInitCandidatesOperator extends AbstractLogicalOperator {
     // The single produced variable: a candidate vector, same type as vectorVar (opaque; from translator).
     private LogicalVariable candidateVar;
     private final Object candidateVarType;
-    // ROUND/FINALIZE/WEIGH: l = oversampling factor * k (candidates per round / intake re-limit);
-    // RECLUSTER: k (means to keep). Always non-negative.
+    // WEIGH: l = oversampling factor * k (intake re-limit); RECLUSTER: k (means to keep). Always non-negative.
     private final int topCount;
     // Whether input 1 is the output of another tower stage (envelope rows) vs plain vectors (the seed).
     private boolean poolFromPriorRound;
-    private Mode mode = Mode.ROUND;
-    // Shared-vector materialization (optimization): the vector-reading stages of one tower (ROUND/WEIGH)
-    // all read the SAME materialized run file instead of each materializing its own. sharedVectorsKey is a
-    // per-tower token (null = not shared, i.e. this stage materializes its own vectors as before); exactly
-    // one stage is the writer (materializes under the shared key with sharedConsumerCount readers), the
-    // rest drain their vector input and read the shared run file. See the physical operator/descriptor.
+    private Mode mode = Mode.WEIGH;
+    // Shared-vector materialization (optimization): the vector-reading stages of one tower (WEIGH) all read
+    // the SAME materialized run file instead of each materializing its own. sharedVectorsKey is a per-tower
+    // token (null = not shared, i.e. this stage materializes its own vectors as before); exactly one stage is
+    // the writer (materializes under the shared key with sharedConsumerCount readers), the rest drain their
+    // vector input and read the shared run file. See the physical operator/descriptor.
     private String sharedVectorsKey;
     private boolean vectorsWriter;
     private int sharedConsumerCount;
-    // SAMPLE only: base seed for the per-round, per-partition Bernoulli RNG (reproducible on a fixed
-    // topology). keepAllCandidates: exact-path stages (COST + the terminal WEIGH after the last SAMPLE)
-    // keep every candidate from the pool input instead of the deterministic top-`topCount` re-limit.
+    // OVERSAMPLE_LOOP only: base seed for the per-round, per-partition Bernoulli RNG (per-round seed =
+    // seed + r; reproducible on a fixed topology). Unused by every other mode.
     private long seed;
-    private boolean keepAllCandidates;
-    // Exact-path per-round score reuse (optimization): within one oversample round, COST computes each
-    // vector's d^2 to the pool to sum the global potential; SAMPLE needs the same d^2 for its Bernoulli
-    // coin flip. Instead of SAMPLE recomputing it (a second full distance pass), COST writes each d^2 to a
-    // per-round scratch sidecar and SAMPLE reads it back in lockstep. scoresKey is the per-COST/SAMPLE-pair
-    // token (null = not wired, SAMPLE recomputes as before); COST is the writer, SAMPLE the reader.
-    private String scoresKey;
-    private boolean scoresWriter;
-    // OVERSAMPLE_LOOP only: number of oversample iterations the operator runs internally (the desugar emits
-    // ONE loop call instead of an unrolled COST/SAMPLE tower). Unused by every other mode.
+    // OVERSAMPLE_LOOP only: number of oversample iterations the operator runs internally. Unused otherwise.
     private int loopRounds;
 
     public KMeansInitCandidatesOperator(Mutable<ILogicalExpression> vectorRef, Mutable<ILogicalExpression> poolRef,
@@ -244,40 +226,13 @@ public class KMeansInitCandidatesOperator extends AbstractLogicalOperator {
         this.sharedConsumerCount = sharedConsumerCount;
     }
 
-    /** Per-round score-reuse token shared by a COST (writer) and its SAMPLE (reader); null = not wired. */
-    public String getScoresKey() {
-        return scoresKey;
-    }
-
-    public void setScoresKey(String scoresKey) {
-        this.scoresKey = scoresKey;
-    }
-
-    /** True on the COST stage (writes the per-vector d^2 sidecar); false on SAMPLE (reads it). */
-    public boolean isScoresWriter() {
-        return scoresWriter;
-    }
-
-    public void setScoresWriter(boolean scoresWriter) {
-        this.scoresWriter = scoresWriter;
-    }
-
-    /** SAMPLE only: base seed for the per-round, per-partition Bernoulli RNG. */
+    /** OVERSAMPLE_LOOP only: base seed for the per-round, per-partition Bernoulli RNG. */
     public long getSeed() {
         return seed;
     }
 
     public void setSeed(long seed) {
         this.seed = seed;
-    }
-
-    /** True on exact-path stages that must keep every candidate (no top-`topCount` re-limit). */
-    public boolean isKeepAllCandidates() {
-        return keepAllCandidates;
-    }
-
-    public void setKeepAllCandidates(boolean keepAllCandidates) {
-        this.keepAllCandidates = keepAllCandidates;
     }
 
     /** OVERSAMPLE_LOOP only: how many oversample iterations the operator runs internally. */

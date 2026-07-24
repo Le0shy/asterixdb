@@ -549,7 +549,7 @@ public class LogicalOperatorDeepCopyWithNewVariablesVisitor
         opCopy.setVectorsWriter(op.isVectorsWriter());
         opCopy.setSharedConsumerCount(op.getSharedConsumerCount());
         opCopy.setSeed(op.getSeed());
-        opCopy.setKeepAllCandidates(op.isKeepAllCandidates());
+        opCopy.setLoopRounds(op.getLoopRounds());
         deepCopyInputsAnnotationsAndExecutionMode(op, arg, opCopy);
         return opCopy;
     }

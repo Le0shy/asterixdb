@@ -205,64 +205,49 @@ public class SqlppExpressionToPlanTranslator extends LangExpressionToPlanTransla
         return super.visit(fcall, tupSource);
     }
 
-    /** The internal CLUSTER BY tower markers: one init round, the weighting pass, or the recluster. */
+    /** The internal CLUSTER BY tower markers: the oversample-loop init, the weighting pass, or the merges. */
     private static boolean isKMeansTowerCall(Expression expr) {
         if (!(expr instanceof CallExpr)) {
             return false;
         }
         int arity = ((CallExpr) expr).getExprList().size();
         String name = ((CallExpr) expr).getFunctionSignature().getName();
-        // The 3-arg tower markers, plus the 4-arg exact-sampling marker (vectors, pool, l, seed).
-        boolean three = arity == 3 && (BuiltinFunctions.KMEANS_INIT_CANDIDATES.getName().equals(name)
-                || BuiltinFunctions.KMEANS_WEIGH_CANDIDATES.getName().equals(name)
+        // The 3-arg tower markers: the weighting pass and the recluster / lloyd merges.
+        boolean three = arity == 3 && (BuiltinFunctions.KMEANS_WEIGH_CANDIDATES.getName().equals(name)
                 || BuiltinFunctions.KMEANS_RECLUSTER.getName().equals(name)
-                || BuiltinFunctions.KMEANS_LLOYD_MERGE.getName().equals(name)
-                || BuiltinFunctions.KMEANS_COST.getName().equals(name));
-        boolean four = arity == 4 && BuiltinFunctions.KMEANS_SAMPLE.getName().equals(name);
+                || BuiltinFunctions.KMEANS_LLOYD_MERGE.getName().equals(name));
         // The 5-arg self-iterating exact loop (vectors, seedPool, l, rounds, seedBase).
         boolean five = arity == 5 && BuiltinFunctions.KMEANS_OVERSAMPLE_LOOP.getName().equals(name);
-        return three || four || five;
+        return three || five;
     }
 
     /** Whether a nested tower call's OUTPUT rows are envelopes (vs plain vectors). */
     private static boolean towerCallEmitsEnvelopes(CallExpr nested) {
         String name = nested.getFunctionSignature().getName();
-        if (BuiltinFunctions.KMEANS_WEIGH_CANDIDATES.getName().equals(name)
-                || BuiltinFunctions.KMEANS_COST.getName().equals(name)
-                || BuiltinFunctions.KMEANS_SAMPLE.getName().equals(name)
-                || BuiltinFunctions.KMEANS_OVERSAMPLE_LOOP.getName().equals(name)) {
-            // COST emits pool echo + a cost partial; SAMPLE emits pool echo + candidates; OVERSAMPLE_LOOP
-            // emits the final pool as pool-echo rows -- all envelopes.
-            return true;
-        }
-        if (BuiltinFunctions.KMEANS_INIT_CANDIDATES.getName().equals(name)) {
-            // A round emits envelopes; the FINALIZE variant (negative l) unwraps to plain vectors.
-            long l = ((org.apache.asterix.lang.common.literal.IntegerLiteral) ((org.apache.asterix.lang.common.expression.LiteralExpr) nested
-                    .getExprList().get(2)).getValue()).getValue().longValue();
-            return l >= 0;
-        }
-        return false; // RECLUSTER and LLOYD emit plain vectors
+        // WEIGH emits pool echo + (count,sum) partials; OVERSAMPLE_LOOP emits the final pool as pool-echo
+        // rows plus its weighed partials -- both envelopes. RECLUSTER and LLOYD emit plain vectors.
+        return BuiltinFunctions.KMEANS_WEIGH_CANDIDATES.getName().equals(name)
+                || BuiltinFunctions.KMEANS_OVERSAMPLE_LOOP.getName().equals(name);
     }
 
     /**
-     * Realizes the internal kmeans-init-candidates(vectors, pool, l) marker (CLUSTER BY runtime init):
-     * translates the two self-contained args as independent STREAM branches (their pipelines, without the
-     * subquery listify), feeds them to the KMeansInitCandidatesOperator (input 1 is broadcast at the
-     * physical level), and listifies the emitted pool∪candidates back into a value for the enclosing LET.
-     * The pool arg may itself be a kmeans-init-candidates call (the desugar's oversampling-round tower):
-     * nested calls translate recursively into a chain of operators — round r's pool input is round r−1's
-     * output stream — and only the OUTERMOST call gets the listify.
+     * Realizes an internal kmeans tower marker (CLUSTER BY runtime init): translates the two self-contained
+     * args as independent STREAM branches (their pipelines, without the subquery listify), feeds them to the
+     * KMeansInitCandidatesOperator (input 1 is broadcast at the physical level), and listifies the emitted
+     * result back into a value for the enclosing LET. The pool arg may itself be a tower call (e.g. RECLUSTER
+     * over the OVERSAMPLE_LOOP init, or LLOYD over a WEIGH): nested calls translate recursively into a chain
+     * of operators — a stage's pool input is the prior stage's output stream — and only the OUTERMOST call
+     * gets the listify.
      */
     // Per-tower counter for the shared-vector-materialization key (unique within one compiled query/job).
     private int kmeansTowerCounter = 0;
-    private int kmeansScoresCounter = 0;
 
     /**
-     * Collects the vector-reading stages (ROUND/WEIGH) of one k-means|| tower so they can share ONE
-     * materialized vector run file instead of each materializing its own: the first-built stage (innermost,
-     * hence first to run) writes it; every stage reads it. See {@code KMeansInitCandidatesOperatorDescriptor}.
+     * Collects the vector-reading stages (WEIGH) of one k-means|| tower so they can share ONE materialized
+     * vector run file instead of each materializing its own: the first-built stage (innermost, hence first to
+     * run) writes it; every stage reads it. See {@code KMeansInitCandidatesOperatorDescriptor}.
      */
-    @AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.GENERATED, notes = "shared-vector-materialization: per-tower collector of ROUND/WEIGH stages")
+    @AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.GENERATED, notes = "shared-vector-materialization: per-tower collector of WEIGH stages")
     private static final class KMeansTowerShared {
         private final String key;
         private final java.util.List<KMeansInitCandidatesOperator> vectorStages = new java.util.ArrayList<>();
@@ -276,8 +261,8 @@ public class SqlppExpressionToPlanTranslator extends LangExpressionToPlanTransla
             Mutable<ILogicalOperator> tupSource) throws CompilationException {
         SourceLocation loc = fcall.getSourceLocation();
         KMeansTowerShared shared = new KMeansTowerShared("kmeansVec" + (kmeansTowerCounter++));
-        Pair<ILogicalOperator, LogicalVariable> constructed = translateKMeansCallAsStream(fcall, shared, null);
-        // Shared-vector materialization: the ROUND/WEIGH stages all read one run file. The innermost stage
+        Pair<ILogicalOperator, LogicalVariable> constructed = translateKMeansCallAsStream(fcall, shared);
+        // Shared-vector materialization: the WEIGH stages all read one run file. The innermost stage
         // (built first, runs first via the pool chain) writes it; the delete refcount = number of readers.
         if (!shared.vectorStages.isEmpty()) {
             int consumers = shared.vectorStages.size();
@@ -305,30 +290,26 @@ public class SqlppExpressionToPlanTranslator extends LangExpressionToPlanTransla
     }
 
     /**
-     * Translates one kmeans-init-candidates call into the operator over its two input branches, anchored
-     * like any stream branch (see {@link #translateStreamBranch}); recurses when the pool arg is itself a
-     * kmeans-init-candidates call (the round tower).
+     * Translates one kmeans tower call into the operator over its two input branches, anchored like any
+     * stream branch (see {@link #translateStreamBranch}); recurses when the pool arg is itself a tower call
+     * (e.g. RECLUSTER over the OVERSAMPLE_LOOP init, or LLOYD over a WEIGH).
      */
     private Pair<ILogicalOperator, LogicalVariable> translateKMeansCallAsStream(CallExpr fcall,
-            KMeansTowerShared shared, String scoresWriterKey) throws CompilationException {
+            KMeansTowerShared shared) throws CompilationException {
         SourceLocation loc = fcall.getSourceLocation();
         Pair<ILogicalOperator, LogicalVariable> vecBranch =
                 translateStreamBranch((SelectExpression) fcall.getExprList().get(0));
         Expression poolArg = fcall.getExprList().get(1);
         Pair<ILogicalOperator, LogicalVariable> poolBranch;
-        // "Prior round" at the operator level means: the pool input carries ENVELOPE rows. Only the
-        // ROUND and WEIGH stages emit envelopes; RECLUSTER/LLOYD/FINALIZE outputs are plain vectors.
+        // "Prior round" at the operator level means: the pool input carries ENVELOPE rows. Only the WEIGH and
+        // OVERSAMPLE_LOOP stages emit envelopes; RECLUSTER/LLOYD outputs are plain vectors.
         boolean poolFromPriorRound = isKMeansTowerCall(poolArg) && towerCallEmitsEnvelopes((CallExpr) poolArg);
-        // Score reuse: a SAMPLE's pool arg is its round's COST. Mint a per-pair key here and pass it down so
-        // that COST becomes the score writer; this SAMPLE reads it (set below). Any other stage passes null.
-        boolean thisIsSample = BuiltinFunctions.KMEANS_SAMPLE.getName().equals(fcall.getFunctionSignature().getName());
-        String pairScoresKey = thisIsSample ? ("kmeansScores" + (kmeansScoresCounter++)) : null;
         if (isKMeansTowerCall(poolArg)) {
-            poolBranch = translateKMeansCallAsStream((CallExpr) poolArg, shared, pairScoresKey);
+            poolBranch = translateKMeansCallAsStream((CallExpr) poolArg, shared);
         } else {
             poolBranch = translateStreamBranch((SelectExpression) poolArg);
         }
-        int countArg =
+        int topCount =
                 (int) ((org.apache.asterix.lang.common.literal.IntegerLiteral) ((org.apache.asterix.lang.common.expression.LiteralExpr) fcall
                         .getExprList().get(2)).getValue()).getValue().longValue();
         String fnName = fcall.getFunctionSignature().getName();
@@ -339,22 +320,9 @@ public class SqlppExpressionToPlanTranslator extends LangExpressionToPlanTransla
             mode = KMeansInitCandidatesOperator.Mode.RECLUSTER;
         } else if (BuiltinFunctions.KMEANS_LLOYD_MERGE.getName().equals(fnName)) {
             mode = KMeansInitCandidatesOperator.Mode.LLOYD;
-        } else if (BuiltinFunctions.KMEANS_COST.getName().equals(fnName)) {
-            mode = KMeansInitCandidatesOperator.Mode.COST;
-        } else if (BuiltinFunctions.KMEANS_SAMPLE.getName().equals(fnName)) {
-            mode = KMeansInitCandidatesOperator.Mode.SAMPLE;
-        } else if (BuiltinFunctions.KMEANS_OVERSAMPLE_LOOP.getName().equals(fnName)) {
-            mode = KMeansInitCandidatesOperator.Mode.OVERSAMPLE_LOOP;
         } else {
-            // kmeans-init-candidates: a negative l marks the FINALIZE variant.
-            mode = countArg < 0 ? KMeansInitCandidatesOperator.Mode.FINALIZE : KMeansInitCandidatesOperator.Mode.ROUND;
+            mode = KMeansInitCandidatesOperator.Mode.OVERSAMPLE_LOOP;
         }
-        int topCount = Math.abs(countArg);
-        // Exact-path stages whose pool input is a SAMPLE (i.e. carries candidates that must all survive):
-        // the COST of the next round and the terminal WEIGH after the last SAMPLE. They skip the top-l
-        // re-limit. (SAMPLE's own pool input is a COST -- no candidates -- so this is harmless there.)
-        boolean keepAllCandidates = poolArg instanceof CallExpr && BuiltinFunctions.KMEANS_SAMPLE.getName()
-                .equals(((CallExpr) poolArg).getFunctionSignature().getName());
         LogicalVariable candVar = context.newVar();
         VariableReferenceExpression vecRef = new VariableReferenceExpression(vecBranch.second);
         vecRef.setSourceLocation(loc);
@@ -366,14 +334,6 @@ public class SqlppExpressionToPlanTranslator extends LangExpressionToPlanTransla
                 candVar, org.apache.asterix.om.types.BuiltinType.ANY, topCount);
         kop.setPoolFromPriorRound(poolFromPriorRound);
         kop.setMode(mode);
-        kop.setKeepAllCandidates(keepAllCandidates);
-        // SAMPLE's 4th arg is the per-round seed literal.
-        if (mode == KMeansInitCandidatesOperator.Mode.SAMPLE) {
-            long seed =
-                    ((org.apache.asterix.lang.common.literal.IntegerLiteral) ((org.apache.asterix.lang.common.expression.LiteralExpr) fcall
-                            .getExprList().get(3)).getValue()).getValue().longValue();
-            kop.setSeed(seed);
-        }
         // OVERSAMPLE_LOOP: 4th arg is the iteration count, 5th the seed base (per-round seed = base + r).
         if (mode == KMeansInitCandidatesOperator.Mode.OVERSAMPLE_LOOP) {
             int rounds =
@@ -385,21 +345,11 @@ public class SqlppExpressionToPlanTranslator extends LangExpressionToPlanTransla
             kop.setLoopRounds(rounds);
             kop.setSeed(seedBase);
         }
-        // ROUND/WEIGH/COST/SAMPLE read the full vector stream; they share one materialized run file per
-        // tower. (RECLUSTER/LLOYD/FINALIZE read a LIMIT-1 dummy, so they keep their own materialization.)
-        if (mode == KMeansInitCandidatesOperator.Mode.ROUND || mode == KMeansInitCandidatesOperator.Mode.WEIGH
-                || mode == KMeansInitCandidatesOperator.Mode.COST || mode == KMeansInitCandidatesOperator.Mode.SAMPLE) {
+        // WEIGH reads the full vector stream; the stages of one tower share one materialized run file.
+        // (RECLUSTER/LLOYD read a LIMIT-1 dummy, so they keep their own materialization.)
+        if (mode == KMeansInitCandidatesOperator.Mode.WEIGH) {
             kop.setSharedVectorsKey(shared.key);
             shared.vectorStages.add(kop);
-        }
-        // Per-round score reuse: this COST writes the sidecar its parent SAMPLE will read; this SAMPLE reads
-        // the sidecar its pool COST wrote. Same key on both halves of the pair.
-        if (mode == KMeansInitCandidatesOperator.Mode.COST && scoresWriterKey != null) {
-            kop.setScoresKey(scoresWriterKey);
-            kop.setScoresWriter(true);
-        } else if (mode == KMeansInitCandidatesOperator.Mode.SAMPLE && pairScoresKey != null) {
-            kop.setScoresKey(pairScoresKey);
-            kop.setScoresWriter(false);
         }
         kop.setSourceLocation(loc);
         kop.getInputs().add(new MutableObject<>(vecBranch.first));
