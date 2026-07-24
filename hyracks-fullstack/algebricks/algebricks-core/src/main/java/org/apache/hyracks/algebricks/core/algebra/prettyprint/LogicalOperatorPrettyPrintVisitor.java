@@ -383,6 +383,18 @@ public class LogicalOperatorPrettyPrintVisitor extends AbstractLogicalOperatorPr
             case LLOYD:
                 out.append(" <- lloyd-merge pool ").append(str(op.getPoolVariable()));
                 break;
+            case OVERSAMPLE_LOOP:
+                out.append(" <- oversample-loop ").append(String.valueOf(op.getLoopRounds())).append(" rounds of ")
+                        .append(str(op.getVectorVariable())).append(" vs seed ").append(str(op.getPoolVariable()));
+                break;
+            case COST:
+                out.append(" <- cost of ").append(str(op.getVectorVariable())).append(" vs pool ")
+                        .append(str(op.getPoolVariable()));
+                break;
+            case SAMPLE:
+                out.append(" <- sample ").append(str(op.getVectorVariable())).append(" vs pool ")
+                        .append(str(op.getPoolVariable()));
+                break;
             default:
                 out.append(" <- top-").append(String.valueOf(op.getTopCount())).append(" of ")
                         .append(str(op.getVectorVariable())).append(" vs pool ").append(str(op.getPoolVariable()));

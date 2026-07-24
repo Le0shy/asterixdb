@@ -350,9 +350,41 @@ public class LogicalOperatorDotVisitor implements ILogicalOperatorVisitor<String
     public String visitKMeansInitCandidatesOperator(KMeansInitCandidatesOperator op, Boolean showDetails)
             throws AlgebricksException {
         stringBuilder.setLength(0);
-        stringBuilder.append("kmeans-init-candidates ").append(str(op.getCandidateVariable())).append(" <- top-")
-                .append(op.getTopCount()).append(" of ").append(str(op.getVectorVariable())).append(" vs pool ")
-                .append(str(op.getPoolVariable()));
+        stringBuilder.append("kmeans-init-candidates ").append(str(op.getCandidateVariable()));
+        switch (op.getMode()) {
+            case FINALIZE:
+                stringBuilder.append(" <- finalize pool ").append(str(op.getPoolVariable())).append(" (global top-")
+                        .append(op.getTopCount()).append(" intake)");
+                break;
+            case WEIGH:
+                stringBuilder.append(" <- weigh ").append(str(op.getVectorVariable())).append(" vs pool ")
+                        .append(str(op.getPoolVariable())).append(" (global top-").append(op.getTopCount())
+                        .append(" intake)");
+                break;
+            case RECLUSTER:
+                stringBuilder.append(" <- recluster pool ").append(str(op.getPoolVariable())).append(" to ")
+                        .append(op.getTopCount()).append(" means");
+                break;
+            case LLOYD:
+                stringBuilder.append(" <- lloyd-merge pool ").append(str(op.getPoolVariable()));
+                break;
+            case OVERSAMPLE_LOOP:
+                stringBuilder.append(" <- oversample-loop ").append(op.getLoopRounds()).append(" rounds of ")
+                        .append(str(op.getVectorVariable())).append(" vs seed ").append(str(op.getPoolVariable()));
+                break;
+            case COST:
+                stringBuilder.append(" <- cost of ").append(str(op.getVectorVariable())).append(" vs pool ")
+                        .append(str(op.getPoolVariable()));
+                break;
+            case SAMPLE:
+                stringBuilder.append(" <- sample ").append(str(op.getVectorVariable())).append(" vs pool ")
+                        .append(str(op.getPoolVariable()));
+                break;
+            default:
+                stringBuilder.append(" <- top-").append(op.getTopCount()).append(" of ")
+                        .append(str(op.getVectorVariable())).append(" vs pool ").append(str(op.getPoolVariable()));
+                break;
+        }
         appendSchema(op, showDetails);
         appendAnnotations(op, showDetails);
         appendPhysicalOperatorInfo(op, showDetails);
