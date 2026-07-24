@@ -18,8 +18,6 @@
  */
 package org.apache.asterix.algebra.operators.physical;
 
-import java.util.Arrays;
-
 import org.apache.asterix.metadata.declared.MetadataProvider;
 import org.apache.asterix.runtime.operators.KMeansInitCandidatesOperatorDescriptor;
 import org.apache.asterix.runtime.operators.kmeans.KMeansCostControllerOperatorDescriptor;
@@ -112,18 +110,16 @@ public class KMeansInitCandidatesPOperator extends AbstractPhysicalOperator {
         int poolColumn = resolveSingleColumn(inputSchemas[1], kop.getPoolVariable());
         ILogicalOperator src0 = op.getInputs().get(0).getValue();
         ILogicalOperator src1 = op.getInputs().get(1).getValue();
-        // Route B: an OVERSAMPLE_LOOP spanning more than one NC cannot use Route A's in-JVM barrier, so it is
-        // realized as the systolic 5-operator sub-graph injected here. A single-NC OVERSAMPLE_LOOP keeps the
-        // leaner barrier operator (the default path below); every other mode is always the default path.
+        // OVERSAMPLE_LOOP is ALWAYS realized as the systolic 5-operator sub-graph injected here, on any topology
+        // (the in-JVM-barrier single-NC fallback has been retired — one code path). On a single NC all partitions
+        // simply co-locate there; the merges are single-node; the connectors are intra-JVM. Every other mode is
+        // the default single-descriptor path below.
         if (kop.getMode() == KMeansInitCandidatesOperator.Mode.OVERSAMPLE_LOOP) {
             String[] clusterLocations =
                     ((MetadataProvider) context.getMetadataProvider()).getClusterLocations().getLocations();
-            int nNC = (int) Arrays.stream(clusterLocations).distinct().count();
-            if (nNC > 1) {
-                contributeSystolicLoop(builder, kop, (AbstractLogicalOperator) op, recDesc, vectorColumn, poolColumn,
-                        clusterLocations, src0, src1);
-                return;
-            }
+            contributeSystolicLoop(builder, kop, (AbstractLogicalOperator) op, recDesc, vectorColumn, poolColumn,
+                    clusterLocations, src0, src1);
+            return;
         }
         KMeansInitCandidatesOperatorDescriptor.Mode mode;
         switch (kop.getMode()) {
@@ -145,10 +141,8 @@ public class KMeansInitCandidatesPOperator extends AbstractPhysicalOperator {
             case SAMPLE:
                 mode = KMeansInitCandidatesOperatorDescriptor.Mode.SAMPLE;
                 break;
-            case OVERSAMPLE_LOOP:
-                mode = KMeansInitCandidatesOperatorDescriptor.Mode.OVERSAMPLE_LOOP;
-                break;
             default:
+                // OVERSAMPLE_LOOP never reaches here (it early-returns to the systolic sub-graph above).
                 mode = KMeansInitCandidatesOperatorDescriptor.Mode.ROUND;
                 break;
         }
