@@ -869,11 +869,42 @@ public class KMeansInitCandidatesOperatorDescriptor extends AbstractOperatorDesc
                                 currentPool.addAll(coord.drawn[p]);
                             }
                         }
-                        // Emit the final pool as pool-echo envelopes (partition 0 only -- it is complete and
-                        // identical everywhere; the terminal WEIGH broadcasts it back to every partition).
+                        // Folded terminal WEIGH (A1): weigh every resident against the final pool (currentPool is
+                        // complete and identical on every partition after the all-reduce) and emit the pool echo
+                        // (partition 0, for RECLUSTER's pad-from-pool) plus this partition's non-empty (count,sum)
+                        // partials. Byte-identical to emitWeigh; RECLUSTER downstream is unchanged.
+                        final long[] weighCounts = new long[currentPool.size()];
+                        final double[][] weighSums = new double[currentPool.size()][];
+                        streamVectorsRepeatable(state, vec -> {
+                            int wBestIdx = -1;
+                            double wBest = Double.POSITIVE_INFINITY;
+                            for (int i = 0; i < currentPool.size(); i++) {
+                                double d = VectorDistanceCalculation.euclideanSquared(vec, currentPool.get(i));
+                                if (d < wBest) {
+                                    wBest = d;
+                                    wBestIdx = i;
+                                }
+                            }
+                            if (wBestIdx >= 0 && !Double.isNaN(wBest)) {
+                                weighCounts[wBestIdx]++;
+                                double[] sum = weighSums[wBestIdx];
+                                if (sum == null) {
+                                    sum = new double[vec.length];
+                                    weighSums[wBestIdx] = sum;
+                                }
+                                for (int d = 0; d < Math.min(sum.length, vec.length); d++) {
+                                    sum[d] += vec[d];
+                                }
+                            }
+                        });
                         if (partition == 0) {
                             for (int i = 0; i < currentPool.size(); i++) {
                                 emitter.envelope(new Row(KIND_POOL, 0, i, 0.0d, currentPool.get(i)));
+                            }
+                        }
+                        for (int i = 0; i < currentPool.size(); i++) {
+                            if (weighCounts[i] > 0) {
+                                emitter.envelope(new Row(KIND_PARTIAL, partition, i, weighCounts[i], weighSums[i]));
                             }
                         }
                     } catch (Exception e) {

@@ -55,8 +55,9 @@ import org.apache.hyracks.util.annotations.AiProvenance;
 @AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.GENERATED, notes = "CLUSTER BY Route B: input-vector decoder + KIND_POOL envelope writer (Op1 boundary codec)")
 public final class KMeansVectorCodec {
 
-    /** kind field of a pool-member envelope (matches KMeansInitCandidatesOperatorDescriptor.KIND_POOL). */
+    /** Envelope kind fields (match KMeansInitCandidatesOperatorDescriptor.KIND_*). */
     private static final double KIND_POOL = 0.0d;
+    public static final double KIND_PARTIAL = 2.0d;
 
     private KMeansVectorCodec() {
     }
@@ -98,15 +99,25 @@ public final class KMeansVectorCodec {
             this.appender = new FrameTupleAppender(new VSizeFrame(ctx));
         }
 
-        /** Appends one pool-member envelope {@code [KIND_POOL, 0, seq, 0.0, vec]}. */
+        /** Appends one pool-member echo envelope {@code [KIND_POOL, 0, seq, 0.0, vec]} (partition 0). */
         public void poolMember(int seq, double[] vec) throws HyracksDataException {
+            envelope(KIND_POOL, 0, seq, 0.0d, vec);
+        }
+
+        /**
+         * Appends one general inter-stage envelope {@code [kind, partition, seq, score, vec]} — the exact format
+         * WEIGH emits and RECLUSTER decodes. For a partial: {@code kind=KIND_PARTIAL}, {@code seq}=pool position,
+         * {@code score}=count, {@code vec}=running sum.
+         */
+        public void envelope(double kind, int partition, int seq, double score, double[] vec)
+                throws HyracksDataException {
             try {
                 tb.reset();
                 listBuilder.reset(openList);
-                addDoubleItem(listBuilder, KIND_POOL);
-                addDoubleItem(listBuilder, 0.0d); // partition 0 (only partition 0 emits the pool)
+                addDoubleItem(listBuilder, kind);
+                addDoubleItem(listBuilder, partition);
                 addDoubleItem(listBuilder, seq);
-                addDoubleItem(listBuilder, 0.0d); // score (unused for pool members)
+                addDoubleItem(listBuilder, score);
                 vecBuilder.reset(openList);
                 for (double d : vec) {
                     addDoubleItem(vecBuilder, d);

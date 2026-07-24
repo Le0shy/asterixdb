@@ -256,7 +256,7 @@ public class KMeansCostControllerOperatorDescriptor extends AbstractOperatorDesc
                         MaterializerTaskState vectorState = (MaterializerTaskState) LoopControlState
                                 .await(ctx::getStateObject, LoopControlState.vectorsStateId(loopKey, partition));
                         runLoop(control, poolState, vectorState, sigmaWriter);
-                        emitFinalPool(poolState, poolWriter);
+                        emitWeighPartials(poolState, vectorState, poolWriter);
                         // The loop is done: Release has appended every round and Sample/Cost have read for the
                         // last time, so close the pool writer handle (every partition; StoreVectors already closed
                         // the vector writer). Managed workspace files themselves are reclaimed at joblet cleanup.
@@ -313,17 +313,54 @@ public class KMeansCostControllerOperatorDescriptor extends AbstractOperatorDesc
                     }
                 }
 
-                private void emitFinalPool(MaterializerTaskState poolState, IFrameWriter poolWriter)
-                        throws HyracksDataException {
-                    // The pool is identical on every partition; partition 0 emits it and WEIGH broadcasts it back.
-                    if (partition != 0) {
-                        return;
-                    }
+                /**
+                 * Folded terminal WEIGH (A1): after the loop, weigh every resident vector against the final
+                 * candidate pool (this partition's pool run file already holds the complete, byte-identical C) and
+                 * emit the pool echo (partition 0, for RECLUSTER's pad-from-pool) plus this partition's non-empty
+                 * (count, sum) partials. Byte-identical to the standalone WEIGH's {@code emitWeigh}, so RECLUSTER
+                 * downstream is unchanged; op1's output now carries partials instead of the raw pool.
+                 */
+                private void emitWeighPartials(MaterializerTaskState poolState, MaterializerTaskState vectorState,
+                        IFrameWriter poolWriter) throws HyracksDataException {
+                    final List<double[]> pool = KMeansLoopIO.readAllRawVectors(poolState, ctx); // the final C
+                    final long[] counts = new long[pool.size()];
+                    final double[][] sums = new double[pool.size()][];
+                    KMeansLoopIO.streamRawVectors(vectorState, ctx, vec -> {
+                        int bestIdx = -1;
+                        double best = Double.POSITIVE_INFINITY;
+                        for (int i = 0; i < pool.size(); i++) {
+                            double d = VectorDistanceCalculation.euclideanSquared(vec, pool.get(i));
+                            // Strict <: ties resolve to the first pool member, like nearest-centroid.
+                            if (d < best) {
+                                best = d;
+                                bestIdx = i;
+                            }
+                        }
+                        if (bestIdx >= 0 && !Double.isNaN(best)) {
+                            counts[bestIdx]++;
+                            double[] sum = sums[bestIdx];
+                            if (sum == null) {
+                                sum = new double[vec.length];
+                                sums[bestIdx] = sum;
+                            }
+                            for (int d = 0; d < Math.min(sum.length, vec.length); d++) {
+                                sum[d] += vec[d];
+                            }
+                        }
+                    });
                     KMeansVectorCodec.PoolEnvelopeWriter envelope =
                             new KMeansVectorCodec.PoolEnvelopeWriter(ctx, poolWriter);
-                    List<double[]> finalPool = KMeansLoopIO.readAllRawVectors(poolState, ctx);
-                    for (int i = 0; i < finalPool.size(); i++) {
-                        envelope.poolMember(i, finalPool.get(i));
+                    // Pool echo (partition 0 only — the pool is broadcast-complete on every partition), then this
+                    // partition's non-empty partials.
+                    if (partition == 0) {
+                        for (int i = 0; i < pool.size(); i++) {
+                            envelope.poolMember(i, pool.get(i));
+                        }
+                    }
+                    for (int i = 0; i < pool.size(); i++) {
+                        if (counts[i] > 0) {
+                            envelope.envelope(KMeansVectorCodec.KIND_PARTIAL, partition, i, counts[i], sums[i]);
+                        }
                     }
                     envelope.flush();
                 }

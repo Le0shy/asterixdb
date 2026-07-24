@@ -366,11 +366,15 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
                 // Deterministic seed: the lexicographically smallest vector (see the seedQuery comment).
                 Expression poolStream = selectValueFrom(copy(vecsQuery), pv, pv, null, null,
                         ascOrder(varRef(pv.getVar(), loc)), null, seedLimit, loc);
+                Expression weighed;
                 if (exactLoop) {
-                    // Single self-iterating operator: it loops INIT_OVERSAMPLING_ROUNDS times internally,
-                    // all-reducing phi and the draws through an in-operator barrier, and echoes the final pool.
-                    // Same seed base as the unrolled exact tower, so the draws are the same.
-                    poolStream = call(BuiltinFunctions.KMEANS_OVERSAMPLE_LOOP, loc, copy(vecsQuery), poolStream,
+                    // Single self-iterating operator that ALSO folds in the terminal WEIGH: it loops
+                    // INIT_OVERSAMPLING_ROUNDS times internally (all-reducing phi and the draws through an
+                    // in-operator barrier), then weighs every point against the final candidate pool and emits
+                    // the (count,sum) partials directly -- no separate KMEANS_WEIGH_CANDIDATES node. RECLUSTER
+                    // consumes these exactly as it consumed WEIGH's output. Same seed base as the unrolled exact
+                    // tower, so the draws are identical.
+                    weighed = call(BuiltinFunctions.KMEANS_OVERSAMPLE_LOOP, loc, copy(vecsQuery), poolStream,
                             intLit(OVERSAMPLING_FACTOR_PER_K * k, loc), intLit(INIT_OVERSAMPLING_ROUNDS, loc),
                             intLit(EXACT_SEED_BASE, loc));
                 } else {
@@ -390,12 +394,12 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
                                     intLit(OVERSAMPLING_FACTOR_PER_K * k, loc));
                         }
                     }
+                    // WEIGH: consumes the round tower directly (its intake applies the terminal global
+                    // re-limit), scores every point once against the decoded pool, and emits per-partition
+                    // (count, sum) partials per pool member — the runtime realization of the __wpairs GROUP BY.
+                    weighed = call(BuiltinFunctions.KMEANS_WEIGH_CANDIDATES, loc, copy(vecsQuery), poolStream,
+                            intLit(OVERSAMPLING_FACTOR_PER_K * k, loc));
                 }
-                // WEIGH: consumes the round tower directly (its intake applies the terminal global
-                // re-limit), scores every point once against the decoded pool, and emits per-partition
-                // (count, sum) partials per pool member — the runtime realization of the __wpairs GROUP BY.
-                Expression weighed = call(BuiltinFunctions.KMEANS_WEIGH_CANDIDATES, loc, copy(vecsQuery), poolStream,
-                        intLit(OVERSAMPLING_FACTOR_PER_K * k, loc));
                 // RECLUSTER: merges the (broadcast) partials and emits the k heaviest means — C0 — padded
                 // from pool members if fewer than k attracted points. Its vector input is unused: LIMIT 1.
                 VariableExpr rv = newVar(loc);
