@@ -404,9 +404,10 @@ public class IsomorphismOperatorVisitor implements ILogicalOperatorVisitor<Boole
             return Boolean.FALSE;
         }
         KMeansInitCandidatesOperator other = (KMeansInitCandidatesOperator) aop;
+        // vectorVariable is null for the single-input merge modes (RECLUSTER/LLOYD).
         return op.getTopCount() == other.getTopCount() && op.getMode() == other.getMode()
                 && op.isPoolFromPriorRound() == other.isPoolFromPriorRound()
-                && op.getVectorVariable().equals(other.getVectorVariable())
+                && java.util.Objects.equals(op.getVectorVariable(), other.getVectorVariable())
                 && op.getPoolVariable().equals(other.getPoolVariable())
                 && op.getCandidateVariable().equals(other.getCandidateVariable());
     }

@@ -19,7 +19,8 @@
 package org.apache.asterix.algebra.operators.physical;
 
 import org.apache.asterix.metadata.declared.MetadataProvider;
-import org.apache.asterix.runtime.operators.KMeansInitCandidatesOperatorDescriptor;
+import org.apache.asterix.runtime.operators.KMeansMergeOperatorDescriptor;
+import org.apache.asterix.runtime.operators.KMeansWeighOperatorDescriptor;
 import org.apache.asterix.runtime.operators.kmeans.KMeansCostControllerOperatorDescriptor;
 import org.apache.asterix.runtime.operators.kmeans.KMeansLoopIO;
 import org.apache.asterix.runtime.operators.kmeans.KMeansPhiMergeOperatorDescriptor;
@@ -50,10 +51,11 @@ import org.apache.hyracks.dataflow.std.connectors.MToNBroadcastConnectorDescript
 import org.apache.hyracks.util.annotations.AiProvenance;
 
 /**
- * Physical realization of {@link KMeansInitCandidatesOperator}: input 0 (the qualified vector stream)
- * keeps its child's partitioning; input 1 (the centroid pool) is REQUIRED BROADCAST, so the enforcer
- * inserts the broadcast exchange. Contributes the Store+Score Hyracks operator, which materializes the
- * partition once into a run file and emits the local top-l candidates.
+ * Physical realization of {@link KMeansInitCandidatesOperator}, dispatched by mode: WEIGH contributes a
+ * two-input {@link KMeansWeighOperatorDescriptor} (partitioned vectors at input 0, broadcast pool at input 1);
+ * RECLUSTER/LLOYD contribute a single-input {@link KMeansMergeOperatorDescriptor} whose sole input is the
+ * broadcast partials; OVERSAMPLE_LOOP is injected as the systolic 5-operator sub-graph. The pool input is
+ * always REQUIRED BROADCAST, so the enforcer inserts the broadcast exchange.
  */
 @AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.GENERATED, notes = "CLUSTER BY k-means|| init physical operator")
 public class KMeansInitCandidatesPOperator extends AbstractPhysicalOperator {
@@ -76,10 +78,19 @@ public class KMeansInitCandidatesPOperator extends AbstractPhysicalOperator {
     @Override
     public PhysicalRequirements getRequiredPropertiesForChildren(ILogicalOperator op,
             IPhysicalPropertiesVector reqdByParent, IOptimizationContext context) {
-        StructuralPropertiesVector[] pv = new StructuralPropertiesVector[2];
-        pv[0] = StructuralPropertiesVector.EMPTY_PROPERTIES_VECTOR;
-        pv[1] = new StructuralPropertiesVector(new BroadcastPartitioningProperty(context.getComputationNodeDomain()),
-                null);
+        KMeansInitCandidatesOperator kop = (KMeansInitCandidatesOperator) op;
+        StructuralPropertiesVector broadcastPool = new StructuralPropertiesVector(
+                new BroadcastPartitioningProperty(context.getComputationNodeDomain()), null);
+        StructuralPropertiesVector[] pv;
+        if (kop.getMode() == KMeansInitCandidatesOperator.Mode.RECLUSTER
+                || kop.getMode() == KMeansInitCandidatesOperator.Mode.LLOYD) {
+            // Single-input merge: the sole input IS the pool/partials and must be broadcast so every partition
+            // reduces the complete partial set (an un-broadcast input would reduce only local partials).
+            pv = new StructuralPropertiesVector[] { broadcastPool };
+        } else {
+            // Two inputs: the partitioned vectors (input 0, no requirement) and the broadcast pool (input 1).
+            pv = new StructuralPropertiesVector[] { StructuralPropertiesVector.EMPTY_PROPERTIES_VECTOR, broadcastPool };
+        }
         return new PhysicalRequirements(pv, IPartitioningRequirementsCoordinator.NO_COORDINATION);
     }
 
@@ -106,14 +117,27 @@ public class KMeansInitCandidatesPOperator extends AbstractPhysicalOperator {
         // projects a single variable). The variables recorded on the logical operator are plain fields —
         // invisible to variable-substitution rules — so they can drift through renames; resolve the column
         // positionally, using the (possibly stale) variable lookup only as a cross-check.
+        //
+        // RECLUSTER/LLOYD are single-input MERGES: they read ONLY the broadcast partials, so their sole input
+        // (index 0) IS the pool. WEIGH and OVERSAMPLE_LOOP are two-input (vectors at 0, pool at 1).
+        if (kop.getMode() == KMeansInitCandidatesOperator.Mode.RECLUSTER
+                || kop.getMode() == KMeansInitCandidatesOperator.Mode.LLOYD) {
+            int poolColumn = resolveSingleColumn(inputSchemas[0], kop.getPoolVariable());
+            KMeansMergeOperatorDescriptor.Mode mergeMode = kop.getMode() == KMeansInitCandidatesOperator.Mode.RECLUSTER
+                    ? KMeansMergeOperatorDescriptor.Mode.RECLUSTER : KMeansMergeOperatorDescriptor.Mode.LLOYD;
+            KMeansMergeOperatorDescriptor mergeDesc = new KMeansMergeOperatorDescriptor(builder.getJobSpec(), recDesc,
+                    mergeMode, kop.getTopCount(), poolColumn);
+            contributeOpDesc(builder, (AbstractLogicalOperator) op, mergeDesc);
+            builder.contributeGraphEdge(op.getInputs().get(0).getValue(), 0, op, 0);
+            return;
+        }
         int vectorColumn = resolveSingleColumn(inputSchemas[0], kop.getVectorVariable());
         int poolColumn = resolveSingleColumn(inputSchemas[1], kop.getPoolVariable());
         ILogicalOperator src0 = op.getInputs().get(0).getValue();
         ILogicalOperator src1 = op.getInputs().get(1).getValue();
         // OVERSAMPLE_LOOP is ALWAYS realized as the systolic 5-operator sub-graph injected here, on any topology
         // (the in-JVM-barrier single-NC fallback has been retired — one code path). On a single NC all partitions
-        // simply co-locate there; the merges are single-node; the connectors are intra-JVM. Every other mode is
-        // the default single-descriptor path below.
+        // simply co-locate there; the merges are single-node; the connectors are intra-JVM.
         if (kop.getMode() == KMeansInitCandidatesOperator.Mode.OVERSAMPLE_LOOP) {
             String[] clusterLocations =
                     ((MetadataProvider) context.getMetadataProvider()).getClusterLocations().getLocations();
@@ -121,25 +145,13 @@ public class KMeansInitCandidatesPOperator extends AbstractPhysicalOperator {
                     clusterLocations, src0, src1);
             return;
         }
-        KMeansInitCandidatesOperatorDescriptor.Mode mode;
-        switch (kop.getMode()) {
-            case WEIGH:
-                mode = KMeansInitCandidatesOperatorDescriptor.Mode.WEIGH;
-                break;
-            case RECLUSTER:
-                mode = KMeansInitCandidatesOperatorDescriptor.Mode.RECLUSTER;
-                break;
-            case LLOYD:
-                mode = KMeansInitCandidatesOperatorDescriptor.Mode.LLOYD;
-                break;
-            default:
-                // OVERSAMPLE_LOOP never reaches here (it early-returns to the systolic sub-graph above).
-                throw new IllegalStateException("unexpected KMeansInitCandidates mode: " + kop.getMode());
+        if (kop.getMode() != KMeansInitCandidatesOperator.Mode.WEIGH) {
+            throw new IllegalStateException("unexpected KMeansInitCandidates mode: " + kop.getMode());
         }
-        KMeansInitCandidatesOperatorDescriptor opDesc = new KMeansInitCandidatesOperatorDescriptor(builder.getJobSpec(),
-                recDesc, mode, kop.getTopCount(), vectorColumn, poolColumn, kop.isPoolFromPriorRound(),
-                kop.getSharedVectorsKey(), kop.isVectorsWriter(), kop.getSharedConsumerCount());
-        contributeOpDesc(builder, (AbstractLogicalOperator) op, opDesc);
+        KMeansWeighOperatorDescriptor weighDesc = new KMeansWeighOperatorDescriptor(builder.getJobSpec(), recDesc,
+                kop.getTopCount(), vectorColumn, poolColumn, kop.isPoolFromPriorRound(), kop.getSharedVectorsKey(),
+                kop.isVectorsWriter(), kop.getSharedConsumerCount());
+        contributeOpDesc(builder, (AbstractLogicalOperator) op, weighDesc);
         builder.contributeGraphEdge(src0, 0, op, 0);
         builder.contributeGraphEdge(src1, 0, op, 1);
     }

@@ -322,7 +322,10 @@ public class UsedVariableVisitor implements ILogicalOperatorVisitor<Void, Void> 
     @Override
     public Void visitKMeansInitCandidatesOperator(KMeansInitCandidatesOperator op, Void arg)
             throws AlgebricksException {
-        usedVariables.add(op.getVectorVariable());
+        // vectorVariable is null for the single-input merge modes (RECLUSTER/LLOYD).
+        if (op.getVectorVariable() != null) {
+            usedVariables.add(op.getVectorVariable());
+        }
         usedVariables.add(op.getPoolVariable());
         return null;
     }

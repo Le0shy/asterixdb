@@ -70,6 +70,8 @@ public class KMeansInitCandidatesOperator extends AbstractLogicalOperator {
     // References to the vector-valued variable of input 0 (the qualified points) and of input 1 (the
     // pool). Held as EXPRESSIONS (exposed via acceptExpressionTransform) so variable-substitution and
     // pruning rules see them; plain LogicalVariable fields silently drift through renames.
+    // vectorRef is NULL for the single-input MERGE modes (RECLUSTER/LLOYD): they read only the broadcast
+    // partials, so there is no vector input and the pool is the operator's sole (index-0) input.
     private final Mutable<ILogicalExpression> vectorRef;
     private final Mutable<ILogicalExpression> poolRef;
     // The single produced variable: a candidate vector, same type as vectorVar (opaque; from translator).
@@ -139,7 +141,8 @@ public class KMeansInitCandidatesOperator extends AbstractLogicalOperator {
 
     @Override
     public boolean acceptExpressionTransform(ILogicalExpressionReferenceTransform visitor) throws AlgebricksException {
-        boolean changed = visitor.transform(vectorRef);
+        // vectorRef is null for the single-input merge modes (RECLUSTER/LLOYD).
+        boolean changed = vectorRef != null && visitor.transform(vectorRef);
         changed |= visitor.transform(poolRef);
         return changed;
     }
@@ -151,8 +154,9 @@ public class KMeansInitCandidatesOperator extends AbstractLogicalOperator {
         return env;
     }
 
+    /** The vector input variable, or null for the single-input merge modes (RECLUSTER/LLOYD). */
     public LogicalVariable getVectorVariable() {
-        return ((VariableReferenceExpression) vectorRef.getValue()).getVariableReference();
+        return vectorRef == null ? null : ((VariableReferenceExpression) vectorRef.getValue()).getVariableReference();
     }
 
     public LogicalVariable getPoolVariable() {

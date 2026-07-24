@@ -56,14 +56,18 @@ import org.junit.Assert;
 import org.junit.Test;
 
 /**
- * Direct-drive tests of the Store+Score pair. Round mode: materialize a partition of 2-D vectors,
- * score them against a broadcast single-point pool, and assert the emitted ENVELOPE stream — the
- * echoed pool (partition 0) followed by the local top-l candidates in order. Finalize mode: feed an
- * envelope stream from two origin partitions and assert the deterministic global re-limit
- * (score DESC, origin partition ASC, seq ASC) and the plain-vector output.
+ * Direct-drive tests of the CLUSTER BY k-means|| Score stages. WEIGH ({@link KMeansWeighOperatorDescriptor}):
+ * materialize a partition of 2-D vectors, weigh them against a broadcast pool, and assert the emitted ENVELOPE
+ * stream — the echoed pool (partition 0) followed by this partition's (count, sum) partials. RECLUSTER / LLOYD
+ * ({@link KMeansMergeOperatorDescriptor}): feed a scrambled envelope partials stream and assert the deterministic
+ * single-input merge — RECLUSTER ranks the {@code count} heaviest means and pads from the pool; LLOYD emits every
+ * non-empty member's mean in pool order.
+ * <p>
+ * Activity order follows {@link AbstractKMeansOperatorDescriptor#contributeActivities}: StorePool (0), Score (1),
+ * and — for WEIGH only — StoreVectors (2).
  */
-@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.TEST_GENERATED, notes = "CLUSTER BY k-means|| init runtime, plumbing test")
-public class KMeansInitCandidatesOperatorTest {
+@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.TEST_GENERATED, notes = "CLUSTER BY k-means|| weigh/merge runtime, plumbing test")
+public class KMeansOperatorTest {
 
     @SuppressWarnings("rawtypes")
     private static final RecordDescriptor VEC_REC_DESC =
@@ -74,18 +78,19 @@ public class KMeansInitCandidatesOperatorTest {
         IHyracksTaskContext ctx = TestUtils.create(32768);
         JobSpecification spec = new JobSpecification();
         // WEIGH with intake limit 1: envelope pool (0,0) plus top-1 of the candidates -> pool [(0,0),(8,8)].
-        KMeansInitCandidatesOperatorDescriptor op = new KMeansInitCandidatesOperatorDescriptor(spec, VEC_REC_DESC,
-                KMeansInitCandidatesOperatorDescriptor.Mode.WEIGH, 1, 0, 0, true);
+        KMeansWeighOperatorDescriptor op = new KMeansWeighOperatorDescriptor(spec, VEC_REC_DESC, 1, 0, 0, true);
 
+        // Activities: StorePool (0), Score (1), StoreVectors (2).
         List<IActivity> activities = collectActivities(op);
         IRecordDescriptorProvider rdp = recordDescProvider();
 
-        IOperatorNodePushable store = activities.get(0).createPushRuntime(ctx, rdp, 0, 1);
-        store.getInputFrameWriter(0).open();
-        store.getInputFrameWriter(0).nextFrame(vectorsFrame(ctx, new double[][] { { 0, 0 }, { 1, 0 }, { 8, 9 } }));
-        store.getInputFrameWriter(0).close();
+        IOperatorNodePushable storeVectors = activities.get(2).createPushRuntime(ctx, rdp, 0, 1);
+        storeVectors.getInputFrameWriter(0).open();
+        storeVectors.getInputFrameWriter(0)
+                .nextFrame(vectorsFrame(ctx, new double[][] { { 0, 0 }, { 1, 0 }, { 8, 9 } }));
+        storeVectors.getInputFrameWriter(0).close();
 
-        IOperatorNodePushable poolStore = activities.get(1).createPushRuntime(ctx, rdp, 0, 1);
+        IOperatorNodePushable poolStore = activities.get(0).createPushRuntime(ctx, rdp, 0, 1);
         poolStore.getInputFrameWriter(0).open();
         poolStore.getInputFrameWriter(0)
                 .nextFrame(envelopesFrame(ctx,
@@ -96,7 +101,7 @@ public class KMeansInitCandidatesOperatorTest {
                                 { 1, 1, 0, 2, 1, 1 } })); // candidate (1,1) — cut
         poolStore.getInputFrameWriter(0).close();
 
-        IOperatorNodePushable score = activities.get(2).createPushRuntime(ctx, rdp, 0, 1);
+        IOperatorNodePushable score = activities.get(1).createPushRuntime(ctx, rdp, 0, 1);
         List<double[]> out = collectOutput(score, true);
 
         // Echoed normalized pool, then this partition's partials: (0,0),(1,0) -> pool idx 0
@@ -113,19 +118,14 @@ public class KMeansInitCandidatesOperatorTest {
         IHyracksTaskContext ctx = TestUtils.create(32768);
         JobSpecification spec = new JobSpecification();
         // RECLUSTER to k=3 means; only 2 pool members attracted points, so the third is a pool pad.
-        KMeansInitCandidatesOperatorDescriptor op = new KMeansInitCandidatesOperatorDescriptor(spec, VEC_REC_DESC,
-                KMeansInitCandidatesOperatorDescriptor.Mode.RECLUSTER, 3, 0, 0, true);
+        KMeansMergeOperatorDescriptor op = new KMeansMergeOperatorDescriptor(spec, VEC_REC_DESC,
+                KMeansMergeOperatorDescriptor.Mode.RECLUSTER, 3, 0);
 
+        // Single-input merge — activities: StorePool (0), Score (1). No vector input.
         List<IActivity> activities = collectActivities(op);
         IRecordDescriptorProvider rdp = recordDescProvider();
 
-        // The vector input is unused in recluster mode; store a dummy row.
-        IOperatorNodePushable store = activities.get(0).createPushRuntime(ctx, rdp, 0, 1);
-        store.getInputFrameWriter(0).open();
-        store.getInputFrameWriter(0).nextFrame(vectorsFrame(ctx, new double[][] { { 0, 0 } }));
-        store.getInputFrameWriter(0).close();
-
-        IOperatorNodePushable poolStore = activities.get(1).createPushRuntime(ctx, rdp, 0, 1);
+        IOperatorNodePushable poolStore = activities.get(0).createPushRuntime(ctx, rdp, 0, 1);
         poolStore.getInputFrameWriter(0).open();
         poolStore.getInputFrameWriter(0)
                 .nextFrame(envelopesFrame(ctx,
@@ -138,7 +138,7 @@ public class KMeansInitCandidatesOperatorTest {
                                 { 2, 0, 0, 2, 2, 4 } })); // partial: idx 0, count 2, sum (2,4)
         poolStore.getInputFrameWriter(0).close();
 
-        IOperatorNodePushable score = activities.get(2).createPushRuntime(ctx, rdp, 0, 1);
+        IOperatorNodePushable score = activities.get(1).createPushRuntime(ctx, rdp, 0, 1);
         List<double[]> out = collectOutput(score, false);
 
         // idx 0: weight 3, mean (1,2); idx 1: weight 3, mean (8,9). Tie -> pool position ASC, so
@@ -155,18 +155,13 @@ public class KMeansInitCandidatesOperatorTest {
         JobSpecification spec = new JobSpecification();
         // LLOYD with k=3: three pool members, the middle one attracts nothing -> exactly two means,
         // in pool order, no ranking, no pad.
-        KMeansInitCandidatesOperatorDescriptor op = new KMeansInitCandidatesOperatorDescriptor(spec, VEC_REC_DESC,
-                KMeansInitCandidatesOperatorDescriptor.Mode.LLOYD, 3, 0, 0, true);
+        KMeansMergeOperatorDescriptor op =
+                new KMeansMergeOperatorDescriptor(spec, VEC_REC_DESC, KMeansMergeOperatorDescriptor.Mode.LLOYD, 3, 0);
 
         List<IActivity> activities = collectActivities(op);
         IRecordDescriptorProvider rdp = recordDescProvider();
 
-        IOperatorNodePushable store = activities.get(0).createPushRuntime(ctx, rdp, 0, 1);
-        store.getInputFrameWriter(0).open();
-        store.getInputFrameWriter(0).nextFrame(vectorsFrame(ctx, new double[][] { { 0, 0 } }));
-        store.getInputFrameWriter(0).close();
-
-        IOperatorNodePushable poolStore = activities.get(1).createPushRuntime(ctx, rdp, 0, 1);
+        IOperatorNodePushable poolStore = activities.get(0).createPushRuntime(ctx, rdp, 0, 1);
         poolStore.getInputFrameWriter(0).open();
         poolStore.getInputFrameWriter(0)
                 .nextFrame(envelopesFrame(ctx,
@@ -179,7 +174,7 @@ public class KMeansInitCandidatesOperatorTest {
                                 { 2, 1, 2, 1, 6, 6 } })); // partial: idx 2, count 1, sum (6,6)
         poolStore.getInputFrameWriter(0).close();
 
-        IOperatorNodePushable score = activities.get(2).createPushRuntime(ctx, rdp, 0, 1);
+        IOperatorNodePushable score = activities.get(1).createPushRuntime(ctx, rdp, 0, 1);
         List<double[]> out = collectOutput(score, false);
 
         Assert.assertEquals(2, out.size());
@@ -187,7 +182,7 @@ public class KMeansInitCandidatesOperatorTest {
         Assert.assertArrayEquals(new double[] { 6, 6 }, out.get(1), 0.0);
     }
 
-    private static List<IActivity> collectActivities(KMeansInitCandidatesOperatorDescriptor op) {
+    private static List<IActivity> collectActivities(AbstractKMeansOperatorDescriptor op) {
         List<IActivity> activities = new ArrayList<>();
         op.contributeActivities(new IActivityGraphBuilder() {
             @Override

@@ -39,7 +39,7 @@ import org.apache.hyracks.util.annotations.AiProvenance;
 /**
  * CLUSTER BY Route B (multi-NC systolic exact-init loop) — codec bridging the loop's boundaries to the shipped
  * CLUSTER BY formats, used only by the Cost/Controller operator (Op1). Two pieces, both kept byte-compatible with
- * {@code KMeansInitCandidatesOperatorDescriptor} (the tower/WEIGH):
+ * {@code KMeansStageRuntime} (the WEIGH / merge Score stages):
  * <ul>
  * <li>{@link ListVectorDecoder} — decodes an input vector column (an ordered list of doubles) into a
  * {@code double[]}. Op1's StoreVectors uses it ONCE per resident to materialize the vector run file as raw
@@ -48,14 +48,14 @@ import org.apache.hyracks.util.annotations.AiProvenance;
  * vector]} open-list envelope (kind = 0 = pool) that the terminal WEIGH consumes unchanged. Op1 uses it, on
  * partition 0, to emit the final pool downstream.</li>
  * </ul>
- * This logic is duplicated (not shared) from {@code KMeansInitCandidatesOperatorDescriptor} to leave that
- * committed operator untouched; the byte-compatibility is verified by the Route B == tower parity test. A later
+ * This logic is duplicated (not shared) from {@code KMeansStageRuntime} to leave that committed
+ * runtime untouched; the byte-compatibility is verified by the Route B == tower parity test. A later
  * cleanup may extract a single source of truth.
  */
 @AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.GENERATED, notes = "CLUSTER BY Route B: input-vector decoder + KIND_POOL envelope writer (Op1 boundary codec)")
 public final class KMeansVectorCodec {
 
-    /** Envelope kind fields (match KMeansInitCandidatesOperatorDescriptor.KIND_*). */
+    /** Envelope kind fields (match KMeansStageRuntime.KIND_*). */
     private static final double KIND_POOL = 0.0d;
     public static final double KIND_PARTIAL = 2.0d;
 

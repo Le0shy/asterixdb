@@ -244,8 +244,10 @@ public class OperatorDeepCopyVisitor implements ILogicalOperatorVisitor<ILogical
     @Override
     public ILogicalOperator visitKMeansInitCandidatesOperator(KMeansInitCandidatesOperator op, Void arg)
             throws AlgebricksException {
-        KMeansInitCandidatesOperator opCopy = new KMeansInitCandidatesOperator(
-                new MutableObject<ILogicalExpression>(new VariableReferenceExpression(op.getVectorVariable())),
+        // vectorRef is null for the single-input merge modes (RECLUSTER/LLOYD).
+        Mutable<ILogicalExpression> vectorRefCopy = op.getVectorVariable() == null ? null
+                : new MutableObject<>(new VariableReferenceExpression(op.getVectorVariable()));
+        KMeansInitCandidatesOperator opCopy = new KMeansInitCandidatesOperator(vectorRefCopy,
                 new MutableObject<ILogicalExpression>(new VariableReferenceExpression(op.getPoolVariable())),
                 op.getCandidateVariable(), op.getCandidateVarType(), op.getTopCount());
         opCopy.setPoolFromPriorRound(op.isPoolFromPriorRound());

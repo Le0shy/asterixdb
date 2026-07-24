@@ -314,7 +314,8 @@ public class SubstituteVariableVisitor
     @Override
     public Void visitKMeansInitCandidatesOperator(KMeansInitCandidatesOperator op,
             Pair<LogicalVariable, LogicalVariable> pair) throws AlgebricksException {
-        if (op.getVectorVariable().equals(pair.first)) {
+        // vectorVariable is null for the single-input merge modes (RECLUSTER/LLOYD).
+        if (op.getVectorVariable() != null && op.getVectorVariable().equals(pair.first)) {
             op.getVectorRef().setValue(new VariableReferenceExpression(pair.second));
         }
         if (op.getPoolVariable().equals(pair.first)) {

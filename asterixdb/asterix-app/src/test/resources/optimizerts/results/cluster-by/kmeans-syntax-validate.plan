@@ -1,94 +1,66 @@
-distribute result [$$441]
+distribute result [$$289]
 -- DISTRIBUTE_RESULT  |PARTITIONED|
   exchange
   -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-    assign [$$441] <- [{"cid": $#13, "centroid": $$454}] project: [$$441]
+    assign [$$289] <- [{"cid": $#9, "centroid": $$298}] project: [$$289]
     -- ASSIGN  |PARTITIONED|
       exchange
       -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-        group by ([$#13 := $$457]) decor ([]) {
-                  aggregate [$$454] <- [agg-global-sql-centroid($$456)] [cardinality: 0.0, doc-size: 0.0, op-cost: 0.0, total-cost: 0.0]
+        group by ([$#9 := $$301]) decor ([]) {
+                  aggregate [$$298] <- [agg-global-sql-centroid($$300)] [cardinality: 0.0, doc-size: 0.0, op-cost: 0.0, total-cost: 0.0]
                   -- AGGREGATE  |LOCAL|
                     nested tuple source [cardinality: 0.0, doc-size: 0.0, op-cost: 0.0, total-cost: 0.0]
                     -- NESTED_TUPLE_SOURCE  |LOCAL|
                }
-        -- SORT_GROUP_BY[$$457]  |PARTITIONED|
+        -- SORT_GROUP_BY[$$301]  |PARTITIONED|
           exchange
-          -- HASH_PARTITION_EXCHANGE [$$457]  |PARTITIONED|
-            group by ([$$457 := $$442]) decor ([]) {
-                      aggregate [$$456] <- [agg-local-sql-centroid($$443)] [cardinality: 0.0, doc-size: 0.0, op-cost: 0.0, total-cost: 0.0]
+          -- HASH_PARTITION_EXCHANGE [$$301]  |PARTITIONED|
+            group by ([$$301 := $$290]) decor ([]) {
+                      aggregate [$$300] <- [agg-local-sql-centroid($$291)] [cardinality: 0.0, doc-size: 0.0, op-cost: 0.0, total-cost: 0.0]
                       -- AGGREGATE  |LOCAL|
                         nested tuple source [cardinality: 0.0, doc-size: 0.0, op-cost: 0.0, total-cost: 0.0]
                         -- NESTED_TUPLE_SOURCE  |LOCAL|
                    }
-            -- SORT_GROUP_BY[$$442]  |PARTITIONED|
+            -- SORT_GROUP_BY[$$290]  |PARTITIONED|
               exchange
               -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-                assign [$$442] <- [nearest-centroid($$443, $$427)] project: [$$443, $$442]
+                assign [$$290] <- [nearest-centroid($$291, $$275)] project: [$$291, $$290]
                 -- ASSIGN  |PARTITIONED|
-                  assign [$$443] <- [$$r.getField(1)] project: [$$427, $$443]
+                  assign [$$291] <- [$$r.getField(1)] project: [$$275, $$291]
                   -- ASSIGN  |PARTITIONED|
-                    project ([$$427, $$r])
+                    project ([$$275, $$r])
                     -- STREAM_PROJECT  |PARTITIONED|
                       exchange
                       -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-                        data-scan []<-[$$453, $$r] <- clusterby_test.Reviews
+                        data-scan []<-[$$297, $$r] <- clusterby_test.Reviews
                         -- DATASOURCE_SCAN  |PARTITIONED|
                           exchange
                           -- BROADCAST_EXCHANGE  |PARTITIONED|
-                            aggregate [$$427] <- [listify($$423)]
+                            aggregate [$$275] <- [listify($$271)]
                             -- AGGREGATE  |UNPARTITIONED|
                               exchange
-                              -- SORT_MERGE_EXCHANGE [$$423(ASC) ]  |PARTITIONED|
-                                order (ASC, $$423)
-                                -- STABLE_SORT [$$423(ASC)]  |PARTITIONED|
+                              -- SORT_MERGE_EXCHANGE [$$271(ASC) ]  |PARTITIONED|
+                                order (ASC, $$271)
+                                -- STABLE_SORT [$$271(ASC)]  |PARTITIONED|
                                   exchange
                                   -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-                                    project ([$$423])
+                                    project ([$$271])
                                     -- STREAM_PROJECT  |PARTITIONED|
                                       exchange
                                       -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-                                        kmeans-init-candidates $$423 <- lloyd-merge pool $$421
+                                        kmeans-init-candidates $$271 <- lloyd-merge pool $$269
                                         -- KMEANS_INIT_CANDIDATES  |PARTITIONED|
                                           exchange
-                                          -- ONE_TO_ONE_EXCHANGE  |UNPARTITIONED|
-                                            assign [$$370] <- [$$397] project: [$$370]
-                                            -- ASSIGN  |UNPARTITIONED|
-                                              exchange
-                                              -- ONE_TO_ONE_EXCHANGE  |UNPARTITIONED|
-                                                replicate
-                                                -- REPLICATE  |UNPARTITIONED|
-                                                  exchange
-                                                  -- ONE_TO_ONE_EXCHANGE  |UNPARTITIONED|
-                                                    limit 1
-                                                    -- STREAM_LIMIT  |UNPARTITIONED|
-                                                      exchange
-                                                      -- RANDOM_MERGE_EXCHANGE  |PARTITIONED|
-                                                        assign [$$397] <- [$#1.getField(1)] project: [$$397]
-                                                        -- ASSIGN  |PARTITIONED|
-                                                          limit 1
-                                                          -- STREAM_LIMIT  |PARTITIONED|
-                                                            project ([$#1])
-                                                            -- STREAM_PROJECT  |PARTITIONED|
-                                                              exchange
-                                                              -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-                                                                data-scan []<-[$$450, $#1] <- clusterby_test.Reviews limit 1
-                                                                -- DATASOURCE_SCAN  |PARTITIONED|
-                                                                  exchange
-                                                                  -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-                                                                    empty-tuple-source
-                                                                    -- EMPTY_TUPLE_SOURCE  |PARTITIONED|
-                                          exchange
                                           -- BROADCAST_EXCHANGE  |PARTITIONED|
-                                            project ([$$421])
+                                            project ([$$269])
                                             -- STREAM_PROJECT  |PARTITIONED|
                                               exchange
                                               -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-                                                kmeans-init-candidates $$421 <- weigh $$375 vs pool $$419 (global top-2 intake)
+                                                kmeans-init-candidates $$269 <- weigh $$238 vs pool $$267 (global top-2 intake)
                                                 -- KMEANS_INIT_CANDIDATES  |PARTITIONED|
                                                   exchange
                                                   -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-                                                    assign [$$375] <- [$$406] project: [$$375]
+                                                    assign [$$238] <- [$$254] project: [$$238]
                                                     -- ASSIGN  |PARTITIONED|
                                                       exchange
                                                       -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
@@ -96,13 +68,13 @@ distribute result [$$441]
                                                         -- REPLICATE  |PARTITIONED|
                                                           exchange
                                                           -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-                                                            assign [$$406] <- [$#1.getField(1)] project: [$$406]
+                                                            assign [$$254] <- [$#1.getField(1)] project: [$$254]
                                                             -- ASSIGN  |PARTITIONED|
                                                               project ([$#1])
                                                               -- STREAM_PROJECT  |PARTITIONED|
                                                                 exchange
                                                                 -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-                                                                  data-scan []<-[$$452, $#1] <- clusterby_test.Reviews
+                                                                  data-scan []<-[$$296, $#1] <- clusterby_test.Reviews
                                                                   -- DATASOURCE_SCAN  |PARTITIONED|
                                                                     exchange
                                                                     -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
@@ -110,51 +82,23 @@ distribute result [$$441]
                                                                       -- EMPTY_TUPLE_SOURCE  |PARTITIONED|
                                                   exchange
                                                   -- BROADCAST_EXCHANGE  |PARTITIONED|
-                                                    project ([$$419])
+                                                    project ([$$267])
                                                     -- STREAM_PROJECT  |PARTITIONED|
                                                       exchange
                                                       -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-                                                        kmeans-init-candidates $$419 <- lloyd-merge pool $$417
+                                                        kmeans-init-candidates $$267 <- lloyd-merge pool $$265
                                                         -- KMEANS_INIT_CANDIDATES  |PARTITIONED|
                                                           exchange
-                                                          -- ONE_TO_ONE_EXCHANGE  |UNPARTITIONED|
-                                                            assign [$$379] <- [$$397] project: [$$379]
-                                                            -- ASSIGN  |UNPARTITIONED|
-                                                              exchange
-                                                              -- ONE_TO_ONE_EXCHANGE  |UNPARTITIONED|
-                                                                replicate
-                                                                -- REPLICATE  |UNPARTITIONED|
-                                                                  exchange
-                                                                  -- ONE_TO_ONE_EXCHANGE  |UNPARTITIONED|
-                                                                    limit 1
-                                                                    -- STREAM_LIMIT  |UNPARTITIONED|
-                                                                      exchange
-                                                                      -- RANDOM_MERGE_EXCHANGE  |PARTITIONED|
-                                                                        assign [$$397] <- [$#1.getField(1)] project: [$$397]
-                                                                        -- ASSIGN  |PARTITIONED|
-                                                                          limit 1
-                                                                          -- STREAM_LIMIT  |PARTITIONED|
-                                                                            project ([$#1])
-                                                                            -- STREAM_PROJECT  |PARTITIONED|
-                                                                              exchange
-                                                                              -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-                                                                                data-scan []<-[$$450, $#1] <- clusterby_test.Reviews limit 1
-                                                                                -- DATASOURCE_SCAN  |PARTITIONED|
-                                                                                  exchange
-                                                                                  -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-                                                                                    empty-tuple-source
-                                                                                    -- EMPTY_TUPLE_SOURCE  |PARTITIONED|
-                                                          exchange
                                                           -- BROADCAST_EXCHANGE  |PARTITIONED|
-                                                            project ([$$417])
+                                                            project ([$$265])
                                                             -- STREAM_PROJECT  |PARTITIONED|
                                                               exchange
                                                               -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-                                                                kmeans-init-candidates $$417 <- weigh $$384 vs pool $$415 (global top-2 intake)
+                                                                kmeans-init-candidates $$265 <- weigh $$242 vs pool $$263 (global top-2 intake)
                                                                 -- KMEANS_INIT_CANDIDATES  |PARTITIONED|
                                                                   exchange
                                                                   -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-                                                                    assign [$$384] <- [$$406] project: [$$384]
+                                                                    assign [$$242] <- [$$254] project: [$$242]
                                                                     -- ASSIGN  |PARTITIONED|
                                                                       exchange
                                                                       -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
@@ -162,13 +106,13 @@ distribute result [$$441]
                                                                         -- REPLICATE  |PARTITIONED|
                                                                           exchange
                                                                           -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-                                                                            assign [$$406] <- [$#1.getField(1)] project: [$$406]
+                                                                            assign [$$254] <- [$#1.getField(1)] project: [$$254]
                                                                             -- ASSIGN  |PARTITIONED|
                                                                               project ([$#1])
                                                                               -- STREAM_PROJECT  |PARTITIONED|
                                                                                 exchange
                                                                                 -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-                                                                                  data-scan []<-[$$452, $#1] <- clusterby_test.Reviews
+                                                                                  data-scan []<-[$$296, $#1] <- clusterby_test.Reviews
                                                                                   -- DATASOURCE_SCAN  |PARTITIONED|
                                                                                     exchange
                                                                                     -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
@@ -176,51 +120,23 @@ distribute result [$$441]
                                                                                       -- EMPTY_TUPLE_SOURCE  |PARTITIONED|
                                                                   exchange
                                                                   -- BROADCAST_EXCHANGE  |PARTITIONED|
-                                                                    project ([$$415])
+                                                                    project ([$$263])
                                                                     -- STREAM_PROJECT  |PARTITIONED|
                                                                       exchange
                                                                       -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-                                                                        kmeans-init-candidates $$415 <- lloyd-merge pool $$413
+                                                                        kmeans-init-candidates $$263 <- lloyd-merge pool $$261
                                                                         -- KMEANS_INIT_CANDIDATES  |PARTITIONED|
                                                                           exchange
-                                                                          -- ONE_TO_ONE_EXCHANGE  |UNPARTITIONED|
-                                                                            assign [$$388] <- [$$397] project: [$$388]
-                                                                            -- ASSIGN  |UNPARTITIONED|
-                                                                              exchange
-                                                                              -- ONE_TO_ONE_EXCHANGE  |UNPARTITIONED|
-                                                                                replicate
-                                                                                -- REPLICATE  |UNPARTITIONED|
-                                                                                  exchange
-                                                                                  -- ONE_TO_ONE_EXCHANGE  |UNPARTITIONED|
-                                                                                    limit 1
-                                                                                    -- STREAM_LIMIT  |UNPARTITIONED|
-                                                                                      exchange
-                                                                                      -- RANDOM_MERGE_EXCHANGE  |PARTITIONED|
-                                                                                        assign [$$397] <- [$#1.getField(1)] project: [$$397]
-                                                                                        -- ASSIGN  |PARTITIONED|
-                                                                                          limit 1
-                                                                                          -- STREAM_LIMIT  |PARTITIONED|
-                                                                                            project ([$#1])
-                                                                                            -- STREAM_PROJECT  |PARTITIONED|
-                                                                                              exchange
-                                                                                              -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-                                                                                                data-scan []<-[$$450, $#1] <- clusterby_test.Reviews limit 1
-                                                                                                -- DATASOURCE_SCAN  |PARTITIONED|
-                                                                                                  exchange
-                                                                                                  -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-                                                                                                    empty-tuple-source
-                                                                                                    -- EMPTY_TUPLE_SOURCE  |PARTITIONED|
-                                                                          exchange
                                                                           -- BROADCAST_EXCHANGE  |PARTITIONED|
-                                                                            project ([$$413])
+                                                                            project ([$$261])
                                                                             -- STREAM_PROJECT  |PARTITIONED|
                                                                               exchange
                                                                               -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-                                                                                kmeans-init-candidates $$413 <- weigh $$393 vs pool $$411 (global top-2 intake)
+                                                                                kmeans-init-candidates $$261 <- weigh $$246 vs pool $$259 (global top-2 intake)
                                                                                 -- KMEANS_INIT_CANDIDATES  |PARTITIONED|
                                                                                   exchange
                                                                                   -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-                                                                                    assign [$$393] <- [$$406] project: [$$393]
+                                                                                    assign [$$246] <- [$$254] project: [$$246]
                                                                                     -- ASSIGN  |PARTITIONED|
                                                                                       exchange
                                                                                       -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
@@ -228,13 +144,13 @@ distribute result [$$441]
                                                                                         -- REPLICATE  |PARTITIONED|
                                                                                           exchange
                                                                                           -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-                                                                                            assign [$$406] <- [$#1.getField(1)] project: [$$406]
+                                                                                            assign [$$254] <- [$#1.getField(1)] project: [$$254]
                                                                                             -- ASSIGN  |PARTITIONED|
                                                                                               project ([$#1])
                                                                                               -- STREAM_PROJECT  |PARTITIONED|
                                                                                                 exchange
                                                                                                 -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-                                                                                                  data-scan []<-[$$452, $#1] <- clusterby_test.Reviews
+                                                                                                  data-scan []<-[$$296, $#1] <- clusterby_test.Reviews
                                                                                                   -- DATASOURCE_SCAN  |PARTITIONED|
                                                                                                     exchange
                                                                                                     -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
@@ -242,47 +158,23 @@ distribute result [$$441]
                                                                                                       -- EMPTY_TUPLE_SOURCE  |PARTITIONED|
                                                                                   exchange
                                                                                   -- BROADCAST_EXCHANGE  |PARTITIONED|
-                                                                                    project ([$$411])
+                                                                                    project ([$$259])
                                                                                     -- STREAM_PROJECT  |PARTITIONED|
                                                                                       exchange
                                                                                       -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-                                                                                        kmeans-init-candidates $$411 <- recluster pool $$409 to 2 means
+                                                                                        kmeans-init-candidates $$259 <- recluster pool $$257 to 2 means
                                                                                         -- KMEANS_INIT_CANDIDATES  |PARTITIONED|
                                                                                           exchange
-                                                                                          -- ONE_TO_ONE_EXCHANGE  |UNPARTITIONED|
-                                                                                            replicate
-                                                                                            -- REPLICATE  |UNPARTITIONED|
-                                                                                              exchange
-                                                                                              -- ONE_TO_ONE_EXCHANGE  |UNPARTITIONED|
-                                                                                                limit 1
-                                                                                                -- STREAM_LIMIT  |UNPARTITIONED|
-                                                                                                  exchange
-                                                                                                  -- RANDOM_MERGE_EXCHANGE  |PARTITIONED|
-                                                                                                    assign [$$397] <- [$#1.getField(1)] project: [$$397]
-                                                                                                    -- ASSIGN  |PARTITIONED|
-                                                                                                      limit 1
-                                                                                                      -- STREAM_LIMIT  |PARTITIONED|
-                                                                                                        project ([$#1])
-                                                                                                        -- STREAM_PROJECT  |PARTITIONED|
-                                                                                                          exchange
-                                                                                                          -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-                                                                                                            data-scan []<-[$$450, $#1] <- clusterby_test.Reviews limit 1
-                                                                                                            -- DATASOURCE_SCAN  |PARTITIONED|
-                                                                                                              exchange
-                                                                                                              -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-                                                                                                                empty-tuple-source
-                                                                                                                -- EMPTY_TUPLE_SOURCE  |PARTITIONED|
-                                                                                          exchange
                                                                                           -- BROADCAST_EXCHANGE  |PARTITIONED|
-                                                                                            project ([$$409])
+                                                                                            project ([$$257])
                                                                                             -- STREAM_PROJECT  |PARTITIONED|
                                                                                               exchange
                                                                                               -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-                                                                                                kmeans-init-candidates $$409 <- oversample-loop 5 rounds of $$402 vs seed $$406
+                                                                                                kmeans-init-candidates $$257 <- oversample-loop 5 rounds of $$250 vs seed $$254
                                                                                                 -- KMEANS_INIT_CANDIDATES  |PARTITIONED|
                                                                                                   exchange
                                                                                                   -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-                                                                                                    assign [$$402] <- [$$406] project: [$$402]
+                                                                                                    assign [$$250] <- [$$254] project: [$$250]
                                                                                                     -- ASSIGN  |PARTITIONED|
                                                                                                       exchange
                                                                                                       -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
@@ -290,13 +182,13 @@ distribute result [$$441]
                                                                                                         -- REPLICATE  |PARTITIONED|
                                                                                                           exchange
                                                                                                           -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-                                                                                                            assign [$$406] <- [$#1.getField(1)] project: [$$406]
+                                                                                                            assign [$$254] <- [$#1.getField(1)] project: [$$254]
                                                                                                             -- ASSIGN  |PARTITIONED|
                                                                                                               project ([$#1])
                                                                                                               -- STREAM_PROJECT  |PARTITIONED|
                                                                                                                 exchange
                                                                                                                 -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-                                                                                                                  data-scan []<-[$$452, $#1] <- clusterby_test.Reviews
+                                                                                                                  data-scan []<-[$$296, $#1] <- clusterby_test.Reviews
                                                                                                                   -- DATASOURCE_SCAN  |PARTITIONED|
                                                                                                                     exchange
                                                                                                                     -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
@@ -307,26 +199,26 @@ distribute result [$$441]
                                                                                                     limit 1
                                                                                                     -- STREAM_LIMIT  |UNPARTITIONED|
                                                                                                       exchange
-                                                                                                      -- SORT_MERGE_EXCHANGE [$$406(ASC) ]  |PARTITIONED|
+                                                                                                      -- SORT_MERGE_EXCHANGE [$$254(ASC) ]  |PARTITIONED|
                                                                                                         limit 1
                                                                                                         -- STREAM_LIMIT  |PARTITIONED|
                                                                                                           exchange
                                                                                                           -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-                                                                                                            order (topK: 1) (ASC, $$406)
-                                                                                                            -- STABLE_SORT [topK: 1] [$$406(ASC)]  |PARTITIONED|
+                                                                                                            order (topK: 1) (ASC, $$254)
+                                                                                                            -- STABLE_SORT [topK: 1] [$$254(ASC)]  |PARTITIONED|
                                                                                                               exchange
                                                                                                               -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
                                                                                                                 replicate
                                                                                                                 -- REPLICATE  |PARTITIONED|
                                                                                                                   exchange
                                                                                                                   -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-                                                                                                                    assign [$$406] <- [$#1.getField(1)] project: [$$406]
+                                                                                                                    assign [$$254] <- [$#1.getField(1)] project: [$$254]
                                                                                                                     -- ASSIGN  |PARTITIONED|
                                                                                                                       project ([$#1])
                                                                                                                       -- STREAM_PROJECT  |PARTITIONED|
                                                                                                                         exchange
                                                                                                                         -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-                                                                                                                          data-scan []<-[$$452, $#1] <- clusterby_test.Reviews
+                                                                                                                          data-scan []<-[$$296, $#1] <- clusterby_test.Reviews
                                                                                                                           -- DATASOURCE_SCAN  |PARTITIONED|
                                                                                                                             exchange
                                                                                                                             -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
