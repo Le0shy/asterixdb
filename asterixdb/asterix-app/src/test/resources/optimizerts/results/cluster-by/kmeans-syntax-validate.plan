@@ -48,16 +48,16 @@ distribute result [$$289]
                                     -- STREAM_PROJECT  |PARTITIONED|
                                       exchange
                                       -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-                                        kmeans-init-candidates $$271 <- lloyd-merge pool $$269
-                                        -- KMEANS_INIT_CANDIDATES  |PARTITIONED|
+                                        kmeans-stage $$271 <- lloyd-merge pool $$269
+                                        -- KMEANS_STAGE  |PARTITIONED|
                                           exchange
                                           -- BROADCAST_EXCHANGE  |PARTITIONED|
                                             project ([$$269])
                                             -- STREAM_PROJECT  |PARTITIONED|
                                               exchange
                                               -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-                                                kmeans-init-candidates $$269 <- weigh $$238 vs pool $$267 (global top-2 intake)
-                                                -- KMEANS_INIT_CANDIDATES  |PARTITIONED|
+                                                kmeans-stage $$269 <- weigh $$238 vs pool $$267 (global top-2 intake)
+                                                -- KMEANS_STAGE  |PARTITIONED|
                                                   exchange
                                                   -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
                                                     assign [$$238] <- [$$254] project: [$$238]
@@ -86,16 +86,16 @@ distribute result [$$289]
                                                     -- STREAM_PROJECT  |PARTITIONED|
                                                       exchange
                                                       -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-                                                        kmeans-init-candidates $$267 <- lloyd-merge pool $$265
-                                                        -- KMEANS_INIT_CANDIDATES  |PARTITIONED|
+                                                        kmeans-stage $$267 <- lloyd-merge pool $$265
+                                                        -- KMEANS_STAGE  |PARTITIONED|
                                                           exchange
                                                           -- BROADCAST_EXCHANGE  |PARTITIONED|
                                                             project ([$$265])
                                                             -- STREAM_PROJECT  |PARTITIONED|
                                                               exchange
                                                               -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-                                                                kmeans-init-candidates $$265 <- weigh $$242 vs pool $$263 (global top-2 intake)
-                                                                -- KMEANS_INIT_CANDIDATES  |PARTITIONED|
+                                                                kmeans-stage $$265 <- weigh $$242 vs pool $$263 (global top-2 intake)
+                                                                -- KMEANS_STAGE  |PARTITIONED|
                                                                   exchange
                                                                   -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
                                                                     assign [$$242] <- [$$254] project: [$$242]
@@ -124,16 +124,16 @@ distribute result [$$289]
                                                                     -- STREAM_PROJECT  |PARTITIONED|
                                                                       exchange
                                                                       -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-                                                                        kmeans-init-candidates $$263 <- lloyd-merge pool $$261
-                                                                        -- KMEANS_INIT_CANDIDATES  |PARTITIONED|
+                                                                        kmeans-stage $$263 <- lloyd-merge pool $$261
+                                                                        -- KMEANS_STAGE  |PARTITIONED|
                                                                           exchange
                                                                           -- BROADCAST_EXCHANGE  |PARTITIONED|
                                                                             project ([$$261])
                                                                             -- STREAM_PROJECT  |PARTITIONED|
                                                                               exchange
                                                                               -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-                                                                                kmeans-init-candidates $$261 <- weigh $$246 vs pool $$259 (global top-2 intake)
-                                                                                -- KMEANS_INIT_CANDIDATES  |PARTITIONED|
+                                                                                kmeans-stage $$261 <- weigh $$246 vs pool $$259 (global top-2 intake)
+                                                                                -- KMEANS_STAGE  |PARTITIONED|
                                                                                   exchange
                                                                                   -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
                                                                                     assign [$$246] <- [$$254] project: [$$246]
@@ -162,16 +162,16 @@ distribute result [$$289]
                                                                                     -- STREAM_PROJECT  |PARTITIONED|
                                                                                       exchange
                                                                                       -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-                                                                                        kmeans-init-candidates $$259 <- recluster pool $$257 to 2 means
-                                                                                        -- KMEANS_INIT_CANDIDATES  |PARTITIONED|
+                                                                                        kmeans-stage $$259 <- recluster pool $$257 to 2 means
+                                                                                        -- KMEANS_STAGE  |PARTITIONED|
                                                                                           exchange
                                                                                           -- BROADCAST_EXCHANGE  |PARTITIONED|
                                                                                             project ([$$257])
                                                                                             -- STREAM_PROJECT  |PARTITIONED|
                                                                                               exchange
                                                                                               -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-                                                                                                kmeans-init-candidates $$257 <- oversample-loop 5 rounds of $$250 vs seed $$254
-                                                                                                -- KMEANS_INIT_CANDIDATES  |PARTITIONED|
+                                                                                                kmeans-stage $$257 <- oversample-loop 5 rounds of $$250 vs seed $$254
+                                                                                                -- KMEANS_STAGE  |PARTITIONED|
                                                                                                   exchange
                                                                                                   -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
                                                                                                     assign [$$250] <- [$$254] project: [$$250]

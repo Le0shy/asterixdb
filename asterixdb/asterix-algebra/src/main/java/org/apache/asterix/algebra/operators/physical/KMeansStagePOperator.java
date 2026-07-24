@@ -36,7 +36,7 @@ import org.apache.hyracks.algebricks.core.algebra.base.IOptimizationContext;
 import org.apache.hyracks.algebricks.core.algebra.base.PhysicalOperatorTag;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.AbstractLogicalOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.IOperatorSchema;
-import org.apache.hyracks.algebricks.core.algebra.operators.logical.KMeansInitCandidatesOperator;
+import org.apache.hyracks.algebricks.core.algebra.operators.logical.KMeansStageOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.physical.AbstractPhysicalOperator;
 import org.apache.hyracks.algebricks.core.algebra.properties.BroadcastPartitioningProperty;
 import org.apache.hyracks.algebricks.core.algebra.properties.IPartitioningRequirementsCoordinator;
@@ -51,18 +51,18 @@ import org.apache.hyracks.dataflow.std.connectors.MToNBroadcastConnectorDescript
 import org.apache.hyracks.util.annotations.AiProvenance;
 
 /**
- * Physical realization of {@link KMeansInitCandidatesOperator}, dispatched by mode: WEIGH contributes a
+ * Physical realization of {@link KMeansStageOperator}, dispatched by mode: WEIGH contributes a
  * two-input {@link KMeansWeighOperatorDescriptor} (partitioned vectors at input 0, broadcast pool at input 1);
  * RECLUSTER/LLOYD contribute a single-input {@link KMeansMergeOperatorDescriptor} whose sole input is the
  * broadcast partials; OVERSAMPLE_LOOP is injected as the systolic 5-operator sub-graph. The pool input is
  * always REQUIRED BROADCAST, so the enforcer inserts the broadcast exchange.
  */
 @AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.GENERATED, notes = "CLUSTER BY k-means|| init physical operator")
-public class KMeansInitCandidatesPOperator extends AbstractPhysicalOperator {
+public class KMeansStagePOperator extends AbstractPhysicalOperator {
 
     @Override
     public PhysicalOperatorTag getOperatorTag() {
-        return PhysicalOperatorTag.KMEANS_INIT_CANDIDATES;
+        return PhysicalOperatorTag.KMEANS_STAGE;
     }
 
     @Override
@@ -78,12 +78,11 @@ public class KMeansInitCandidatesPOperator extends AbstractPhysicalOperator {
     @Override
     public PhysicalRequirements getRequiredPropertiesForChildren(ILogicalOperator op,
             IPhysicalPropertiesVector reqdByParent, IOptimizationContext context) {
-        KMeansInitCandidatesOperator kop = (KMeansInitCandidatesOperator) op;
+        KMeansStageOperator kop = (KMeansStageOperator) op;
         StructuralPropertiesVector broadcastPool = new StructuralPropertiesVector(
                 new BroadcastPartitioningProperty(context.getComputationNodeDomain()), null);
         StructuralPropertiesVector[] pv;
-        if (kop.getMode() == KMeansInitCandidatesOperator.Mode.RECLUSTER
-                || kop.getMode() == KMeansInitCandidatesOperator.Mode.LLOYD) {
+        if (kop.getMode() == KMeansStageOperator.Mode.RECLUSTER || kop.getMode() == KMeansStageOperator.Mode.LLOYD) {
             // Single-input merge: the sole input IS the pool/partials and must be broadcast so every partition
             // reduces the complete partial set (an un-broadcast input would reduce only local partials).
             pv = new StructuralPropertiesVector[] { broadcastPool };
@@ -110,7 +109,7 @@ public class KMeansInitCandidatesPOperator extends AbstractPhysicalOperator {
     public void contributeRuntimeOperator(IHyracksJobBuilder builder, JobGenContext context, ILogicalOperator op,
             IOperatorSchema propagatedSchema, IOperatorSchema[] inputSchemas, IOperatorSchema outerPlanSchema)
             throws AlgebricksException {
-        KMeansInitCandidatesOperator kop = (KMeansInitCandidatesOperator) op;
+        KMeansStageOperator kop = (KMeansStageOperator) op;
         RecordDescriptor recDesc =
                 JobGenHelper.mkRecordDescriptor(context.getTypeEnvironment(op), propagatedSchema, context);
         // Each input branch delivers exactly ONE column by construction (the translator anchors and
@@ -120,10 +119,9 @@ public class KMeansInitCandidatesPOperator extends AbstractPhysicalOperator {
         //
         // RECLUSTER/LLOYD are single-input MERGES: they read ONLY the broadcast partials, so their sole input
         // (index 0) IS the pool. WEIGH and OVERSAMPLE_LOOP are two-input (vectors at 0, pool at 1).
-        if (kop.getMode() == KMeansInitCandidatesOperator.Mode.RECLUSTER
-                || kop.getMode() == KMeansInitCandidatesOperator.Mode.LLOYD) {
+        if (kop.getMode() == KMeansStageOperator.Mode.RECLUSTER || kop.getMode() == KMeansStageOperator.Mode.LLOYD) {
             int poolColumn = resolveSingleColumn(inputSchemas[0], kop.getPoolVariable());
-            KMeansMergeOperatorDescriptor.Mode mergeMode = kop.getMode() == KMeansInitCandidatesOperator.Mode.RECLUSTER
+            KMeansMergeOperatorDescriptor.Mode mergeMode = kop.getMode() == KMeansStageOperator.Mode.RECLUSTER
                     ? KMeansMergeOperatorDescriptor.Mode.RECLUSTER : KMeansMergeOperatorDescriptor.Mode.LLOYD;
             KMeansMergeOperatorDescriptor mergeDesc = new KMeansMergeOperatorDescriptor(builder.getJobSpec(), recDesc,
                     mergeMode, kop.getTopCount(), poolColumn);
@@ -138,15 +136,15 @@ public class KMeansInitCandidatesPOperator extends AbstractPhysicalOperator {
         // OVERSAMPLE_LOOP is ALWAYS realized as the systolic 5-operator sub-graph injected here, on any topology
         // (the in-JVM-barrier single-NC fallback has been retired — one code path). On a single NC all partitions
         // simply co-locate there; the merges are single-node; the connectors are intra-JVM.
-        if (kop.getMode() == KMeansInitCandidatesOperator.Mode.OVERSAMPLE_LOOP) {
+        if (kop.getMode() == KMeansStageOperator.Mode.OVERSAMPLE_LOOP) {
             String[] clusterLocations =
                     ((MetadataProvider) context.getMetadataProvider()).getClusterLocations().getLocations();
             contributeSystolicLoop(builder, kop, (AbstractLogicalOperator) op, recDesc, vectorColumn, poolColumn,
                     clusterLocations, src0, src1);
             return;
         }
-        if (kop.getMode() != KMeansInitCandidatesOperator.Mode.WEIGH) {
-            throw new IllegalStateException("unexpected KMeansInitCandidates mode: " + kop.getMode());
+        if (kop.getMode() != KMeansStageOperator.Mode.WEIGH) {
+            throw new IllegalStateException("unexpected KMeansStage mode: " + kop.getMode());
         }
         KMeansWeighOperatorDescriptor weighDesc = new KMeansWeighOperatorDescriptor(builder.getJobSpec(), recDesc,
                 kop.getTopCount(), vectorColumn, poolColumn, kop.isPoolFromPriorRound(), kop.getSharedVectorsKey(),
@@ -165,9 +163,9 @@ public class KMeansInitCandidatesPOperator extends AbstractPhysicalOperator {
      * pool/vector run files via joblet state); the PhiMerge/PoolMerge nodes are single-partition. Op5 is a sink
      * dead-end, so it is registered as a job root to ensure its branch is scheduled.
      */
-    private void contributeSystolicLoop(IHyracksJobBuilder builder, KMeansInitCandidatesOperator kop,
-            AbstractLogicalOperator op, RecordDescriptor poolEnvelopeRecDesc, int vectorColumn, int seedColumn,
-            String[] clusterLocations, ILogicalOperator src0, ILogicalOperator src1) throws AlgebricksException {
+    private void contributeSystolicLoop(IHyracksJobBuilder builder, KMeansStageOperator kop, AbstractLogicalOperator op,
+            RecordDescriptor poolEnvelopeRecDesc, int vectorColumn, int seedColumn, String[] clusterLocations,
+            ILogicalOperator src0, ILogicalOperator src1) throws AlgebricksException {
         JobSpecification spec = builder.getJobSpec();
         // Unique + stable per loop instance (one per query); baked into all five descriptors so every partition
         // and NC agrees on the joblet-state keys.
@@ -222,6 +220,6 @@ public class KMeansInitCandidatesPOperator extends AbstractPhysicalOperator {
             return 0;
         }
         throw AlgebricksException.create(org.apache.hyracks.api.exceptions.ErrorCode.ILLEGAL_STATE,
-                "kmeans-init-candidates input schema", String.valueOf(schema.getSize()));
+                "kmeans-stage input schema", String.valueOf(schema.getSize()));
     }
 }

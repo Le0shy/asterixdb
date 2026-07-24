@@ -63,7 +63,7 @@ import org.apache.hyracks.algebricks.core.algebra.operators.logical.InnerJoinOpe
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.InsertDeleteUpsertOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.InsertDeleteUpsertOperator.Kind;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.IntersectOperator;
-import org.apache.hyracks.algebricks.core.algebra.operators.logical.KMeansInitCandidatesOperator;
+import org.apache.hyracks.algebricks.core.algebra.operators.logical.KMeansStageOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.LeftOuterJoinOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.LeftOuterUnnestMapOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.LeftOuterUnnestOperator;
@@ -869,10 +869,9 @@ public class LogicalOperatorPrettyPrintVisitorJson extends AbstractLogicalOperat
     }
 
     @Override
-    public Void visitKMeansInitCandidatesOperator(KMeansInitCandidatesOperator op, Void indent)
-            throws AlgebricksException {
+    public Void visitKMeansStageOperator(KMeansStageOperator op, Void indent) throws AlgebricksException {
         try {
-            jsonGenerator.writeStringField(OPERATOR_FIELD, "kmeans-init-candidates");
+            jsonGenerator.writeStringField(OPERATOR_FIELD, "kmeans-stage");
             jsonGenerator.writeStringField("candidate-variable", String.valueOf(op.getCandidateVariable()));
             jsonGenerator.writeStringField("vector-variable", String.valueOf(op.getVectorVariable()));
             jsonGenerator.writeStringField("pool-variable", String.valueOf(op.getPoolVariable()));

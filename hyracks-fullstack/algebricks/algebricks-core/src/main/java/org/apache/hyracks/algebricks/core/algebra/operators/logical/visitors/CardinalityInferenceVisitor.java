@@ -43,7 +43,7 @@ import org.apache.hyracks.algebricks.core.algebra.operators.logical.IndexInsertD
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.InnerJoinOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.InsertDeleteUpsertOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.IntersectOperator;
-import org.apache.hyracks.algebricks.core.algebra.operators.logical.KMeansInitCandidatesOperator;
+import org.apache.hyracks.algebricks.core.algebra.operators.logical.KMeansStageOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.LeftOuterJoinOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.LeftOuterUnnestMapOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.LeftOuterUnnestOperator;
@@ -310,8 +310,7 @@ public class CardinalityInferenceVisitor implements ILogicalOperatorVisitor<Long
     }
 
     @Override
-    public Long visitKMeansInitCandidatesOperator(KMeansInitCandidatesOperator op, Void arg)
-            throws AlgebricksException {
+    public Long visitKMeansStageOperator(KMeansStageOperator op, Void arg) throws AlgebricksException {
         return op.getInputs().get(0).getValue().accept(this, arg);
     }
 

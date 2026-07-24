@@ -27,7 +27,7 @@ import java.util.Map;
 import org.apache.asterix.algebra.operators.physical.AssignBatchPOperator;
 import org.apache.asterix.algebra.operators.physical.BTreeSearchPOperator;
 import org.apache.asterix.algebra.operators.physical.InvertedIndexPOperator;
-import org.apache.asterix.algebra.operators.physical.KMeansInitCandidatesPOperator;
+import org.apache.asterix.algebra.operators.physical.KMeansStagePOperator;
 import org.apache.asterix.algebra.operators.physical.RTreeSearchPOperator;
 import org.apache.asterix.algebra.operators.physical.VectorSearchPOperator;
 import org.apache.asterix.common.config.DatasetConfig.IndexType;
@@ -69,7 +69,7 @@ import org.apache.hyracks.algebricks.core.algebra.operators.logical.AssignOperat
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.DistinctOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.GroupByOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.InnerJoinOperator;
-import org.apache.hyracks.algebricks.core.algebra.operators.logical.KMeansInitCandidatesOperator;
+import org.apache.hyracks.algebricks.core.algebra.operators.logical.KMeansStageOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.LeftOuterJoinOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.LeftOuterUnnestMapOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.OrderOperator;
@@ -127,9 +127,9 @@ public class SetAsterixPhysicalOperatorsRule extends SetAlgebricksPhysicalOperat
         }
 
         @Override
-        public IPhysicalOperator visitKMeansInitCandidatesOperator(KMeansInitCandidatesOperator op, Boolean topLevelOp)
+        public IPhysicalOperator visitKMeansStageOperator(KMeansStageOperator op, Boolean topLevelOp)
                 throws AlgebricksException {
-            return new KMeansInitCandidatesPOperator();
+            return new KMeansStagePOperator();
         }
 
         protected Enum groupByAlgorithm(GroupByOperator gby, Boolean topLevelOp) {

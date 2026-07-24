@@ -166,7 +166,7 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
     private static final int INIT_OVERSAMPLING_ROUNDS = 5;
 
     // When true (SET `cluster_by_runtime_init` "true"), round 1 of the init is emitted as the internal
-    // kmeans-init-candidates(vectors, pool, l) call, realized by the translator as the runtime Store+Score
+    // kmeans-stage(vectors, pool, l) call, realized by the translator as the runtime Store+Score
     // operator; default TRUE: the operator tower is the production path; setting it "false" selects the
     // pure-desugar reference implementation (a debugging/spec tool, slow at scale).
     public static final String CLUSTER_BY_RUNTIME_INIT_OPTION = "cluster_by_runtime_init";

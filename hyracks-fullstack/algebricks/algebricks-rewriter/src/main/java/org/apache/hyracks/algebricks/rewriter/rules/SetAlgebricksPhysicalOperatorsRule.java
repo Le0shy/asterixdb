@@ -58,7 +58,7 @@ import org.apache.hyracks.algebricks.core.algebra.operators.logical.InnerJoinOpe
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.InsertDeleteUpsertOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.InsertDeleteUpsertOperator.Kind;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.IntersectOperator;
-import org.apache.hyracks.algebricks.core.algebra.operators.logical.KMeansInitCandidatesOperator;
+import org.apache.hyracks.algebricks.core.algebra.operators.logical.KMeansStageOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.LeftOuterJoinOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.LeftOuterUnnestMapOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.LeftOuterUnnestOperator;
@@ -382,10 +382,10 @@ public class SetAlgebricksPhysicalOperatorsRule implements IAlgebraicRewriteRule
         }
 
         @Override
-        public IPhysicalOperator visitKMeansInitCandidatesOperator(KMeansInitCandidatesOperator op, Boolean topLevelOp)
+        public IPhysicalOperator visitKMeansStageOperator(KMeansStageOperator op, Boolean topLevelOp)
                 throws AlgebricksException {
             // Realized by the Asterix-level physical rule (the runtime descriptor lives in asterix-runtime).
-            throw new NotImplementedException("kmeans-init-candidates is not supported at the algebricks level");
+            throw new NotImplementedException("kmeans-stage is not supported at the algebricks level");
         }
 
         @Override

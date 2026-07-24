@@ -33,7 +33,7 @@ import org.apache.hyracks.algebricks.core.algebra.operators.logical.IndexInsertD
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.InnerJoinOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.InsertDeleteUpsertOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.IntersectOperator;
-import org.apache.hyracks.algebricks.core.algebra.operators.logical.KMeansInitCandidatesOperator;
+import org.apache.hyracks.algebricks.core.algebra.operators.logical.KMeansStageOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.LeftOuterJoinOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.LeftOuterUnnestMapOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.LeftOuterUnnestOperator;
@@ -103,7 +103,7 @@ public interface ILogicalOperatorVisitor<R, T> {
 
     public R visitIntersectOperator(IntersectOperator op, T arg) throws AlgebricksException;
 
-    public R visitKMeansInitCandidatesOperator(KMeansInitCandidatesOperator op, T arg) throws AlgebricksException;
+    public R visitKMeansStageOperator(KMeansStageOperator op, T arg) throws AlgebricksException;
 
     public R visitUnnestOperator(UnnestOperator op, T arg) throws AlgebricksException;
 

@@ -65,7 +65,7 @@ import org.apache.hyracks.algebricks.core.algebra.operators.logical.ForwardOpera
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.GroupByOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.InnerJoinOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.IntersectOperator;
-import org.apache.hyracks.algebricks.core.algebra.operators.logical.KMeansInitCandidatesOperator;
+import org.apache.hyracks.algebricks.core.algebra.operators.logical.KMeansStageOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.LeftOuterJoinOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.LeftOuterUnnestMapOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.LeftOuterUnnestOperator;
@@ -657,8 +657,7 @@ class InlineAllNtsInSubplanVisitor implements IQueryOperatorVisitor<ILogicalOper
     }
 
     @Override
-    public ILogicalOperator visitKMeansInitCandidatesOperator(KMeansInitCandidatesOperator op, Void arg)
-            throws AlgebricksException {
+    public ILogicalOperator visitKMeansStageOperator(KMeansStageOperator op, Void arg) throws AlgebricksException {
         return visitSingleInputOperator(op);
     }
 

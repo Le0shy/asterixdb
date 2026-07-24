@@ -51,7 +51,7 @@ import org.apache.hyracks.algebricks.core.algebra.operators.logical.InnerJoinOpe
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.InsertDeleteUpsertOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.InsertDeleteUpsertOperator.Kind;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.IntersectOperator;
-import org.apache.hyracks.algebricks.core.algebra.operators.logical.KMeansInitCandidatesOperator;
+import org.apache.hyracks.algebricks.core.algebra.operators.logical.KMeansStageOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.LeftOuterJoinOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.LeftOuterUnnestMapOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.LeftOuterUnnestOperator;
@@ -362,10 +362,9 @@ public class LogicalOperatorPrettyPrintVisitor extends AbstractLogicalOperatorPr
     }
 
     @Override
-    public Void visitKMeansInitCandidatesOperator(KMeansInitCandidatesOperator op, Integer indent)
-            throws AlgebricksException {
+    public Void visitKMeansStageOperator(KMeansStageOperator op, Integer indent) throws AlgebricksException {
         AlgebricksStringBuilderWriter out =
-                addIndent(indent).append("kmeans-init-candidates ").append(str(op.getCandidateVariable()));
+                addIndent(indent).append("kmeans-stage ").append(str(op.getCandidateVariable()));
         switch (op.getMode()) {
             case WEIGH:
                 out.append(" <- weigh ").append(str(op.getVectorVariable())).append(" vs pool ")

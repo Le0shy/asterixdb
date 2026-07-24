@@ -34,17 +34,20 @@ import org.apache.hyracks.algebricks.core.algebra.visitors.ILogicalOperatorVisit
 import org.apache.hyracks.util.annotations.AiProvenance;
 
 /**
- * One k-means|| oversampling round (CLUSTER BY initialization): consumes a partitioned vector stream
- * (input 0, materialized once per partition at the physical level) and a small centroid-pool stream
- * (input 1, broadcast), and emits — per partition of input 0 — the {@code topCount} vectors farthest
- * from their nearest pool member (squared Euclidean; score DESC, arrival order on ties; distance-0
- * pool members are never re-emitted). Blocking; produces a single new variable (the candidate vector);
- * input variables are NOT propagated. Semantics are opaque to generic rewrite rules by design: the
- * per-round selection was previously expressed as SELECT/ORDER BY/LIMIT algebra, whose realization
- * regressed with optimizer context (lost topK pushdown, nested-plan in-memory sorts).
+ * One stage of the distributed k-means|| plan expansion (CLUSTER BY), selected by {@link Mode}: WEIGH scores
+ * a partitioned vector stream against the broadcast pool and emits per-partition (count, sum) partials;
+ * RECLUSTER and LLOYD are single-input reductions over the broadcast partials (see the runtime operators);
+ * OVERSAMPLE_LOOP is the self-iterating exact-init loop, realized as a systolic sub-graph by the physical
+ * operator. Blocking; produces a single new variable (the stage's output vector/envelope); input variables
+ * are NOT propagated. Semantics are opaque to generic rewrite rules by design: expressing these stages as
+ * SELECT/ORDER BY/LIMIT/GROUP BY algebra regressed with optimizer context (lost topK pushdown, nested-plan
+ * in-memory sorts).
+ * <p>
+ * The vector input (input 0) is present for WEIGH and OVERSAMPLE_LOOP; it is ABSENT (a single pool input) for
+ * the RECLUSTER/LLOYD merges, so {@link #getVectorVariable()} is null for those modes.
  */
-@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.GENERATED, notes = "CLUSTER BY k-means|| init logical operator")
-public class KMeansInitCandidatesOperator extends AbstractLogicalOperator {
+@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.GENERATED, notes = "CLUSTER BY k-means|| stage logical operator")
+public class KMeansStageOperator extends AbstractLogicalOperator {
 
     /**
      * What this instance computes. WEIGH: score every point against the (re-limited) pool and emit
@@ -96,7 +99,7 @@ public class KMeansInitCandidatesOperator extends AbstractLogicalOperator {
     // OVERSAMPLE_LOOP only: number of oversample iterations the operator runs internally. Unused otherwise.
     private int loopRounds;
 
-    public KMeansInitCandidatesOperator(Mutable<ILogicalExpression> vectorRef, Mutable<ILogicalExpression> poolRef,
+    public KMeansStageOperator(Mutable<ILogicalExpression> vectorRef, Mutable<ILogicalExpression> poolRef,
             LogicalVariable candidateVar, Object candidateVarType, int topCount) {
         this.vectorRef = vectorRef;
         this.poolRef = poolRef;
@@ -107,12 +110,12 @@ public class KMeansInitCandidatesOperator extends AbstractLogicalOperator {
 
     @Override
     public LogicalOperatorTag getOperatorTag() {
-        return LogicalOperatorTag.KMEANS_INIT_CANDIDATES;
+        return LogicalOperatorTag.KMEANS_STAGE;
     }
 
     @Override
     public <R, T> R accept(ILogicalOperatorVisitor<R, T> visitor, T arg) throws AlgebricksException {
-        return visitor.visitKMeansInitCandidatesOperator(this, arg);
+        return visitor.visitKMeansStageOperator(this, arg);
     }
 
     @Override

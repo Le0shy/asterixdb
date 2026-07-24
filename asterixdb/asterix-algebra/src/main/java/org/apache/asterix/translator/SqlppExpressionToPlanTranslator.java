@@ -130,7 +130,7 @@ import org.apache.hyracks.algebricks.core.algebra.operators.logical.AssignOperat
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.DistinctOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.EmptyTupleSourceOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.InnerJoinOperator;
-import org.apache.hyracks.algebricks.core.algebra.operators.logical.KMeansInitCandidatesOperator;
+import org.apache.hyracks.algebricks.core.algebra.operators.logical.KMeansStageOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.LeftOuterUnnestOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.NestedTupleSourceOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.OrderOperator;
@@ -200,7 +200,7 @@ public class SqlppExpressionToPlanTranslator extends LangExpressionToPlanTransla
     public Pair<ILogicalOperator, LogicalVariable> visit(CallExpr fcall, Mutable<ILogicalOperator> tupSource)
             throws CompilationException {
         if (isKMeansTowerCall(fcall)) {
-            return translateKMeansInitCandidates(fcall, tupSource);
+            return translateKMeansStage(fcall, tupSource);
         }
         return super.visit(fcall, tupSource);
     }
@@ -234,7 +234,7 @@ public class SqlppExpressionToPlanTranslator extends LangExpressionToPlanTransla
     /**
      * Realizes an internal kmeans tower marker (CLUSTER BY runtime init): translates the two self-contained
      * args as independent STREAM branches (their pipelines, without the subquery listify), feeds them to the
-     * KMeansInitCandidatesOperator (input 1 is broadcast at the physical level), and listifies the emitted
+     * KMeansStageOperator (input 1 is broadcast at the physical level), and listifies the emitted
      * result back into a value for the enclosing LET. The pool arg may itself be a tower call (e.g. RECLUSTER
      * over the OVERSAMPLE_LOOP init, or LLOYD over a WEIGH): nested calls translate recursively into a chain
      * of operators — a stage's pool input is the prior stage's output stream — and only the OUTERMOST call
@@ -251,14 +251,14 @@ public class SqlppExpressionToPlanTranslator extends LangExpressionToPlanTransla
     @AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.GENERATED, notes = "shared-vector-materialization: per-tower collector of WEIGH stages")
     private static final class KMeansTowerShared {
         private final String key;
-        private final java.util.List<KMeansInitCandidatesOperator> vectorStages = new java.util.ArrayList<>();
+        private final java.util.List<KMeansStageOperator> vectorStages = new java.util.ArrayList<>();
 
         private KMeansTowerShared(String key) {
             this.key = key;
         }
     }
 
-    private Pair<ILogicalOperator, LogicalVariable> translateKMeansInitCandidates(CallExpr fcall,
+    private Pair<ILogicalOperator, LogicalVariable> translateKMeansStage(CallExpr fcall,
             Mutable<ILogicalOperator> tupSource) throws CompilationException {
         SourceLocation loc = fcall.getSourceLocation();
         KMeansTowerShared shared = new KMeansTowerShared("kmeansVec" + (kmeansTowerCounter++));
@@ -267,7 +267,7 @@ public class SqlppExpressionToPlanTranslator extends LangExpressionToPlanTransla
         // (built first, runs first via the pool chain) writes it; the delete refcount = number of readers.
         if (!shared.vectorStages.isEmpty()) {
             int consumers = shared.vectorStages.size();
-            for (KMeansInitCandidatesOperator stage : shared.vectorStages) {
+            for (KMeansStageOperator stage : shared.vectorStages) {
                 stage.setSharedConsumerCount(consumers);
             }
             shared.vectorStages.get(0).setVectorsWriter(true);
@@ -301,18 +301,17 @@ public class SqlppExpressionToPlanTranslator extends LangExpressionToPlanTransla
             KMeansTowerShared shared) throws CompilationException {
         SourceLocation loc = fcall.getSourceLocation();
         String fnName = fcall.getFunctionSignature().getName();
-        KMeansInitCandidatesOperator.Mode mode;
+        KMeansStageOperator.Mode mode;
         if (BuiltinFunctions.KMEANS_WEIGH_CANDIDATES.getName().equals(fnName)) {
-            mode = KMeansInitCandidatesOperator.Mode.WEIGH;
+            mode = KMeansStageOperator.Mode.WEIGH;
         } else if (BuiltinFunctions.KMEANS_RECLUSTER.getName().equals(fnName)) {
-            mode = KMeansInitCandidatesOperator.Mode.RECLUSTER;
+            mode = KMeansStageOperator.Mode.RECLUSTER;
         } else if (BuiltinFunctions.KMEANS_LLOYD_MERGE.getName().equals(fnName)) {
-            mode = KMeansInitCandidatesOperator.Mode.LLOYD;
+            mode = KMeansStageOperator.Mode.LLOYD;
         } else {
-            mode = KMeansInitCandidatesOperator.Mode.OVERSAMPLE_LOOP;
+            mode = KMeansStageOperator.Mode.OVERSAMPLE_LOOP;
         }
-        boolean merge =
-                mode == KMeansInitCandidatesOperator.Mode.RECLUSTER || mode == KMeansInitCandidatesOperator.Mode.LLOYD;
+        boolean merge = mode == KMeansStageOperator.Mode.RECLUSTER || mode == KMeansStageOperator.Mode.LLOYD;
         // Argument layout: merge = (pool, count); weigh/loop = (vectors, pool, count[, rounds, seedBase]).
         Pair<ILogicalOperator, LogicalVariable> vecBranch =
                 merge ? null : translateStreamBranch((SelectExpression) fcall.getExprList().get(0));
@@ -339,13 +338,13 @@ public class SqlppExpressionToPlanTranslator extends LangExpressionToPlanTransla
         }
         VariableReferenceExpression poolRefE = new VariableReferenceExpression(poolBranch.second);
         poolRefE.setSourceLocation(loc);
-        KMeansInitCandidatesOperator kop = new KMeansInitCandidatesOperator(vecRefExpr,
+        KMeansStageOperator kop = new KMeansStageOperator(vecRefExpr,
                 new MutableObject<org.apache.hyracks.algebricks.core.algebra.base.ILogicalExpression>(poolRefE),
                 candVar, org.apache.asterix.om.types.BuiltinType.ANY, topCount);
         kop.setPoolFromPriorRound(poolFromPriorRound);
         kop.setMode(mode);
         // OVERSAMPLE_LOOP: 4th arg is the iteration count, 5th the seed base (per-round seed = base + r).
-        if (mode == KMeansInitCandidatesOperator.Mode.OVERSAMPLE_LOOP) {
+        if (mode == KMeansStageOperator.Mode.OVERSAMPLE_LOOP) {
             int rounds =
                     (int) ((org.apache.asterix.lang.common.literal.IntegerLiteral) ((org.apache.asterix.lang.common.expression.LiteralExpr) fcall
                             .getExprList().get(3)).getValue()).getValue().longValue();
@@ -357,7 +356,7 @@ public class SqlppExpressionToPlanTranslator extends LangExpressionToPlanTransla
         }
         // WEIGH reads the full vector stream; the stages of one tower share one materialized run file.
         // (RECLUSTER/LLOYD are single-input merges — no vector stream to materialize.)
-        if (mode == KMeansInitCandidatesOperator.Mode.WEIGH) {
+        if (mode == KMeansStageOperator.Mode.WEIGH) {
             kop.setSharedVectorsKey(shared.key);
             shared.vectorStages.add(kop);
         }

@@ -51,7 +51,7 @@ import org.apache.hyracks.algebricks.core.algebra.operators.logical.IndexInsertD
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.InnerJoinOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.InsertDeleteUpsertOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.IntersectOperator;
-import org.apache.hyracks.algebricks.core.algebra.operators.logical.KMeansInitCandidatesOperator;
+import org.apache.hyracks.algebricks.core.algebra.operators.logical.KMeansStageOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.LeftOuterJoinOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.LeftOuterUnnestMapOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.LeftOuterUnnestOperator;
@@ -242,12 +242,11 @@ public class OperatorDeepCopyVisitor implements ILogicalOperatorVisitor<ILogical
     }
 
     @Override
-    public ILogicalOperator visitKMeansInitCandidatesOperator(KMeansInitCandidatesOperator op, Void arg)
-            throws AlgebricksException {
+    public ILogicalOperator visitKMeansStageOperator(KMeansStageOperator op, Void arg) throws AlgebricksException {
         // vectorRef is null for the single-input merge modes (RECLUSTER/LLOYD).
         Mutable<ILogicalExpression> vectorRefCopy = op.getVectorVariable() == null ? null
                 : new MutableObject<>(new VariableReferenceExpression(op.getVectorVariable()));
-        KMeansInitCandidatesOperator opCopy = new KMeansInitCandidatesOperator(vectorRefCopy,
+        KMeansStageOperator opCopy = new KMeansStageOperator(vectorRefCopy,
                 new MutableObject<ILogicalExpression>(new VariableReferenceExpression(op.getPoolVariable())),
                 op.getCandidateVariable(), op.getCandidateVarType(), op.getTopCount());
         opCopy.setPoolFromPriorRound(op.isPoolFromPriorRound());

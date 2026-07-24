@@ -52,7 +52,7 @@ import org.apache.hyracks.algebricks.core.algebra.operators.logical.IndexInsertD
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.InnerJoinOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.InsertDeleteUpsertOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.IntersectOperator;
-import org.apache.hyracks.algebricks.core.algebra.operators.logical.KMeansInitCandidatesOperator;
+import org.apache.hyracks.algebricks.core.algebra.operators.logical.KMeansStageOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.LeftOuterJoinOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.LeftOuterUnnestMapOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.LeftOuterUnnestOperator;
@@ -397,13 +397,12 @@ public class IsomorphismOperatorVisitor implements ILogicalOperatorVisitor<Boole
     }
 
     @Override
-    public Boolean visitKMeansInitCandidatesOperator(KMeansInitCandidatesOperator op, ILogicalOperator arg)
-            throws AlgebricksException {
+    public Boolean visitKMeansStageOperator(KMeansStageOperator op, ILogicalOperator arg) throws AlgebricksException {
         AbstractLogicalOperator aop = (AbstractLogicalOperator) copyAndSubstituteVar(op, arg);
-        if (aop.getOperatorTag() != LogicalOperatorTag.KMEANS_INIT_CANDIDATES) {
+        if (aop.getOperatorTag() != LogicalOperatorTag.KMEANS_STAGE) {
             return Boolean.FALSE;
         }
-        KMeansInitCandidatesOperator other = (KMeansInitCandidatesOperator) aop;
+        KMeansStageOperator other = (KMeansStageOperator) aop;
         // vectorVariable is null for the single-input merge modes (RECLUSTER/LLOYD).
         return op.getTopCount() == other.getTopCount() && op.getMode() == other.getMode()
                 && op.isPoolFromPriorRound() == other.isPoolFromPriorRound()

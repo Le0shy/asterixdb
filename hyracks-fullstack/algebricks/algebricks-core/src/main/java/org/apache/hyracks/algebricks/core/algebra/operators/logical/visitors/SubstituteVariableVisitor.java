@@ -49,7 +49,7 @@ import org.apache.hyracks.algebricks.core.algebra.operators.logical.IndexInsertD
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.InnerJoinOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.InsertDeleteUpsertOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.IntersectOperator;
-import org.apache.hyracks.algebricks.core.algebra.operators.logical.KMeansInitCandidatesOperator;
+import org.apache.hyracks.algebricks.core.algebra.operators.logical.KMeansStageOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.LeftOuterJoinOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.LeftOuterUnnestMapOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.LeftOuterUnnestOperator;
@@ -312,8 +312,8 @@ public class SubstituteVariableVisitor
     }
 
     @Override
-    public Void visitKMeansInitCandidatesOperator(KMeansInitCandidatesOperator op,
-            Pair<LogicalVariable, LogicalVariable> pair) throws AlgebricksException {
+    public Void visitKMeansStageOperator(KMeansStageOperator op, Pair<LogicalVariable, LogicalVariable> pair)
+            throws AlgebricksException {
         // vectorVariable is null for the single-input merge modes (RECLUSTER/LLOYD).
         if (op.getVectorVariable() != null && op.getVectorVariable().equals(pair.first)) {
             op.getVectorRef().setValue(new VariableReferenceExpression(pair.second));
