@@ -80,17 +80,6 @@ public class MaterializerTaskState extends AbstractStateObject {
         out.nextFrame(buffer);
     }
 
-    /**
-     * Opens a pull-based reader over the materialized run file. Unlike {@link #writeOut}, which pushes every
-     * frame to a writer in one call, this lets a consumer advance frame-by-frame — e.g. to read this state in
-     * lockstep with another stream. The caller owns the returned reader's lifecycle (open/close) and, because
-     * this bypasses the {@link #writeOut} consumer accounting, must not rely on the numConsumers self-delete;
-     * the managed workspace file is reclaimed when the joblet completes.
-     */
-    public RunFileReader createReader() throws HyracksDataException {
-        return out.createReader();
-    }
-
     public void writeOut(IFrameWriter writer, IFrame frame, boolean failed) throws HyracksDataException {
         RunFileReader in = null;
         if (out != null) {
