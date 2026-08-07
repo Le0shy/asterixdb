@@ -219,7 +219,9 @@ public class SqlppExpressionToPlanTranslator extends LangExpressionToPlanTransla
                 || BuiltinFunctions.KMEANS_LLOYD_MERGE.getName().equals(name));
         // The 5-arg self-iterating exact loop (vectors, seedPool, l, rounds, seedBase).
         boolean loop = arity == 5 && BuiltinFunctions.KMEANS_OVERSAMPLE_LOOP.getName().equals(name);
-        return weigh || merge || loop;
+        // The 4-arg self-iterating Lloyd loop (vectors, centroids, k, iterations).
+        boolean lloydLoop = arity == 4 && BuiltinFunctions.KMEANS_LLOYD_LOOP.getName().equals(name);
+        return weigh || merge || loop || lloydLoop;
     }
 
     /** Whether a nested tower call's OUTPUT rows are envelopes (vs plain vectors). */
@@ -308,6 +310,8 @@ public class SqlppExpressionToPlanTranslator extends LangExpressionToPlanTransla
             mode = KMeansStageOperator.Mode.RECLUSTER;
         } else if (BuiltinFunctions.KMEANS_LLOYD_MERGE.getName().equals(fnName)) {
             mode = KMeansStageOperator.Mode.LLOYD;
+        } else if (BuiltinFunctions.KMEANS_LLOYD_LOOP.getName().equals(fnName)) {
+            mode = KMeansStageOperator.Mode.LLOYD_LOOP;
         } else {
             mode = KMeansStageOperator.Mode.OVERSAMPLE_LOOP;
         }
@@ -353,6 +357,12 @@ public class SqlppExpressionToPlanTranslator extends LangExpressionToPlanTransla
                             .getExprList().get(4)).getValue()).getValue().longValue();
             kop.setLoopRounds(rounds);
             kop.setSeed(seedBase);
+        }
+        // LLOYD_LOOP: 4th arg is the iteration count. No seed -- the loop is fully deterministic.
+        if (mode == KMeansStageOperator.Mode.LLOYD_LOOP) {
+            kop.setLoopRounds(
+                    (int) ((org.apache.asterix.lang.common.literal.IntegerLiteral) ((org.apache.asterix.lang.common.expression.LiteralExpr) fcall
+                            .getExprList().get(3)).getValue()).getValue().longValue());
         }
         // WEIGH reads the full vector stream; the stages of one tower share one materialized run file.
         // (RECLUSTER/LLOYD are single-input merges — no vector stream to materialize.)

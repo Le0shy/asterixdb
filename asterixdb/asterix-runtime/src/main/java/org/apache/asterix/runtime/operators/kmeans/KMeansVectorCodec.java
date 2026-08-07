@@ -134,6 +134,26 @@ public final class KMeansVectorCodec {
             }
         }
 
+        /**
+         * Appends one bare vector (no envelope wrapper) as a single ordered-list field — the shape a merge stage
+         * emits for a centroid set, and what a consumer expecting plain vectors decodes.
+         */
+        public void plainVector(double[] vec) throws HyracksDataException {
+            try {
+                tb.reset();
+                vecBuilder.reset(openList);
+                for (double d : vec) {
+                    addDoubleItem(vecBuilder, d);
+                }
+                vecBuilder.write(tb.getDataOutput(), true);
+                tb.addFieldEndOffset();
+                FrameUtils.appendToWriter(writer, appender, tb.getFieldEndOffsets(), tb.getByteArray(), 0,
+                        tb.getSize());
+            } catch (Exception e) {
+                throw HyracksDataException.create(e);
+            }
+        }
+
         public void flush() throws HyracksDataException {
             appender.write(writer, true);
         }

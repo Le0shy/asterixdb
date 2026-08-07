@@ -1260,6 +1260,12 @@ public class BuiltinFunctions {
     public static final FunctionIdentifier KMEANS_OVERSAMPLE_LOOP =
             FunctionConstants.newAsterix("kmeans-oversample-loop", 5);
 
+    // The Lloyd refinement as one self-iterating operator. kmeans-lloyd-loop(vectors, centroids, k,
+    // iterations): runs every refinement iteration internally, all-reducing each iteration's per-centroid
+    // (count, sum) partials into the next centroid set; the physical operator realizes it as an injected
+    // pipelined systolic sub-graph. Emits the final centroid set as plain vectors.
+    public static final FunctionIdentifier KMEANS_LLOYD_LOOP = FunctionConstants.newAsterix("kmeans-lloyd-loop", 4);
+
     // Temporal functions
     public static final FunctionIdentifier UNIX_TIME_FROM_DATE_IN_DAYS =
             FunctionConstants.newAsterix("unix-time-from-date-in-days", 1);
@@ -2015,6 +2021,7 @@ public class BuiltinFunctions {
         addPrivateFunction(KMEANS_RECLUSTER, OrderedListOfAnyTypeComputer.INSTANCE, true);
         addPrivateFunction(KMEANS_LLOYD_MERGE, OrderedListOfAnyTypeComputer.INSTANCE, true);
         addPrivateFunction(KMEANS_OVERSAMPLE_LOOP, OrderedListOfAnyTypeComputer.INSTANCE, true);
+        addPrivateFunction(KMEANS_LLOYD_LOOP, OrderedListOfAnyTypeComputer.INSTANCE, true);
         // Window functions
 
         addFunction(CUME_DIST, ADoubleTypeComputer.INSTANCE, false);

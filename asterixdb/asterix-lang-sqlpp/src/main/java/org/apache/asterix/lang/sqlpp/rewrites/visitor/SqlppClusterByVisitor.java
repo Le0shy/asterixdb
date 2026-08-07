@@ -301,15 +301,12 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
             // padded from pool members if fewer than k attracted points.
             c0Stream = call(BuiltinFunctions.KMEANS_RECLUSTER, loc, weighed, intLit(k, loc));
         }
-        // Lloyd iterations ride the same tower: each is a WEIGH pass over the previous centroids (a plain-vector
-        // stream, so no intake re-limit applies) followed by a single-input LLOYD merge emitting every non-empty
-        // centroid's mean. Only the final centroid list is LET-bound.
-        Expression centroidStream = c0Stream;
-        for (int i = 0; i < LLOYD_ITERATIONS; i++) {
-            Expression iterWeighed = call(BuiltinFunctions.KMEANS_WEIGH_CANDIDATES, loc, copy(vecsQuery),
-                    centroidStream, intLit(k, loc));
-            centroidStream = call(BuiltinFunctions.KMEANS_LLOYD_MERGE, loc, iterWeighed, intLit(k, loc));
-        }
+        // Lloyd refinement is one self-iterating stage: it loops LLOYD_ITERATIONS times internally, each
+        // iteration assigning every vector to its nearest current centroid and all-reducing the per-centroid
+        // (count, sum) partials into the next centroid set. A centroid that attracts nothing is dropped, so the
+        // set can shrink. Only the final centroid list is LET-bound.
+        Expression centroidStream = call(BuiltinFunctions.KMEANS_LLOYD_LOOP, loc, copy(vecsQuery), c0Stream,
+                intLit(k, loc), intLit(LLOYD_ITERATIONS, loc));
         VarIdentifier cFinal = context.newVariable();
         centroidLets.add(letClause(cFinal, centroidStream, loc));
         context.markNoInlineLetVar(cFinal);

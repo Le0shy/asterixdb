@@ -75,6 +75,19 @@ public final class KMeansLoopIO {
             IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE,
             DoubleSerializerDeserializer.INSTANCE /* placeholder: raw double[] read by offset */ });
 
+    /**
+     * Lloyd loop, Controller -&gt; CentroidMerge:
+     * {@code {iter:int, part:int, seq:int, kind:int, count:double, sum:rawDoubles}}, where {@code seq} is the
+     * centroid index the partial belongs to and {@code count}/{@code sum} are that centroid's local member count
+     * and component-wise sum. {@link #KIND_END} markers close a partition's contribution for one iteration and
+     * carry no payload. Distinct from {@link #DRAW_RD} only by the extra {@code count} column.
+     */
+    public static final RecordDescriptor PARTIAL_RD =
+            new RecordDescriptor(new ISerializerDeserializer[] { IntegerSerializerDeserializer.INSTANCE,
+                    IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE,
+                    IntegerSerializerDeserializer.INSTANCE, DoubleSerializerDeserializer.INSTANCE,
+                    DoubleSerializerDeserializer.INSTANCE /* placeholder: raw double[] read by offset */ });
+
     /** The pool run file: one raw-double vector per tuple, {@code {vec:rawDoubles}}. */
     public static final RecordDescriptor POOL_RD = new RecordDescriptor(new ISerializerDeserializer[] {
             DoubleSerializerDeserializer.INSTANCE /* placeholder: raw double[] read by offset */ });

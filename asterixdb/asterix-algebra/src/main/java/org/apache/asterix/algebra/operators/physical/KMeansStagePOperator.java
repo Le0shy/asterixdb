@@ -21,7 +21,10 @@ package org.apache.asterix.algebra.operators.physical;
 import org.apache.asterix.metadata.declared.MetadataProvider;
 import org.apache.asterix.runtime.operators.KMeansMergeOperatorDescriptor;
 import org.apache.asterix.runtime.operators.KMeansWeighOperatorDescriptor;
+import org.apache.asterix.runtime.operators.kmeans.KMeansCentroidMergeOperatorDescriptor;
 import org.apache.asterix.runtime.operators.kmeans.KMeansCostControllerOperatorDescriptor;
+import org.apache.asterix.runtime.operators.kmeans.KMeansLloydControllerOperatorDescriptor;
+import org.apache.asterix.runtime.operators.kmeans.KMeansLloydReleaseOperatorDescriptor;
 import org.apache.asterix.runtime.operators.kmeans.KMeansLoopIO;
 import org.apache.asterix.runtime.operators.kmeans.KMeansPhiMergeOperatorDescriptor;
 import org.apache.asterix.runtime.operators.kmeans.KMeansPoolMergeOperatorDescriptor;
@@ -143,6 +146,13 @@ public class KMeansStagePOperator extends AbstractPhysicalOperator {
                     clusterLocations, src0, src1);
             return;
         }
+        if (kop.getMode() == KMeansStageOperator.Mode.LLOYD_LOOP) {
+            String[] clusterLocations =
+                    ((MetadataProvider) context.getMetadataProvider()).getClusterLocations().getLocations();
+            contributeLloydLoop(builder, kop, (AbstractLogicalOperator) op, recDesc, vectorColumn, poolColumn,
+                    clusterLocations, src0, src1);
+            return;
+        }
         if (kop.getMode() != KMeansStageOperator.Mode.WEIGH) {
             throw new IllegalStateException("unexpected KMeansStage mode: " + kop.getMode());
         }
@@ -208,6 +218,50 @@ public class KMeansStagePOperator extends AbstractPhysicalOperator {
         // Release is a sink dead-end (its "output" is side-effects: pool append + permit release), not upstream of
         // the main result, so register it as a root or its branch would not be scheduled.
         spec.addRoot(op5);
+    }
+
+    /**
+     * Inject the systolic 3-operator sub-graph for one {@code LLOYD_LOOP} onto the job spec — the same shape as
+     * the oversampling loop, one operator shorter because a Lloyd iteration has a single reduce (the centroid
+     * means) where an oversampling round has two (the potential, then the draws).
+     * <p>
+     * Op1 (Controller) is the registered descriptor, so the builder wires the vectors (input 0) and the initial
+     * centroids (input 1) into it, and whatever consumes this node reads the final centroid set from its output
+     * 0; the per-iteration partials (output 1) and Op2/Op3 are internal edges wired here. Op1/Op3 are pinned to
+     * the SAME cluster locations so partition i of each co-locates on one node and shares that node's permit and
+     * centroid store; the merge is single-partition. Op3 is a sink dead-end, so it is registered as a job root or
+     * its branch would never be scheduled.
+     */
+    private void contributeLloydLoop(IHyracksJobBuilder builder, KMeansStageOperator kop, AbstractLogicalOperator op,
+            RecordDescriptor centroidRecDesc, int vectorColumn, int centroidColumn, String[] clusterLocations,
+            ILogicalOperator src0, ILogicalOperator src1) throws AlgebricksException {
+        JobSpecification spec = builder.getJobSpec();
+        // Unique + stable per loop instance, and distinct from any oversampling loop's key in the same job.
+        String loopKey = "kmeansLloydLoop#" + kop.getCandidateVariable();
+        int participants = clusterLocations.length;
+
+        KMeansLloydControllerOperatorDescriptor op1 = new KMeansLloydControllerOperatorDescriptor(spec, centroidRecDesc,
+                KMeansLoopIO.PARTIAL_RD, loopKey, vectorColumn, centroidColumn, kop.getLoopRounds());
+        contributeOpDesc(builder, op, op1);
+        builder.contributeGraphEdge(src0, 0, op, 0);
+        builder.contributeGraphEdge(src1, 0, op, 1);
+
+        KMeansCentroidMergeOperatorDescriptor op2 =
+                new KMeansCentroidMergeOperatorDescriptor(spec, KMeansLoopIO.DRAW_RD, participants);
+        KMeansLloydReleaseOperatorDescriptor op3 = new KMeansLloydReleaseOperatorDescriptor(spec, loopKey);
+
+        AlgebricksAbsolutePartitionConstraint coLocated = new AlgebricksAbsolutePartitionConstraint(clusterLocations);
+        builder.contributeAlgebricksPartitionConstraint(op1, coLocated);
+        builder.contributeAlgebricksPartitionConstraint(op3, coLocated);
+        builder.contributeAlgebricksPartitionConstraint(op2, new AlgebricksCountPartitionConstraint(1));
+
+        // Internal pipelined broadcast edges: Op1.partials -> CentroidMerge -> Release.
+        // (Broadcast into a single-partition merge is a CONCURRENT M-to-1; never the sequential merging
+        // connector, which would deadlock against the permit-paced producers.)
+        spec.connect(new MToNBroadcastConnectorDescriptor(spec), op1, 1, op2, 0);
+        spec.connect(new MToNBroadcastConnectorDescriptor(spec), op2, 0, op3, 0);
+
+        spec.addRoot(op3);
     }
 
     private static int resolveSingleColumn(IOperatorSchema schema,

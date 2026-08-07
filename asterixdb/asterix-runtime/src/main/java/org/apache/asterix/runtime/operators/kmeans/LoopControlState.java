@@ -48,9 +48,13 @@ import org.apache.hyracks.dataflow.std.base.AbstractStateObject;
 @org.apache.hyracks.util.annotations.AiProvenance(agent = org.apache.hyracks.util.annotations.AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = org.apache.hyracks.util.annotations.AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = org.apache.hyracks.util.annotations.AiProvenance.ContributionKind.GENERATED, notes = "CLUSTER BY k-means|| init loop: joblet-shared permit holder")
 public final class LoopControlState extends AbstractStateObject {
 
-    // Not serialized: this state never leaves the NC (joblet-local). The semaphore is created empty; Op5 grants
-    // one permit per completed round.
+    // Not serialized: this state never leaves the NC (joblet-local). The semaphore is created empty; the loop tail
+    // grants one permit per completed round/iteration.
     private final transient Semaphore permit = new Semaphore(0);
+
+    // Used by the Lloyd loop only, where each iteration REPLACES the centroid set (the oversampling loop's pool
+    // instead grows, so it lives in a run file). Reads/writes are ordered by the permit; see CentroidStore.
+    private final transient CentroidStore centroids = new CentroidStore.InMemory();
 
     public LoopControlState(JobId jobId, Object id) {
         super(jobId, id);
@@ -58,6 +62,11 @@ public final class LoopControlState extends AbstractStateObject {
 
     public Semaphore getPermit() {
         return permit;
+    }
+
+    /** The centroid handoff for a Lloyd loop partition; unused by the oversampling loop. */
+    public CentroidStore getCentroids() {
+        return centroids;
     }
 
     /** The joblet-state id under which Op1 registers, and Op3/Op5 look up, this partition's control state. */

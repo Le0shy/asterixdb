@@ -67,7 +67,12 @@ public class KMeansStageOperator extends AbstractLogicalOperator {
         // potential phi + a local Bernoulli sample + an all-reduce union into the next pool; the final pool is
         // weighed and emitted for RECLUSTER. The physical operator injects this as a pipelined systolic
         // sub-graph (correct on any topology). See the operator descriptor / physical operator.
-        OVERSAMPLE_LOOP
+        OVERSAMPLE_LOOP,
+        // The Lloyd refinement as ONE operator that iterates internally: each of loopRounds iterations
+        // assigns every resident vector to its nearest current centroid and all-reduces the per-centroid
+        // (count, sum) partials into the next centroid set. The physical operator injects this as a
+        // pipelined systolic sub-graph, as for OVERSAMPLE_LOOP. Emits the final centroids as plain vectors.
+        LLOYD_LOOP
     }
 
     // References to the vector-valued variable of input 0 (the qualified points) and of input 1 (the
