@@ -35,7 +35,6 @@ import org.apache.asterix.lang.common.util.FunctionUtil;
 import org.apache.asterix.lang.sqlpp.parser.SqlppParserFactory;
 import org.apache.asterix.lang.sqlpp.rewrites.SqlppQueryRewriter;
 import org.apache.asterix.lang.sqlpp.rewrites.SqlppRewriterFactory;
-import org.apache.asterix.lang.sqlpp.rewrites.visitor.SqlppClusterByVisitor;
 import org.apache.asterix.lang.sqlpp.visitor.SqlppAstPrintVisitorFactory;
 import org.apache.asterix.optimizer.base.FuzzyUtils;
 import org.apache.asterix.optimizer.rules.DisjunctivePredicateToJoinRule;
@@ -118,7 +117,6 @@ public class SqlppCompilationProvider implements ILangCompilationProvider {
                 CompilerProperties.COMPILER_EXTRACT_COMMON_EXPRESSION_LIMIT_KEY, FuzzyUtils.SIM_THRESHOLD_PROP_NAME,
                 StartFeedStatement.WAIT_FOR_COMPLETION, FeedActivityDetails.FEED_POLICY_NAME,
                 FeedActivityDetails.COLLECT_LOCATIONS, SqlppQueryRewriter.INLINE_WITH_OPTION,
-                SqlppClusterByVisitor.CLUSTER_BY_RUNTIME_INIT_OPTION,
                 SqlppExpressionToPlanTranslator.REWRITE_IN_AS_OR_OPTION, "hash_merge", "output-record-type",
                 CompilerProperties.COMPILER_PARQUET_FILESPLITS_KEY,
                 CompilerProperties.COMPILER_HDFS_SPLIT_PARALLELISM_KEY,

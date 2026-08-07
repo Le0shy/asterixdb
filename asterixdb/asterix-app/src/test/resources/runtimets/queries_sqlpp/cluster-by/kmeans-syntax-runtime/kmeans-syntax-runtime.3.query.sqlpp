@@ -17,7 +17,6 @@
  * under the License.
  */
 use test;
-set `cluster_by_runtime_init` "true";
 -- CLUSTER BY syntax (desugared to distributed k-means). k=2 on the tiny 2-D dataset; the descriptor sc
 -- (cluster_id, centroid, cluster_radius) and CLUSTER AS members are all exercised.
 from Points as p

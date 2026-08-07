@@ -17,7 +17,6 @@
  * under the License.
  */
 use test;
-set `cluster_by_runtime_init` "true";
 
 insert into Points ([
   {"id": 1, "vec": [1.0, 1.0]},

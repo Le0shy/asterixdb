@@ -16,9 +16,8 @@
  * specific language governing permissions and limitations
  * under the License.
  */
--- CLUSTER BY runtime-init plan validation: with the cluster_by_runtime_init flag, round 1 of the
--- k-means|| oversampling loop compiles to the dedicated KMEANS_INIT_CANDIDATES operator (two stream
--- inputs, broadcast pool) instead of the sort-based desugar; the rest of the shape matches kmeans-syntax-validate.
+-- CLUSTER BY plan validation: the k-means|| oversampling loop compiles to the dedicated KMEANS_STAGE
+-- operator (two stream inputs, broadcast pool); the rest of the shape matches kmeans-syntax-validate.
 drop dataverse clusterby_test if exists;
 create dataverse clusterby_test;
 use clusterby_test;
@@ -28,8 +27,6 @@ create type clusterby_test.ReviewType as closed {
   reviewEmbedding : [double]
 };
 create dataset Reviews(ReviewType) primary key id;
-
-set `cluster_by_runtime_init` "true";
 
 from Reviews as r
 cluster by r.reviewEmbedding as sc

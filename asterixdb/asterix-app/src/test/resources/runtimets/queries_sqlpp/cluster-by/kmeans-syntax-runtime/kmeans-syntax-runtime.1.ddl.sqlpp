@@ -21,7 +21,6 @@
 drop dataverse test if exists;
 create dataverse test;
 use test;
-set `cluster_by_runtime_init` "true";
 
 create type PointType as closed {
   id : integer,
