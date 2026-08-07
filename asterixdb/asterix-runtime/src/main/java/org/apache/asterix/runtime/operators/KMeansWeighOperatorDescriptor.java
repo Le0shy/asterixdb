@@ -38,7 +38,7 @@ import org.apache.hyracks.dataflow.std.misc.MaterializerTaskState;
 import org.apache.hyracks.util.annotations.AiProvenance;
 
 /**
- * The CLUSTER BY k-means|| WEIGH stage: re-limit the intake (the tower's terminal re-limit), then stream the
+ * The CLUSTER BY k-means|| WEIGH stage: re-limit the intake, then stream the
  * local vectors ONCE against the decoded pool and accumulate per-pool-member (count, sum) partials; emits the
  * pool echo (partition 0) plus this partition's non-empty partials, for a downstream
  * {@link KMeansMergeOperatorDescriptor} to reduce.

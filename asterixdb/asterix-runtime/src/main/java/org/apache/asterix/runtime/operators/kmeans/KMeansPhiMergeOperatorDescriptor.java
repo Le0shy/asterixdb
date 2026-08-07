@@ -42,7 +42,7 @@ import org.apache.hyracks.dataflow.std.base.AbstractUnaryInputUnaryOutputOperato
 import org.apache.hyracks.util.annotations.AiProvenance;
 
 /**
- * CLUSTER BY Route B (multi-NC systolic exact-init loop) — <b>Op2 PhiMerge</b>: the single-node φ-reduce of one
+ * CLUSTER BY k-means‖ initialization loop — <b>Op2 PhiMerge</b>: the single-node φ-reduce of one
  * oversampling round. It consumes the per-partition local potentials {@code {round, localSigma}} that the Cost
  * operators (Op1) emit — delivered here via a concurrent M-to-1 (broadcast into this 1-partition consumer) — and,
  * once it has seen all {@code nParticipants} partitions' contributions for a round, sums them into the global
@@ -53,9 +53,9 @@ import org.apache.hyracks.util.annotations.AiProvenance;
  * serialized (no partition starts round r+1 until round r's union has been formed), at most one round is ever
  * live in {@link #accByRound} — it is emitted and removed before the next round's frames arrive. The {@code round}
  * field is carried through (not merely counted) so the downstream Sample can seed its per-round RNG with the exact
- * round, matching the unrolled tower's draws; see the Route B design.
+ * round, so a partition's draws are a function of (round, partition) alone and never of frame arrival order.
  */
-@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.GENERATED, notes = "CLUSTER BY Route B: single-node phi-reduce (Op2)")
+@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.GENERATED, notes = "CLUSTER BY k-means|| init loop: single-node phi-reduce (Op2)")
 public class KMeansPhiMergeOperatorDescriptor extends AbstractSingleActivityOperatorDescriptor {
     private static final long serialVersionUID = 1L;
 

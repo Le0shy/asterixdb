@@ -39,7 +39,7 @@ import org.apache.hyracks.dataflow.std.misc.MaterializerTaskState;
 import org.apache.hyracks.util.annotations.AiProvenance;
 
 /**
- * CLUSTER BY Route B (multi-NC systolic exact-init loop) — <b>Op5 Release</b>: the tail that closes the loop-back.
+ * CLUSTER BY k-means‖ initialization loop — <b>Op5 Release</b>: the tail that closes the loop-back.
  * One partition per co-located group (shares an NC, permit, and pool run file with the Cost/Sample operators). It
  * consumes each round's global draw union + end marker (broadcast from PoolMerge, Op4) and:
  * <ul>
@@ -53,7 +53,7 @@ import org.apache.hyracks.util.annotations.AiProvenance;
  * The pool run file and permit are looked up from joblet state (created by Cost) with a bounded wait, since the
  * pipeline starts all tasks at once. Op5 has no output (a sink); the loop ends when its input EOFs (Cost closes).
  */
-@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.GENERATED, notes = "CLUSTER BY Route B: loop-back release + pool append (Op5)")
+@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.GENERATED, notes = "CLUSTER BY k-means|| init loop: loop-back release + pool append (Op5)")
 public class KMeansReleaseOperatorDescriptor extends AbstractSingleActivityOperatorDescriptor {
     private static final long serialVersionUID = 1L;
 

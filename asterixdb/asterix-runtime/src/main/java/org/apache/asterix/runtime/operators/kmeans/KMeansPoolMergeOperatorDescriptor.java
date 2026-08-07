@@ -44,7 +44,7 @@ import org.apache.hyracks.dataflow.std.base.AbstractUnaryInputUnaryOutputOperato
 import org.apache.hyracks.util.annotations.AiProvenance;
 
 /**
- * CLUSTER BY Route B (multi-NC systolic exact-init loop) — <b>Op4 PoolMerge</b>: the single-node draw-union of one
+ * CLUSTER BY k-means‖ initialization loop — <b>Op4 PoolMerge</b>: the single-node draw-union of one
  * oversampling round. It consumes each Sample (Op3) partition's drawn candidates plus a per-partition
  * {@link KMeansLoopIO#KIND_END} marker (delivered via a concurrent M-to-1), and once it has seen the end markers
  * from all {@code nParticipants} partitions for a round it emits that round's <b>global union</b> of draws in a
@@ -56,7 +56,7 @@ import org.apache.hyracks.util.annotations.AiProvenance;
  * (the input frame buffers are transient), then re-emitted. Because the loop is globally serialized, at most one
  * round is live in the accumulator at a time (emitted and removed before the next round arrives).
  */
-@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.GENERATED, notes = "CLUSTER BY Route B: single-node draw-union (Op4)")
+@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.GENERATED, notes = "CLUSTER BY k-means|| init loop: single-node draw-union (Op4)")
 public class KMeansPoolMergeOperatorDescriptor extends AbstractSingleActivityOperatorDescriptor {
     private static final long serialVersionUID = 1L;
 

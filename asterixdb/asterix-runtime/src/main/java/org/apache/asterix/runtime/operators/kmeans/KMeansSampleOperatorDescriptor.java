@@ -44,20 +44,21 @@ import org.apache.hyracks.dataflow.std.misc.MaterializerTaskState;
 import org.apache.hyracks.util.annotations.AiProvenance;
 
 /**
- * CLUSTER BY Route B (multi-NC systolic exact-init loop) — <b>Op3 Sample</b>: the per-partition Bernoulli draw of
+ * CLUSTER BY k-means‖ initialization loop — <b>Op3 Sample</b>: the per-partition Bernoulli draw of
  * one oversampling round. Driven by the {@code {round, phi}} frames broadcast from PhiMerge (Op2). For each round
  * it re-reads this partition's shared pool run file (= {@code pool[r]}; Release has not yet appended round r's
  * draws) and streams the shared resident-vector run file, drawing each vector x independently with probability
  * {@code p_x = l * d^2(x, pool) / phi} using a per-round, per-partition seed
- * {@code (seedBase + r) * 1000003 + partition} — identical to the unrolled tower's {@code Mode.SAMPLE}, so the
- * draws match. Survivors are emitted as {@link KMeansLoopIO#KIND_DRAW} frames {@code {round, part, seq, vec}} to
- * PoolMerge (Op4), followed by one {@link KMeansLoopIO#KIND_END} marker so Op4's per-round barrier can fire.
+ * {@code (seedBase + r) * 1000003 + partition}, so a run is reproducible and independent of partition
+ * count. Survivors are emitted as {@link KMeansLoopIO#KIND_DRAW} frames {@code {round, part, seq, vec}}
+ * to PoolMerge (Op4), followed by one {@link KMeansLoopIO#KIND_END} marker so Op4's per-round barrier
+ * can fire.
  * <p>
  * The pool and vector run files are looked up from joblet state (created by the co-located Cost operator, Op1)
  * with a bounded wait. Points already covered by the pool (d^2 = 0) are never re-drawn, and a non-positive phi
- * (pool already covers everything) yields no draws — matching the paper and the tower.
+ * (pool already covers everything) yields no draws, as in the paper.
  */
-@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.GENERATED, notes = "CLUSTER BY Route B: per-partition Bernoulli draw (Op3)")
+@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.GENERATED, notes = "CLUSTER BY k-means|| init loop: per-partition Bernoulli draw (Op3)")
 public class KMeansSampleOperatorDescriptor extends AbstractSingleActivityOperatorDescriptor {
     private static final long serialVersionUID = 1L;
 

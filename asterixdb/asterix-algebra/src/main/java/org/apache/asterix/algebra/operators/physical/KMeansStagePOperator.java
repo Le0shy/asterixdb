@@ -155,7 +155,7 @@ public class KMeansStagePOperator extends AbstractPhysicalOperator {
     }
 
     /**
-     * Route B (multi-NC): inject the systolic 5-operator sub-graph for one {@code OVERSAMPLE_LOOP} onto the job
+     * Inject the systolic 5-operator sub-graph for one {@code OVERSAMPLE_LOOP} onto the job
      * spec. Op1 (Cost/Controller) is the registered descriptor, so the builder wires the vectors (input 0) and
      * seed (input 1) into it and the parent WEIGH reads the final pool from its output 0; the per-round potential
      * (output 1) and Op2..Op5 are internal edges wired here with pipelined broadcast connectors. Op1/Op3/Op5 are

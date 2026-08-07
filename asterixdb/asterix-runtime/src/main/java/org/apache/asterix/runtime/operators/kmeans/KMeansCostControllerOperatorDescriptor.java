@@ -48,7 +48,7 @@ import org.apache.hyracks.dataflow.std.misc.MaterializerTaskState;
 import org.apache.hyracks.util.annotations.AiProvenance;
 
 /**
- * CLUSTER BY Route B (multi-NC systolic exact-init loop) — <b>Op1 Cost / Controller</b>: the loop head, the
+ * CLUSTER BY k-means‖ initialization loop — <b>Op1 Cost / Controller</b>: the loop head, the
  * registered descriptor for the {@code OVERSAMPLE_LOOP} logical operator (so the builder wires the vectors+seed
  * inputs here and the parent WEIGH reads the final pool from here), and the fork of the systolic sub-graph.
  * <p>
@@ -68,11 +68,12 @@ import org.apache.hyracks.util.annotations.AiProvenance;
  * WEIGH). Output 0 is idle during the loop, so the blocking WEIGH cannot back-pressure the iteration.</li>
  * </ul>
  * The loop is acyclic in the job graph — Release's feedback to CostLoop is the shared permit + pool run file, not
- * a data edge. Same algorithm/draws as the tower (per-round/per-partition seed in Sample); this operator only
- * changes how the rounds are executed. Single-node vs multi-node is irrelevant here — this sub-graph works on any
- * topology (the co-located Op1/Op3/Op5 share an NC's joblet state; the merges are single-node).
+ * a data edge. The sampling itself is unchanged by this arrangement — the per-round/per-partition seed lives in
+ * Sample, so the draws depend only on the data. Single-node vs multi-node is irrelevant here — this
+ * sub-graph works on any topology (the co-located Op1/Op3/Op5 share an NC's joblet state; the merges
+ * are single-node).
  */
-@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.GENERATED, notes = "CLUSTER BY Route B: Cost/Controller loop head (Op1), 2-output source over 2 Store activities")
+@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.GENERATED, notes = "CLUSTER BY k-means|| init loop: Cost/Controller loop head (Op1), 2-output source over 2 Store activities")
 public class KMeansCostControllerOperatorDescriptor extends AbstractOperatorDescriptor {
     private static final long serialVersionUID = 1L;
 
