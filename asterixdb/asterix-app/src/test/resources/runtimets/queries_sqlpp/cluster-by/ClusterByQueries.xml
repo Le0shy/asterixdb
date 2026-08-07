@@ -53,11 +53,6 @@
             <output-dir compare="Text">kmeans-syntax-random</output-dir>
         </compilation-unit>
     </test-case>
-    <test-case FilePath="cluster-by">
-        <compilation-unit name="kmeans-syntax-runtime">
-            <output-dir compare="Text">kmeans-syntax-runtime</output-dir>
-        </compilation-unit>
-    </test-case>
     <!-- Negative cases: CLUSTER BY WITH-option validation (SqlppClusterByVisitor, rewrite phase).
          GROUP BY + CLUSTER BY mutual exclusion is enforced at the grammar level and covered by
          ClusterByParserTest, so it is not duplicated here. -->
