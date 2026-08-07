@@ -37,6 +37,7 @@ import org.apache.hyracks.api.job.IOperatorDescriptorRegistry;
 import org.apache.hyracks.dataflow.common.comm.io.ArrayTupleBuilder;
 import org.apache.hyracks.dataflow.common.comm.io.FrameTupleAccessor;
 import org.apache.hyracks.dataflow.common.comm.io.FrameTupleAppender;
+import org.apache.hyracks.dataflow.common.comm.util.FrameUtils;
 import org.apache.hyracks.dataflow.common.data.accessors.FrameTupleReference;
 import org.apache.hyracks.dataflow.common.data.marshalling.DoubleSerializerDeserializer;
 import org.apache.hyracks.dataflow.common.data.marshalling.IntegerSerializerDeserializer;
@@ -329,10 +330,10 @@ public class KMeansLloydControllerOperatorDescriptor extends AbstractOperatorDes
                         });
                         for (int i = 0; i < centroids.size(); i++) {
                             if (counts[i] > 0) {
-                                emitPartial(appender, tb, it, i, counts[i], sums[i]);
+                                emitPartial(partialWriter, appender, tb, it, i, counts[i], sums[i]);
                             }
                         }
-                        emitEnd(appender, tb, it);
+                        emitEnd(partialWriter, appender, tb, it);
                         appender.write(partialWriter, true);
                         partialWriter.flush();
                         // Park until the tail has published this iteration's centroid set.
@@ -344,8 +345,8 @@ public class KMeansLloydControllerOperatorDescriptor extends AbstractOperatorDes
                     }
                 }
 
-                private void emitPartial(FrameTupleAppender appender, ArrayTupleBuilder tb, int iter, int seq,
-                        long count, double[] sum) throws HyracksDataException {
+                private void emitPartial(IFrameWriter partialWriter, FrameTupleAppender appender, ArrayTupleBuilder tb,
+                        int iter, int seq, long count, double[] sum) throws HyracksDataException {
                     tb.reset();
                     tb.addField(IntegerSerializerDeserializer.INSTANCE, iter);
                     tb.addField(IntegerSerializerDeserializer.INSTANCE, partition);
@@ -353,13 +354,15 @@ public class KMeansLloydControllerOperatorDescriptor extends AbstractOperatorDes
                     tb.addField(IntegerSerializerDeserializer.INSTANCE, KMeansLoopIO.KIND_DRAW);
                     tb.addField(DoubleSerializerDeserializer.INSTANCE, (double) count);
                     KMeansLoopIO.writeRawVector(tb, sum);
-                    if (!appender.append(tb.getFieldEndOffsets(), tb.getByteArray(), 0, tb.getSize())) {
-                        throw HyracksDataException.create(new IllegalStateException("partial tuple exceeds a frame"));
-                    }
+                    // One iteration emits one partial per non-empty centroid, so the batch is O(k * dim) and
+                    // outgrows a frame well before k gets large; flush and carry on rather than treating a full
+                    // frame as an error.
+                    FrameUtils.appendToWriter(partialWriter, appender, tb.getFieldEndOffsets(), tb.getByteArray(), 0,
+                            tb.getSize());
                 }
 
-                private void emitEnd(FrameTupleAppender appender, ArrayTupleBuilder tb, int iter)
-                        throws HyracksDataException {
+                private void emitEnd(IFrameWriter partialWriter, FrameTupleAppender appender, ArrayTupleBuilder tb,
+                        int iter) throws HyracksDataException {
                     tb.reset();
                     tb.addField(IntegerSerializerDeserializer.INSTANCE, iter);
                     tb.addField(IntegerSerializerDeserializer.INSTANCE, partition);
@@ -367,9 +370,8 @@ public class KMeansLloydControllerOperatorDescriptor extends AbstractOperatorDes
                     tb.addField(IntegerSerializerDeserializer.INSTANCE, KMeansLoopIO.KIND_END);
                     tb.addField(DoubleSerializerDeserializer.INSTANCE, 0.0d);
                     KMeansLoopIO.writeRawVector(tb, new double[] { 0.0d }); // ignored for end markers
-                    if (!appender.append(tb.getFieldEndOffsets(), tb.getByteArray(), 0, tb.getSize())) {
-                        throw HyracksDataException.create(new IllegalStateException("end marker exceeds a frame"));
-                    }
+                    FrameUtils.appendToWriter(partialWriter, appender, tb.getFieldEndOffsets(), tb.getByteArray(), 0,
+                            tb.getSize());
                 }
 
                 /**
