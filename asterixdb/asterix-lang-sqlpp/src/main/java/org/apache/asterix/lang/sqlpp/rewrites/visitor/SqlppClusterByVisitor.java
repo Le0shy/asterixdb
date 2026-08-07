@@ -557,7 +557,7 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
         String initMode = opts.get(OPT_INIT_MODE);
         if (initMode != null && !KNOWN_INIT_MODES.contains(initMode.toLowerCase())) {
             throw new CompilationException(ErrorCode.COMPILATION_ERROR, cbc.getSourceLocation(),
-                    "Unknown CLUSTER BY initMode '" + initMode + "'. Supported: kmeansPP, kmeansPP-exact, random.");
+                    "Unknown CLUSTER BY initMode '" + initMode + "'. Supported: kmeansPP, random.");
         }
         // CrossPollination / CrossPollinationDistanceRatio are accepted but inert in this release.
         return k;
