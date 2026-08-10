@@ -16,12 +16,14 @@
  * specific language governing permissions and limitations
  * under the License.
  */
--- APE 33 Database Design #1 (movies and reviews as separate collections): joins are not supported in
--- v1, so CLUSTER BY over more than one FROM term must be rejected at compile time.
-from [{"movie_id": 1, "movie_year": 2019}] as m,
-     [{"movie_id": 1, "reviewEmbedding": [1.0, 2.0]}] as r
-where r.movie_id = m.movie_id and m.movie_year < 2020
-cluster by r.reviewEmbedding as sc
-cluster as rvc
-with { "NumClusters": 5 }
-select sc.cluster_id as cid, array_count(rvc) as cnt, rvc;
+-- CLUSTER BY over an input whose parallelism differs from the k-means loop's, which used to fail the job
+-- with an ArrayIndexOutOfBoundsException at job-build time. Two well-separated groups; k=2.
+drop dataverse test if exists;
+create dataverse test;
+use test;
+
+create type PointType as closed {
+  id : integer,
+  vec : [double]
+};
+create dataset Points(PointType) primary key id;

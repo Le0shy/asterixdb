@@ -130,6 +130,7 @@ import org.apache.hyracks.algebricks.core.algebra.operators.logical.AssignOperat
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.DistinctOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.EmptyTupleSourceOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.InnerJoinOperator;
+import org.apache.hyracks.algebricks.core.algebra.operators.logical.KMeansStageOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.LeftOuterUnnestOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.NestedTupleSourceOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.OrderOperator;
@@ -192,6 +193,185 @@ public class SqlppExpressionToPlanTranslator extends LangExpressionToPlanTransla
             projectOp.setSourceLocation(sourceLoc);
             return new Pair<>(projectOp, var);
         }
+    }
+
+    @Override
+    public Pair<ILogicalOperator, LogicalVariable> visit(CallExpr fcall, Mutable<ILogicalOperator> tupSource)
+            throws CompilationException {
+        if (isKMeansStageCall(fcall)) {
+            return translateKMeansStage(fcall, tupSource);
+        }
+        return super.visit(fcall, tupSource);
+    }
+
+    /** The internal CLUSTER BY stage markers: the oversampling init, the recluster merge, or the Lloyd loop. */
+    private static boolean isKMeansStageCall(Expression expr) {
+        if (!(expr instanceof CallExpr)) {
+            return false;
+        }
+        int arity = ((CallExpr) expr).getExprList().size();
+        String name = ((CallExpr) expr).getFunctionSignature().getName();
+        // The 2-arg single-input merge (partials, k).
+        boolean merge = arity == 2 && BuiltinFunctions.KMEANS_RECLUSTER.getName().equals(name);
+        // The 5-arg self-iterating exact loop (vectors, seedPool, l, rounds, seedBase).
+        boolean loop = arity == 5 && BuiltinFunctions.KMEANS_OVERSAMPLE_LOOP.getName().equals(name);
+        // The 4-arg self-iterating Lloyd loop (vectors, centroids, k, iterations).
+        boolean lloydLoop = arity == 4 && BuiltinFunctions.KMEANS_LLOYD_LOOP.getName().equals(name);
+        return merge || loop || lloydLoop;
+    }
+
+    /** Whether a nested stage call's OUTPUT rows are envelopes (vs plain vectors). */
+    private static boolean stageCallEmitsEnvelopes(CallExpr nested) {
+        String name = nested.getFunctionSignature().getName();
+        // OVERSAMPLE_LOOP emits the final pool as pool-echo rows plus its weighed partials -- envelopes.
+        // RECLUSTER and LLOYD_LOOP emit plain vectors.
+        return BuiltinFunctions.KMEANS_OVERSAMPLE_LOOP.getName().equals(name);
+    }
+
+    /**
+     * Realizes an internal kmeans stage marker (CLUSTER BY runtime init): translates the two self-contained
+     * args as independent STREAM branches (their pipelines, without the subquery listify), feeds them to the
+     * KMeansStageOperator (input 1 is broadcast at the physical level), and listifies the emitted
+     * result back into a value for the enclosing LET. The pool arg may itself be a stage call — RECLUSTER over
+     * the oversampling init, or the Lloyd loop over that RECLUSTER: nested calls translate recursively into a
+     * chain of operators, a stage's pool input being the prior stage's output stream, and only the OUTERMOST
+     * call gets the listify.
+     */
+    private Pair<ILogicalOperator, LogicalVariable> translateKMeansStage(CallExpr fcall,
+            Mutable<ILogicalOperator> tupSource) throws CompilationException {
+        SourceLocation loc = fcall.getSourceLocation();
+        Pair<ILogicalOperator, LogicalVariable> constructed = translateKMeansCallAsStream(fcall);
+        Pair<ILogicalOperator, LogicalVariable> listified =
+                aggListifyForSubquery(constructed.second, new MutableObject<>(constructed.first), false);
+        // The construct rides a SUBPLAN over the enclosing chain, so upstream LET variables keep flowing;
+        // the nested plan (branches -> operator -> listify) is self-contained and uncorrelated.
+        SubplanOperator subplanOp = new SubplanOperator();
+        subplanOp.getInputs().add(tupSource);
+        subplanOp.getNestedPlans().add(new ALogicalPlanImpl(new MutableObject<>(listified.first)));
+        subplanOp.setSourceLocation(loc);
+        // Callers (e.g. the LET translation) expect an ASSIGN as the root of an expression translation.
+        LogicalVariable resVar = context.newVar();
+        VariableReferenceExpression listRef = new VariableReferenceExpression(listified.second);
+        listRef.setSourceLocation(loc);
+        AssignOperator assignOp = new AssignOperator(resVar, new MutableObject<>(listRef));
+        assignOp.setSourceLocation(loc);
+        assignOp.getInputs().add(new MutableObject<>(subplanOp));
+        return new Pair<>(assignOp, resVar);
+    }
+
+    /**
+     * Translates one kmeans stage call into the operator over its input branches, anchored like any stream
+     * branch (see {@link #translateStreamBranch}); recurses when the pool arg is itself a stage call (e.g.
+     * RECLUSTER over the OVERSAMPLE_LOOP init). The RECLUSTER merge is SINGLE-INPUT -- {@code (pool, count)}
+     * -- reading only the broadcast partials; the loop stages are two-input --
+     * {@code (vectors, pool, count[, rounds, seedBase])}.
+     */
+    private Pair<ILogicalOperator, LogicalVariable> translateKMeansCallAsStream(CallExpr fcall)
+            throws CompilationException {
+        SourceLocation loc = fcall.getSourceLocation();
+        String fnName = fcall.getFunctionSignature().getName();
+        KMeansStageOperator.Mode mode;
+        if (BuiltinFunctions.KMEANS_RECLUSTER.getName().equals(fnName)) {
+            mode = KMeansStageOperator.Mode.RECLUSTER;
+        } else if (BuiltinFunctions.KMEANS_LLOYD_LOOP.getName().equals(fnName)) {
+            mode = KMeansStageOperator.Mode.LLOYD_LOOP;
+        } else {
+            mode = KMeansStageOperator.Mode.OVERSAMPLE_LOOP;
+        }
+        boolean merge = mode == KMeansStageOperator.Mode.RECLUSTER;
+        // Argument layout: merge = (pool, count); loop = (vectors, pool, count[, rounds, seedBase]).
+        Pair<ILogicalOperator, LogicalVariable> vecBranch =
+                merge ? null : translateStreamBranch((SelectExpression) fcall.getExprList().get(0));
+        Expression poolArg = fcall.getExprList().get(merge ? 0 : 1);
+        Pair<ILogicalOperator, LogicalVariable> poolBranch;
+        // "Prior round" at the operator level means: the pool input carries ENVELOPE rows. Only the
+        // OVERSAMPLE_LOOP stage emits envelopes; RECLUSTER and LLOYD_LOOP outputs are plain vectors.
+        boolean poolFromPriorRound = isKMeansStageCall(poolArg) && stageCallEmitsEnvelopes((CallExpr) poolArg);
+        if (isKMeansStageCall(poolArg)) {
+            poolBranch = translateKMeansCallAsStream((CallExpr) poolArg);
+        } else {
+            poolBranch = translateStreamBranch((SelectExpression) poolArg);
+        }
+        int topCount =
+                (int) ((org.apache.asterix.lang.common.literal.IntegerLiteral) ((org.apache.asterix.lang.common.expression.LiteralExpr) fcall
+                        .getExprList().get(merge ? 1 : 2)).getValue()).getValue().longValue();
+        LogicalVariable candVar = context.newVar();
+        // vectorRef is null for the single-input merges (RECLUSTER/LLOYD); the pool is their only input.
+        Mutable<org.apache.hyracks.algebricks.core.algebra.base.ILogicalExpression> vecRefExpr = null;
+        if (vecBranch != null) {
+            VariableReferenceExpression vecRef = new VariableReferenceExpression(vecBranch.second);
+            vecRef.setSourceLocation(loc);
+            vecRefExpr = new MutableObject<>(vecRef);
+        }
+        VariableReferenceExpression poolRefE = new VariableReferenceExpression(poolBranch.second);
+        poolRefE.setSourceLocation(loc);
+        KMeansStageOperator kop = new KMeansStageOperator(vecRefExpr,
+                new MutableObject<org.apache.hyracks.algebricks.core.algebra.base.ILogicalExpression>(poolRefE),
+                candVar, org.apache.asterix.om.types.BuiltinType.ANY, topCount);
+        kop.setPoolFromPriorRound(poolFromPriorRound);
+        kop.setMode(mode);
+        // OVERSAMPLE_LOOP: 4th arg is the iteration count, 5th the seed base (per-round seed = base + r).
+        if (mode == KMeansStageOperator.Mode.OVERSAMPLE_LOOP) {
+            int rounds =
+                    (int) ((org.apache.asterix.lang.common.literal.IntegerLiteral) ((org.apache.asterix.lang.common.expression.LiteralExpr) fcall
+                            .getExprList().get(3)).getValue()).getValue().longValue();
+            long seedBase =
+                    ((org.apache.asterix.lang.common.literal.IntegerLiteral) ((org.apache.asterix.lang.common.expression.LiteralExpr) fcall
+                            .getExprList().get(4)).getValue()).getValue().longValue();
+            kop.setLoopRounds(rounds);
+            kop.setSeed(seedBase);
+        }
+        // LLOYD_LOOP: 4th arg is the iteration count. No seed -- the loop is fully deterministic.
+        if (mode == KMeansStageOperator.Mode.LLOYD_LOOP) {
+            kop.setLoopRounds(
+                    (int) ((org.apache.asterix.lang.common.literal.IntegerLiteral) ((org.apache.asterix.lang.common.expression.LiteralExpr) fcall
+                            .getExprList().get(3)).getValue()).getValue().longValue());
+        }
+        kop.setSourceLocation(loc);
+        // Input order: loop = vectors (0) then pool (1); merge = pool only (0).
+        if (vecBranch != null) {
+            kop.getInputs().add(new MutableObject<>(vecBranch.first));
+        }
+        kop.getInputs().add(new MutableObject<>(poolBranch.first));
+        // The same anchor-ASSIGN discipline as input branches: consumers hold the anchor's reference as an
+        // expression, keeping the column alive and rename-visible when this output feeds the next round.
+        LogicalVariable anchorVar = context.newVar();
+        VariableReferenceExpression candRef = new VariableReferenceExpression(candVar);
+        candRef.setSourceLocation(loc);
+        AssignOperator anchorOp = new AssignOperator(anchorVar, new MutableObject<>(candRef));
+        anchorOp.setSourceLocation(loc);
+        anchorOp.getInputs().add(new MutableObject<>(kop));
+        ProjectOperator pr = new ProjectOperator(anchorVar);
+        pr.getInputs().add(new MutableObject<>(anchorOp));
+        pr.setSourceLocation(loc);
+        return new Pair<>(pr, anchorVar);
+    }
+
+    /** Translates a self-contained subquery as a stream branch: its pipeline WITHOUT the subquery listify. */
+    private Pair<ILogicalOperator, LogicalVariable> translateStreamBranch(SelectExpression se)
+            throws CompilationException {
+        Mutable<ILogicalOperator> ets = new MutableObject<>(new EmptyTupleSourceOperator());
+        Pair<ILogicalOperator, LogicalVariable> p = se.getSelectSetOperation().accept(this, ets);
+        Mutable<ILogicalOperator> cur = new MutableObject<>(p.first);
+        if (se.hasOrderby()) {
+            cur = new MutableObject<>(se.getOrderbyClause().accept(this, cur).first);
+        }
+        if (se.hasLimit()) {
+            cur = new MutableObject<>(se.getLimitClause().accept(this, cur).first);
+        }
+        // Anchor the branch with a dedicated ASSIGN: the consumer operator records this variable as a
+        // plain field (not an expression), so it is invisible to variable-substitution rules; the anchor's
+        // reference IS an expression, keeping the column alive through renames and projection pruning.
+        LogicalVariable anchorVar = context.newVar();
+        VariableReferenceExpression anchorRef = new VariableReferenceExpression(p.second);
+        anchorRef.setSourceLocation(se.getSourceLocation());
+        AssignOperator anchorOp = new AssignOperator(anchorVar, new MutableObject<>(anchorRef));
+        anchorOp.setSourceLocation(se.getSourceLocation());
+        anchorOp.getInputs().add(cur);
+        ProjectOperator pr = new ProjectOperator(anchorVar);
+        pr.getInputs().add(new MutableObject<>(anchorOp));
+        pr.setSourceLocation(se.getSourceLocation());
+        return new Pair<>(pr, anchorVar);
     }
 
     @Override

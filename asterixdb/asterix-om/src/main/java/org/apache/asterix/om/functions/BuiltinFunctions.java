@@ -1241,10 +1241,25 @@ public class BuiltinFunctions {
             FunctionConstants.newAsterix("ann-distance", FunctionIdentifier.VARARGS);
     // CLUSTER BY: nearest_centroid(point, centroids) -> AINT32 index of the closest centroid.
     public static final FunctionIdentifier NEAREST_CENTROID = FunctionConstants.newAsterix("nearest-centroid", 2);
-    // CLUSTER BY: nearest_centroid_distance(point, centroids) -> ADOUBLE squared distance from the point to
-    // its closest centroid.
+    // CLUSTER BY: nearest_centroid_distance(point, centroids) -> ADOUBLE squared distance to the closest centroid
+    // (the k-means|| sampling score d2(x, C)).
     public static final FunctionIdentifier NEAREST_CENTROID_DISTANCE =
             FunctionConstants.newAsterix("nearest-centroid-distance", 2);
+    // kmeans-recluster(partials, k): single-input merge — reduce partials, then weighted k-means++ to k (C0).
+    public static final FunctionIdentifier KMEANS_RECLUSTER = FunctionConstants.newAsterix("kmeans-recluster", 2);
+    // CLUSTER BY initMode "kmeansPP": the exact k-means|| oversampling init as one self-iterating
+    // operator. kmeans-oversample-loop(vectors, seedPool, l, rounds,
+    // seedBase): runs the whole oversample loop internally, iterating `rounds` times and all-reducing the
+    // per-round global potential + draws across partitions; the physical operator realizes it as an injected
+    // pipelined systolic sub-graph. The final pool is weighed and emitted for kmeans-recluster.
+    public static final FunctionIdentifier KMEANS_OVERSAMPLE_LOOP =
+            FunctionConstants.newAsterix("kmeans-oversample-loop", 5);
+
+    // The Lloyd refinement as one self-iterating operator. kmeans-lloyd-loop(vectors, centroids, k,
+    // iterations): runs every refinement iteration internally, all-reducing each iteration's per-centroid
+    // (count, sum) partials into the next centroid set; the physical operator realizes it as an injected
+    // pipelined systolic sub-graph. Emits the final centroid set as plain vectors.
+    public static final FunctionIdentifier KMEANS_LLOYD_LOOP = FunctionConstants.newAsterix("kmeans-lloyd-loop", 4);
 
     // Temporal functions
     public static final FunctionIdentifier UNIX_TIME_FROM_DATE_IN_DAYS =
@@ -1997,6 +2012,9 @@ public class BuiltinFunctions {
 
         addFunction(NEAREST_CENTROID, AInt32TypeComputer.INSTANCE_NULLABLE, true);
         addFunction(NEAREST_CENTROID_DISTANCE, ADoubleTypeComputer.INSTANCE_NULLABLE, true);
+        addPrivateFunction(KMEANS_RECLUSTER, OrderedListOfAnyTypeComputer.INSTANCE, true);
+        addPrivateFunction(KMEANS_OVERSAMPLE_LOOP, OrderedListOfAnyTypeComputer.INSTANCE, true);
+        addPrivateFunction(KMEANS_LLOYD_LOOP, OrderedListOfAnyTypeComputer.INSTANCE, true);
         // Window functions
 
         addFunction(CUME_DIST, ADoubleTypeComputer.INSTANCE, false);

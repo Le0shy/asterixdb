@@ -45,6 +45,7 @@ import org.apache.hyracks.algebricks.core.algebra.operators.logical.IndexInsertD
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.InnerJoinOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.InsertDeleteUpsertOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.IntersectOperator;
+import org.apache.hyracks.algebricks.core.algebra.operators.logical.KMeansStageOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.LeftOuterJoinOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.LeftOuterUnnestMapOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.LeftOuterUnnestOperator;
@@ -227,6 +228,12 @@ public class SchemaVariableVisitor implements ILogicalOperatorVisitor<Void, Void
     @Override
     public Void visitIntersectOperator(IntersectOperator op, Void arg) throws AlgebricksException {
         VariableUtilities.getProducedVariables(op, schemaVariables);
+        return null;
+    }
+
+    @Override
+    public Void visitKMeansStageOperator(KMeansStageOperator op, Void arg) throws AlgebricksException {
+        standardLayout(op);
         return null;
     }
 
