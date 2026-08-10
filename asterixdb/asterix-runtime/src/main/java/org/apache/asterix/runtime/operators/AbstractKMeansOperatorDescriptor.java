@@ -22,7 +22,6 @@ import java.nio.ByteBuffer;
 
 import org.apache.hyracks.api.context.IHyracksTaskContext;
 import org.apache.hyracks.api.dataflow.ActivityId;
-import org.apache.hyracks.api.dataflow.IActivity;
 import org.apache.hyracks.api.dataflow.IActivityGraphBuilder;
 import org.apache.hyracks.api.dataflow.IOperatorNodePushable;
 import org.apache.hyracks.api.dataflow.TaskId;
@@ -45,22 +44,20 @@ import org.apache.hyracks.util.annotations.AiProvenance;
  * rather than streamed in). The Score activity collects the pool via {@link KMeansStageRuntime} and delegates
  * the stage-specific work to {@link #emit}.
  * <p>
- * Subclasses fix the operator's input arity and the pool input's position ({@link #poolInputIndex}); a stage
- * that also consumes a second input (a materialized vector stream) adds
- * it via {@link #contributeInputActivities}.
+ * Subclasses fix the operator's input arity and the pool input's position ({@link #poolInputIndex}).
  */
-@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.GENERATED, notes = "CLUSTER BY k-means|| Score stage base")
+@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.GENERATED)
 abstract class AbstractKMeansOperatorDescriptor extends AbstractOperatorDescriptor {
     private static final long serialVersionUID = 1L;
 
     protected static final int STORE_POOL_ACTIVITY_ID = 0;
     protected static final int SCORE_ACTIVITY_ID = 1;
 
-    // WEIGH: intake re-limit; RECLUSTER/LLOYD: k. Non-negative.
+    // How many centroids the stage keeps. Non-negative.
     protected final int count;
     // Column of the pool variable in the pool input's tuples.
     protected final int poolColumn;
-    // Whether the pool input carries envelopes from a prior tower stage (vs plain vectors, e.g. the centroids).
+    // Whether the pool input carries envelope rows from an upstream stage rather than plain vectors.
     protected final boolean poolIsEnvelope;
 
     protected AbstractKMeansOperatorDescriptor(IOperatorDescriptorRegistry spec, RecordDescriptor vectorRecDesc,
@@ -82,10 +79,6 @@ abstract class AbstractKMeansOperatorDescriptor extends AbstractOperatorDescript
     protected abstract void emit(KMeansStageRuntime rt, KMeansStageRuntime.Emitter emitter, IHyracksTaskContext ctx,
             int partition) throws Exception;
 
-    /** Hook for a subclass to add extra input activities (e.g. WEIGH's vector store) before the Score edge. */
-    protected void contributeInputActivities(IActivityGraphBuilder builder, IActivity score) {
-    }
-
     @Override
     public void contributeActivities(IActivityGraphBuilder builder) {
         StorePoolActivityNode storePool = new StorePoolActivityNode(new ActivityId(odId, STORE_POOL_ACTIVITY_ID));
@@ -98,7 +91,6 @@ abstract class AbstractKMeansOperatorDescriptor extends AbstractOperatorDescript
         builder.addTargetEdge(0, score, 0);
 
         builder.addBlockingEdge(storePool, score);
-        contributeInputActivities(builder, score);
     }
 
     /** Materializes the broadcast pool input as task state for the Score activity to read. */

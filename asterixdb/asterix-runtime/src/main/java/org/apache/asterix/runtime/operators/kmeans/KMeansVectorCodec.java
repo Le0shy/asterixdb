@@ -39,20 +39,20 @@ import org.apache.hyracks.util.annotations.AiProvenance;
 /**
  * CLUSTER BY k-means‖ initialization loop — codec bridging the loop's boundaries to the shipped
  * CLUSTER BY formats, used only by the Cost/Controller operator (Op1). Two pieces, both kept byte-compatible with
- * {@code KMeansStageRuntime} (the WEIGH / merge Score stages):
+ * {@code KMeansStageRuntime}, which the merge Score stage is built on:
  * <ul>
  * <li>{@link ListVectorDecoder} — decodes an input vector column (an ordered list of doubles) into a
  * {@code double[]}. Op1's StoreVectors uses it ONCE per resident to materialize the vector run file as raw
  * doubles, and StoreSeed to seed the pool; the per-round cost/sample passes then read raw (no re-decode).</li>
  * <li>{@link PoolEnvelopeWriter} — emits pool members as the inter-stage {@code [kind, partition, seq, score,
- * vector]} open-list envelope (kind = 0 = pool) that the terminal WEIGH consumes unchanged. Op1 uses it, on
+ * vector]} open-list envelope (kind = 0 = pool) that the downstream merge consumes unchanged. Op1 uses it, on
  * partition 0, to emit the final pool downstream.</li>
  * </ul>
  * This logic is duplicated (not shared) from {@code KMeansStageRuntime}. The two encodings must stay
- * byte-compatible, since the loop's output is consumed by the WEIGH stage built on that class; the
+ * byte-compatible, since the loop's output is consumed by the merge stage built on that class; the
  * cluster-by runtime tests pin it. A later cleanup may extract a single source of truth.
  */
-@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.GENERATED, notes = "CLUSTER BY k-means|| init loop: input-vector decoder + KIND_POOL envelope writer (Op1 boundary codec)")
+@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.GENERATED)
 public final class KMeansVectorCodec {
 
     /** Envelope kind fields (match KMeansStageRuntime.KIND_*). */
@@ -81,8 +81,8 @@ public final class KMeansVectorCodec {
     }
 
     /**
-     * Emits pool members as {@code KIND_POOL} open-list envelopes to a writer — the exact format the terminal
-     * WEIGH's {@code collectPool} decodes. All items are tagged doubles; the vector is a nested open list.
+     * Emits pool members as {@code KIND_POOL} open-list envelopes to a writer — the exact format
+     * {@code collectPool} decodes. All items are tagged doubles; the vector is a nested open list.
      */
     public static final class PoolEnvelopeWriter {
         private final IFrameWriter writer;
@@ -106,7 +106,7 @@ public final class KMeansVectorCodec {
 
         /**
          * Appends one general inter-stage envelope {@code [kind, partition, seq, score, vec]} — the exact format
-         * WEIGH emits and RECLUSTER decodes. For a partial: {@code kind=KIND_PARTIAL}, {@code seq}=pool position,
+         * the weighing pass emits and RECLUSTER decodes. For a partial: {@code kind=KIND_PARTIAL}, {@code seq}=pool position,
          * {@code score}=count, {@code vec}=running sum.
          */
         public void envelope(double kind, int partition, int seq, double score, double[] vec)

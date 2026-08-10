@@ -53,7 +53,7 @@ import org.apache.hyracks.util.annotations.AiProvenance;
  * The pool run file and permit are looked up from joblet state (created by Cost) with a bounded wait, since the
  * pipeline starts all tasks at once. Op5 has no output (a sink); the loop ends when its input EOFs (Cost closes).
  */
-@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.GENERATED, notes = "CLUSTER BY k-means|| init loop: loop-back release + pool append (Op5)")
+@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.GENERATED)
 public class KMeansReleaseOperatorDescriptor extends AbstractSingleActivityOperatorDescriptor {
     private static final long serialVersionUID = 1L;
 

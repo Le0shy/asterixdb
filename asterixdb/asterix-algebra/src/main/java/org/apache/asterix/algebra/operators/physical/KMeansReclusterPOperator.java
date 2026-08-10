@@ -43,7 +43,7 @@ import org.apache.hyracks.util.annotations.AiProvenance;
  * ONE input and that input IS the pool -- the requirement below is what makes every partition reduce the
  * complete partial set, since an un-broadcast input would reduce only the local ones.
  */
-@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_5, tool = AiProvenance.Tool.CLAUDE_CODE_CLI, contributionKind = AiProvenance.ContributionKind.REFACTORED, notes = "RECLUSTER split out of the mode-switching KMeansStagePOperator")
+@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_5, tool = AiProvenance.Tool.CLAUDE_CODE_CLI, contributionKind = AiProvenance.ContributionKind.REFACTORED)
 public class KMeansReclusterPOperator extends AbstractKMeansStagePOperator {
 
     @Override

@@ -40,8 +40,9 @@ import org.apache.hyracks.util.annotations.AiProvenance;
 
 /**
  * CLUSTER BY k-means‖ initialization loop — shared wire formats and raw-vector (de)serialization
- * for the loop's internal edges and run files. These frames never leave the loop sub-graph (WEIGH is fed by the
- * separate {@code KIND_POOL} envelope on Op1's pool output), so they use a compact <b>raw double[]</b> encoding
+ * for the loop's internal edges and run files. These frames never leave the loop sub-graph -- the downstream
+ * RECLUSTER is fed by the separate envelopes on Op1's pool output -- so they use a compact <b>raw double[]</b>
+ * encoding
  * rather than the tagged ordered-list envelope.
  * <p>
  * A vector field is simply its {@code dim} components written back-to-back as raw doubles ({@code dim * 8} bytes);
@@ -51,7 +52,7 @@ import org.apache.hyracks.util.annotations.AiProvenance;
  * through {@link #writeRawVector}; the serde itself is never invoked, and the broadcast/M-to-1 connectors copy
  * frames byte-for-byte without deserializing.
  */
-@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.GENERATED, notes = "CLUSTER BY k-means|| init loop: shared loop wire formats + raw-vector serde")
+@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.GENERATED)
 public final class KMeansLoopIO {
 
     private KMeansLoopIO() {

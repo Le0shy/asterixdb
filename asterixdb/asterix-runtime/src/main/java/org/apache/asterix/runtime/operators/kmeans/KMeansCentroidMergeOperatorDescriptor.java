@@ -67,7 +67,7 @@ import org.apache.hyracks.util.annotations.AiProvenance;
  * Memory: the accumulator is O(partitions · k · dim) in this node's heap, held only for the iteration in flight.
  * That is the loop's dominant memory term and it is currently uncapped, which bounds usable k.
  */
-@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.GENERATED, notes = "CLUSTER BY Lloyd loop: single-node centroid reduce (Op2)")
+@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.GENERATED)
 public class KMeansCentroidMergeOperatorDescriptor extends AbstractSingleActivityOperatorDescriptor {
     private static final long serialVersionUID = 1L;
 

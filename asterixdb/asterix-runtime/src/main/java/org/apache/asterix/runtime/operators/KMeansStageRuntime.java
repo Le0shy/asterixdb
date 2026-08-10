@@ -57,7 +57,7 @@ import org.apache.hyracks.util.annotations.AiProvenance;
  * broadcast delivers the same row set everywhere and the order is derived from envelope fields only.
  * Plain-vector output is re-serialized as OPEN lists (tagged items) since the output column is typed ANY.
  */
-@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.REFACTORED, notes = "CLUSTER BY k-means|| Score stage: extracted shared per-task runtime")
+@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.REFACTORED)
 final class KMeansStageRuntime {
 
     static final double KIND_POOL = 0.0d;

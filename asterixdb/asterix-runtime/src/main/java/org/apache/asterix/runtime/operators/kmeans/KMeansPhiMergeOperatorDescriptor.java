@@ -55,7 +55,7 @@ import org.apache.hyracks.util.annotations.AiProvenance;
  * field is carried through (not merely counted) so the downstream Sample can seed its per-round RNG with the exact
  * round, so a partition's draws are a function of (round, partition) alone and never of frame arrival order.
  */
-@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.GENERATED, notes = "CLUSTER BY k-means|| init loop: single-node phi-reduce (Op2)")
+@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.GENERATED)
 public class KMeansPhiMergeOperatorDescriptor extends AbstractSingleActivityOperatorDescriptor {
     private static final long serialVersionUID = 1L;
 

@@ -198,14 +198,14 @@ public class SqlppExpressionToPlanTranslator extends LangExpressionToPlanTransla
     @Override
     public Pair<ILogicalOperator, LogicalVariable> visit(CallExpr fcall, Mutable<ILogicalOperator> tupSource)
             throws CompilationException {
-        if (isKMeansTowerCall(fcall)) {
+        if (isKMeansStageCall(fcall)) {
             return translateKMeansStage(fcall, tupSource);
         }
         return super.visit(fcall, tupSource);
     }
 
-    /** The internal CLUSTER BY tower markers: the oversample-loop init, the weighting pass, or the merges. */
-    private static boolean isKMeansTowerCall(Expression expr) {
+    /** The internal CLUSTER BY stage markers: the oversampling init, the recluster merge, or the Lloyd loop. */
+    private static boolean isKMeansStageCall(Expression expr) {
         if (!(expr instanceof CallExpr)) {
             return false;
         }
@@ -220,8 +220,8 @@ public class SqlppExpressionToPlanTranslator extends LangExpressionToPlanTransla
         return merge || loop || lloydLoop;
     }
 
-    /** Whether a nested tower call's OUTPUT rows are envelopes (vs plain vectors). */
-    private static boolean towerCallEmitsEnvelopes(CallExpr nested) {
+    /** Whether a nested stage call's OUTPUT rows are envelopes (vs plain vectors). */
+    private static boolean stageCallEmitsEnvelopes(CallExpr nested) {
         String name = nested.getFunctionSignature().getName();
         // OVERSAMPLE_LOOP emits the final pool as pool-echo rows plus its weighed partials -- envelopes.
         // RECLUSTER and LLOYD_LOOP emit plain vectors.
@@ -229,13 +229,13 @@ public class SqlppExpressionToPlanTranslator extends LangExpressionToPlanTransla
     }
 
     /**
-     * Realizes an internal kmeans tower marker (CLUSTER BY runtime init): translates the two self-contained
+     * Realizes an internal kmeans stage marker (CLUSTER BY runtime init): translates the two self-contained
      * args as independent STREAM branches (their pipelines, without the subquery listify), feeds them to the
      * KMeansStageOperator (input 1 is broadcast at the physical level), and listifies the emitted
-     * result back into a value for the enclosing LET. The pool arg may itself be a tower call (e.g. RECLUSTER
-     * over the OVERSAMPLE_LOOP init, or LLOYD over a WEIGH): nested calls translate recursively into a chain
-     * of operators — a stage's pool input is the prior stage's output stream — and only the OUTERMOST call
-     * gets the listify.
+     * result back into a value for the enclosing LET. The pool arg may itself be a stage call — RECLUSTER over
+     * the oversampling init, or the Lloyd loop over that RECLUSTER: nested calls translate recursively into a
+     * chain of operators, a stage's pool input being the prior stage's output stream, and only the OUTERMOST
+     * call gets the listify.
      */
     private Pair<ILogicalOperator, LogicalVariable> translateKMeansStage(CallExpr fcall,
             Mutable<ILogicalOperator> tupSource) throws CompilationException {
@@ -260,8 +260,8 @@ public class SqlppExpressionToPlanTranslator extends LangExpressionToPlanTransla
     }
 
     /**
-     * Translates one kmeans tower call into the operator over its input branches, anchored like any stream
-     * branch (see {@link #translateStreamBranch}); recurses when the pool arg is itself a tower call (e.g.
+     * Translates one kmeans stage call into the operator over its input branches, anchored like any stream
+     * branch (see {@link #translateStreamBranch}); recurses when the pool arg is itself a stage call (e.g.
      * RECLUSTER over the OVERSAMPLE_LOOP init). The RECLUSTER merge is SINGLE-INPUT -- {@code (pool, count)}
      * -- reading only the broadcast partials; the loop stages are two-input --
      * {@code (vectors, pool, count[, rounds, seedBase])}.
@@ -286,8 +286,8 @@ public class SqlppExpressionToPlanTranslator extends LangExpressionToPlanTransla
         Pair<ILogicalOperator, LogicalVariable> poolBranch;
         // "Prior round" at the operator level means: the pool input carries ENVELOPE rows. Only the
         // OVERSAMPLE_LOOP stage emits envelopes; RECLUSTER and LLOYD_LOOP outputs are plain vectors.
-        boolean poolFromPriorRound = isKMeansTowerCall(poolArg) && towerCallEmitsEnvelopes((CallExpr) poolArg);
-        if (isKMeansTowerCall(poolArg)) {
+        boolean poolFromPriorRound = isKMeansStageCall(poolArg) && stageCallEmitsEnvelopes((CallExpr) poolArg);
+        if (isKMeansStageCall(poolArg)) {
             poolBranch = translateKMeansCallAsStream((CallExpr) poolArg);
         } else {
             poolBranch = translateStreamBranch((SelectExpression) poolArg);

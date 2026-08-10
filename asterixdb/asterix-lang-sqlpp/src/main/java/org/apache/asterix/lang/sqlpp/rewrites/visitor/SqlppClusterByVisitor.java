@@ -98,7 +98,7 @@ import org.apache.hyracks.util.annotations.AiProvenance;
  *
  * For {@code initMode "random"} the {@code kmeans_oversample_loop}/{@code kmeans_recluster} init is skipped
  * entirely and Lloyd seeds directly from {@code k} vectors of {@code __vecs} drawn uniformly (Forgy); the
- * Lloyd stages still run as the same runtime operator tower.
+ * Lloyd stage still runs as the same runtime operator.
  *
  * The centroid lists {@code C0..C3} are query-level LETs (constants, in scope after the GROUP BY). The two-step
  * distributed CENTROID aggregate + {@code nearest_centroid} broadcast labeling are supplied by the downstream
@@ -118,8 +118,8 @@ import org.apache.hyracks.util.annotations.AiProvenance;
  * to {@code k} centroids by {@code kmeans_recluster}; {@code random} skips init and seeds Lloyd from
  * {@code k} uniformly drawn vectors. The WITH options are also validated.
  */
-@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.GENERATED, notes = "CLUSTER BY -> k-means SQL++ desugar")
-@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_5, tool = AiProvenance.Tool.CLAUDE_CODE_CLI, contributionKind = AiProvenance.ContributionKind.ASSISTED, notes = "uniform seeding for both init modes: order by random(v[0]) instead of by vector value")
+@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.GENERATED)
+@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_5, tool = AiProvenance.Tool.CLAUDE_CODE_CLI, contributionKind = AiProvenance.ContributionKind.ASSISTED)
 public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor {
 
     // WITH option keys, compared case-insensitively.
@@ -262,7 +262,7 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
         SelectExpression vecsQuery =
                 selectValueFrom(srcClone, v0, vecExprForVecs, null, whereExprForVecs, null, null, null, loc);
 
-        // ---- k-means|| initialization (VLDB'12 "Scalable K-Means++") realized as the runtime operator tower ----
+        // ---- k-means|| initialization (VLDB'12 "Scalable K-Means++") as runtime operators ----
         List<LetClause> centroidLets = new ArrayList<>();
         centroidLets.add(letClause(vecs, vecsQuery, loc));
 
@@ -277,7 +277,7 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
         boolean randomInit = INIT_MODE_RANDOM.equals(getInitMode(cbc));
         Expression c0Stream;
         if (randomInit) {
-            // initMode "random": C0 = k vectors drawn uniformly (Forgy) -- no oversampling tower; the Lloyd
+            // initMode "random": C0 = k vectors drawn uniformly (Forgy) -- no oversampling stage; the Lloyd
             // stages below are unchanged. Taking the k smallest shuffle keys (see uniformRowKey) is a uniform
             // sample of size k without replacement. Ordering by the vector VALUE instead would return the k
             // lexicographically smallest vectors, i.e. the k most SIMILAR points in the data set rather than a
@@ -293,7 +293,8 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
         } else {
             // kmeansPP: the self-iterating systolic loop. It loops INIT_OVERSAMPLING_ROUNDS times internally
             // (exact Bernoulli oversampling -- all-reducing the per-round global phi and the drawn candidates),
-            // then folds in the terminal WEIGH and emits the (count,sum) partials directly for RECLUSTER. The
+            // then weighs the residents against the final pool and emits the (count,sum) partials that
+            // RECLUSTER reduces. The
             // innermost pool is the single initial centre, which k-means|| draws uniformly at random -- hence
             // the smallest shuffle key (see uniformRowKey) rather than the smallest vector. Ordering by the
             // vector VALUE would always return a geometric extreme, the corner of the data with the smallest

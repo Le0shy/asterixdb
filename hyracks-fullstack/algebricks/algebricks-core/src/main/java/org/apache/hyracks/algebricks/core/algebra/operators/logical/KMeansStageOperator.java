@@ -45,7 +45,7 @@ import org.apache.hyracks.util.annotations.AiProvenance;
  * The vector input (input 0) is present for OVERSAMPLE_LOOP and LLOYD_LOOP; it is ABSENT (a single pool
  * input) for the RECLUSTER merge, so {@link #getVectorVariable()} is null in that mode.
  */
-@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.GENERATED, notes = "CLUSTER BY k-means|| stage logical operator")
+@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.GENERATED)
 public class KMeansStageOperator extends AbstractLogicalOperator {
 
     /**
@@ -80,7 +80,7 @@ public class KMeansStageOperator extends AbstractLogicalOperator {
     private final Object candidateVarType;
     // RECLUSTER: k, the number of initial centroids to keep. Always non-negative.
     private final int topCount;
-    // Whether input 1 is the output of another tower stage (envelope rows) vs plain vectors (the seed).
+    // Whether input 1 is another stage's output (envelope rows) vs plain vectors (the seed).
     private boolean poolFromPriorRound;
     // Always assigned by the translator, and carried across by both deep-copy visitors; the initializer only
     // satisfies the compiler.

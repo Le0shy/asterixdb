@@ -36,7 +36,7 @@ import org.apache.hyracks.util.annotations.AiProvenance;
  * as the join and group-by families do -- so an input arity or a partitioning requirement is a property of the
  * class rather than a branch.
  */
-@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_5, tool = AiProvenance.Tool.CLAUDE_CODE_CLI, contributionKind = AiProvenance.ContributionKind.REFACTORED, notes = "shared base extracted from the mode-switching KMeansStagePOperator")
+@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_5, tool = AiProvenance.Tool.CLAUDE_CODE_CLI, contributionKind = AiProvenance.ContributionKind.REFACTORED)
 public abstract class AbstractKMeansStagePOperator extends AbstractPhysicalOperator {
 
     @Override

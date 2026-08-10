@@ -58,16 +58,15 @@ import org.apache.hyracks.util.annotations.AiProvenance;
  * network twice — out as partials, back as centroids — on ordinary pipelined connectors. Iteration is paced by
  * this partition's permit: the head emits, then parks until the tail has published the new centroids.
  * <p>
- * This replaces an unrolled chain of alternating assign/reduce operator pairs, one pair per iteration. The
- * unrolled form re-read the input for every iteration through a plan-level tee; here the vectors are written to
- * one run file and re-streamed, so iteration count no longer multiplies the plan or the materialization. It also
- * makes a data-dependent iteration count expressible — the graph is fixed regardless of how many times it runs —
- * though the count is still a constant passed in.
+ * Iterating inside one operator keeps the plan a fixed size: the vectors are written to a single run file and
+ * re-streamed each round, so neither the graph nor the materialization grows with the iteration count. It also
+ * makes a data-dependent count expressible, since the graph is the same however many times it runs, though the
+ * count passed in today is a constant.
  * <p>
  * Vectors never move between nodes: only the per-centroid partials (O(k · dim) per partition) and the centroid
  * set travel, both independent of the input size.
  */
-@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.GENERATED, notes = "CLUSTER BY Lloyd loop: controller/assignment loop head (Op1), 2-output source")
+@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.GENERATED)
 public class KMeansLloydControllerOperatorDescriptor extends AbstractOperatorDescriptor {
     private static final long serialVersionUID = 1L;
 

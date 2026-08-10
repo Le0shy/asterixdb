@@ -41,7 +41,7 @@ import org.apache.hyracks.util.annotations.AiProvenance;
  * {@code poolIsEnvelope}), so the stage is a pure reduction over the partials. See
  * {@link AbstractKMeansOperatorDescriptor}.
  */
-@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.REFACTORED, notes = "CLUSTER BY k-means|| recluster/lloyd merge as a single-input operator")
+@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.REFACTORED)
 public final class KMeansMergeOperatorDescriptor extends AbstractKMeansOperatorDescriptor {
     private static final long serialVersionUID = 1L;
 
@@ -136,7 +136,7 @@ public final class KMeansMergeOperatorDescriptor extends AbstractKMeansOperatorD
      * and leave another with none, and Lloyd cannot repair that afterwards because it only ever refines a
      * centroid within its own neighbourhood.
      */
-    @AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_5, tool = AiProvenance.Tool.CLAUDE_CODE_CLI, contributionKind = AiProvenance.ContributionKind.GENERATED, notes = "weighted k-means++ pool reduction, replacing the top-k-by-weight selection")
+    @AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_5, tool = AiProvenance.Tool.CLAUDE_CODE_CLI, contributionKind = AiProvenance.ContributionKind.GENERATED)
     private List<double[]> weightedKMeansPlusPlus(List<double[]> means, List<Long> memberWeights) {
         List<double[]> chosen = new ArrayList<>();
         final int n = means.size();

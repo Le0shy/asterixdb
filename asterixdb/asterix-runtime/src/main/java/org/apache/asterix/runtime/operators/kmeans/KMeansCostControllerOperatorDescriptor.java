@@ -50,7 +50,8 @@ import org.apache.hyracks.util.annotations.AiProvenance;
 /**
  * CLUSTER BY k-means‖ initialization loop — <b>Op1 Cost / Controller</b>: the loop head, the
  * registered descriptor for the {@code OVERSAMPLE_LOOP} logical operator (so the builder wires the vectors+seed
- * inputs here and the parent WEIGH reads the final pool from here), and the fork of the systolic sub-graph.
+ * inputs here and the downstream RECLUSTER reads the weighed pool from here), and the fork of the systolic
+ * sub-graph.
  * <p>
  * Three activities:
  * <ul>
@@ -64,8 +65,8 @@ import org.apache.hyracks.util.annotations.AiProvenance;
  * reads {@code pool[r]} and streams the vector run file to a local potential {@code localSigma}, emits
  * {@code {round, localSigma}} on <b>output 1</b> (to PhiMerge), then {@code permit.acquire()} — waiting for
  * Release to append the round's global draws and release. After {@code loopRounds}, partition 0 reads the final
- * pool and emits it as {@link KMeansVectorCodec.PoolEnvelopeWriter KIND_POOL envelopes} on <b>output 0</b> (to
- * WEIGH). Output 0 is idle during the loop, so the blocking WEIGH cannot back-pressure the iteration.</li>
+ * pool and emits it as {@link KMeansVectorCodec.PoolEnvelopeWriter KIND_POOL envelopes} on <b>output 0</b>.
+ * Output 0 is idle during the loop, so the blocking consumer cannot back-pressure the iteration.</li>
  * </ul>
  * The loop is acyclic in the job graph — Release's feedback to CostLoop is the shared permit + pool run file, not
  * a data edge. The sampling itself is unchanged by this arrangement — the per-round/per-partition seed lives in
@@ -73,7 +74,7 @@ import org.apache.hyracks.util.annotations.AiProvenance;
  * sub-graph works on any topology (the co-located Op1/Op3/Op5 share an NC's joblet state; the merges
  * are single-node).
  */
-@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.GENERATED, notes = "CLUSTER BY k-means|| init loop: Cost/Controller loop head (Op1), 2-output source over 2 Store activities")
+@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.GENERATED)
 public class KMeansCostControllerOperatorDescriptor extends AbstractOperatorDescriptor {
     private static final long serialVersionUID = 1L;
 
@@ -81,7 +82,7 @@ public class KMeansCostControllerOperatorDescriptor extends AbstractOperatorDesc
     private static final int STORE_SEED_ACTIVITY_ID = 1;
     private static final int COST_LOOP_ACTIVITY_ID = 2;
 
-    private static final int OUT_POOL = 0; // final pool -> WEIGH (KIND_POOL envelopes)
+    private static final int OUT_POOL = 0; // weighed pool -> RECLUSTER (KIND_POOL envelopes)
     private static final int OUT_SIGMA = 1; // per-round local potential -> PhiMerge (SCALAR_RD)
 
     // A parked CostLoop should never wait forever for a Release that a failed sibling will never send.
@@ -315,11 +316,10 @@ public class KMeansCostControllerOperatorDescriptor extends AbstractOperatorDesc
                 }
 
                 /**
-                 * Folded terminal WEIGH (A1): after the loop, weigh every resident vector against the final
-                 * candidate pool (this partition's pool run file already holds the complete, byte-identical C) and
-                 * emit the pool echo (partition 0, for RECLUSTER's pad-from-pool) plus this partition's non-empty
-                 * (count, sum) partials. Byte-identical to the standalone WEIGH's {@code emitWeigh}, so RECLUSTER
-                 * downstream is unchanged; op1's output now carries partials instead of the raw pool.
+                 * The terminal weighing pass: once the rounds are done, weigh every resident vector against the
+                 * final candidate pool -- this partition's pool run file already holds the complete,
+                 * byte-identical C -- and emit the pool echo (partition 0, for RECLUSTER's pad-from-pool) plus
+                 * this partition's non-empty (count, sum) partials, which are what RECLUSTER reduces.
                  */
                 private void emitWeighPartials(MaterializerTaskState poolState, MaterializerTaskState vectorState,
                         IFrameWriter poolWriter) throws HyracksDataException {
