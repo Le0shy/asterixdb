@@ -251,9 +251,6 @@ public class OperatorDeepCopyVisitor implements ILogicalOperatorVisitor<ILogical
                 op.getCandidateVariable(), op.getCandidateVarType(), op.getTopCount());
         opCopy.setPoolFromPriorRound(op.isPoolFromPriorRound());
         opCopy.setMode(op.getMode());
-        opCopy.setSharedVectorsKey(op.getSharedVectorsKey());
-        opCopy.setVectorsWriter(op.isVectorsWriter());
-        opCopy.setSharedConsumerCount(op.getSharedConsumerCount());
         opCopy.setSeed(op.getSeed());
         opCopy.setLoopRounds(op.getLoopRounds());
         return opCopy;

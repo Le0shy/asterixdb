@@ -1245,13 +1245,8 @@ public class BuiltinFunctions {
     // (the k-means|| sampling score d2(x, C)).
     public static final FunctionIdentifier NEAREST_CENTROID_DISTANCE =
             FunctionConstants.newAsterix("nearest-centroid-distance", 2);
-    // kmeans-weigh-candidates(vectors, pool, l): per-partition (count, sum) partials per pool member.
-    public static final FunctionIdentifier KMEANS_WEIGH_CANDIDATES =
-            FunctionConstants.newAsterix("kmeans-weigh-candidates", 3);
-    // kmeans-recluster(partials, k): single-input merge — reduce partials, emit the k heaviest means (C0).
+    // kmeans-recluster(partials, k): single-input merge — reduce partials, then weighted k-means++ to k (C0).
     public static final FunctionIdentifier KMEANS_RECLUSTER = FunctionConstants.newAsterix("kmeans-recluster", 2);
-    // kmeans-lloyd-merge(partials, k): single-input merge — reduce partials, emit every non-empty member's mean.
-    public static final FunctionIdentifier KMEANS_LLOYD_MERGE = FunctionConstants.newAsterix("kmeans-lloyd-merge", 2);
     // CLUSTER BY initMode "kmeansPP": the exact k-means|| oversampling init (Bahmani et al. VLDB'12,
     // Algorithm 2) as one self-iterating operator. kmeans-oversample-loop(vectors, seedPool, l, rounds,
     // seedBase): runs the whole oversample loop internally, iterating `rounds` times and all-reducing the
@@ -2017,9 +2012,7 @@ public class BuiltinFunctions {
 
         addFunction(NEAREST_CENTROID, AInt32TypeComputer.INSTANCE_NULLABLE, true);
         addFunction(NEAREST_CENTROID_DISTANCE, ADoubleTypeComputer.INSTANCE_NULLABLE, true);
-        addPrivateFunction(KMEANS_WEIGH_CANDIDATES, OrderedListOfAnyTypeComputer.INSTANCE, true);
         addPrivateFunction(KMEANS_RECLUSTER, OrderedListOfAnyTypeComputer.INSTANCE, true);
-        addPrivateFunction(KMEANS_LLOYD_MERGE, OrderedListOfAnyTypeComputer.INSTANCE, true);
         addPrivateFunction(KMEANS_OVERSAMPLE_LOOP, OrderedListOfAnyTypeComputer.INSTANCE, true);
         addPrivateFunction(KMEANS_LLOYD_LOOP, OrderedListOfAnyTypeComputer.INSTANCE, true);
         // Window functions

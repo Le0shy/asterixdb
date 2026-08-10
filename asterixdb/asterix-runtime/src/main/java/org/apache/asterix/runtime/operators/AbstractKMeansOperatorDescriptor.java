@@ -46,7 +46,7 @@ import org.apache.hyracks.util.annotations.AiProvenance;
  * the stage-specific work to {@link #emit}.
  * <p>
  * Subclasses fix the operator's input arity and the pool input's position ({@link #poolInputIndex}); a stage
- * that also consumes a second input (e.g. {@link KMeansWeighOperatorDescriptor}'s materialized vectors) adds
+ * that also consumes a second input (a materialized vector stream) adds
  * it via {@link #contributeInputActivities}.
  */
 @AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.GENERATED, notes = "CLUSTER BY k-means|| Score stage base")

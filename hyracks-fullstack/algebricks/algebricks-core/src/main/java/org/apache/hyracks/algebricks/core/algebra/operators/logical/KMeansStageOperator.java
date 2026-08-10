@@ -34,34 +34,27 @@ import org.apache.hyracks.algebricks.core.algebra.visitors.ILogicalOperatorVisit
 import org.apache.hyracks.util.annotations.AiProvenance;
 
 /**
- * One stage of the distributed k-means|| plan expansion (CLUSTER BY), selected by {@link Mode}: WEIGH scores
- * a partitioned vector stream against the broadcast pool and emits per-partition (count, sum) partials;
- * RECLUSTER and LLOYD are single-input reductions over the broadcast partials (see the runtime operators);
- * OVERSAMPLE_LOOP is the self-iterating exact-init loop, realized as a systolic sub-graph by the physical
+ * One stage of the distributed k-means|| plan expansion (CLUSTER BY), selected by {@link Mode}: RECLUSTER is a
+ * single-input reduction over the broadcast partials (see the runtime operators); OVERSAMPLE_LOOP and
+ * LLOYD_LOOP are self-iterating loops, each realized as a systolic sub-graph by the physical
  * operator. Blocking; produces a single new variable (the stage's output vector/envelope); input variables
  * are NOT propagated. Semantics are opaque to generic rewrite rules by design: expressing these stages as
  * SELECT/ORDER BY/LIMIT/GROUP BY algebra regressed with optimizer context (lost topK pushdown, nested-plan
  * in-memory sorts).
  * <p>
- * The vector input (input 0) is present for WEIGH and OVERSAMPLE_LOOP; it is ABSENT (a single pool input) for
- * the RECLUSTER/LLOYD merges, so {@link #getVectorVariable()} is null for those modes.
+ * The vector input (input 0) is present for OVERSAMPLE_LOOP and LLOYD_LOOP; it is ABSENT (a single pool
+ * input) for the RECLUSTER merge, so {@link #getVectorVariable()} is null in that mode.
  */
 @AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.GENERATED, notes = "CLUSTER BY k-means|| stage logical operator")
 public class KMeansStageOperator extends AbstractLogicalOperator {
 
     /**
-     * What this instance computes. WEIGH: score every point against the (re-limited) pool and emit
-     * per-partition (count, sum) partials per pool member. RECLUSTER: merge the broadcast partials and emit
-     * the {@code topCount} heaviest means (C0). LLOYD: merge the broadcast partials and emit EVERY non-empty
-     * member's mean in pool order — one Lloyd iteration's recomputed centroids (attracting nothing drops a
-     * centroid, as GROUP BY would). OVERSAMPLE_LOOP: the whole exact k-means|| oversampling init as one
-     * self-iterating operator (see below); it is realized as an injected systolic sub-graph by the physical
-     * operator, never by this descriptor's per-mode emit.
+     * What this instance computes. RECLUSTER merges the broadcast partials and reduces the weighted candidate
+     * pool to the {@code topCount} initial centroids (C0). The two loop modes are self-iterating: the physical
+     * operator realizes each as an injected systolic sub-graph, never through a per-mode emit here.
      */
     public enum Mode {
-        WEIGH,
         RECLUSTER,
-        LLOYD,
         // The exact Bernoulli oversampling init (Bahmani et al. VLDB'12, Algorithm 2) as ONE operator that
         // iterates internally: each of loopRounds iterations does a local cost + all-reduce to the global
         // potential phi + a local Bernoulli sample + an all-reduce union into the next pool; the final pool is
@@ -78,26 +71,20 @@ public class KMeansStageOperator extends AbstractLogicalOperator {
     // References to the vector-valued variable of input 0 (the qualified points) and of input 1 (the
     // pool). Held as EXPRESSIONS (exposed via acceptExpressionTransform) so variable-substitution and
     // pruning rules see them; plain LogicalVariable fields silently drift through renames.
-    // vectorRef is NULL for the single-input MERGE modes (RECLUSTER/LLOYD): they read only the broadcast
-    // partials, so there is no vector input and the pool is the operator's sole (index-0) input.
+    // vectorRef is NULL for the single-input RECLUSTER merge: it reads only the broadcast partials, so there
+    // is no vector input and the pool is the operator's sole (index-0) input.
     private final Mutable<ILogicalExpression> vectorRef;
     private final Mutable<ILogicalExpression> poolRef;
     // The single produced variable: a candidate vector, same type as vectorVar (opaque; from translator).
     private LogicalVariable candidateVar;
     private final Object candidateVarType;
-    // WEIGH: l = oversampling factor * k (intake re-limit); RECLUSTER: k (means to keep). Always non-negative.
+    // RECLUSTER: k, the number of initial centroids to keep. Always non-negative.
     private final int topCount;
     // Whether input 1 is the output of another tower stage (envelope rows) vs plain vectors (the seed).
     private boolean poolFromPriorRound;
-    private Mode mode = Mode.WEIGH;
-    // Shared-vector materialization (optimization): the vector-reading stages of one tower (WEIGH) all read
-    // the SAME materialized run file instead of each materializing its own. sharedVectorsKey is a per-tower
-    // token (null = not shared, i.e. this stage materializes its own vectors as before); exactly one stage is
-    // the writer (materializes under the shared key with sharedConsumerCount readers), the rest drain their
-    // vector input and read the shared run file. See the physical operator/descriptor.
-    private String sharedVectorsKey;
-    private boolean vectorsWriter;
-    private int sharedConsumerCount;
+    // Always assigned by the translator, and carried across by both deep-copy visitors; the initializer only
+    // satisfies the compiler.
+    private Mode mode = Mode.RECLUSTER;
     // OVERSAMPLE_LOOP only: base seed for the per-round, per-partition Bernoulli RNG (per-round seed =
     // seed + r; reproducible on a fixed topology). Unused by every other mode.
     private long seed;
@@ -209,33 +196,6 @@ public class KMeansStageOperator extends AbstractLogicalOperator {
 
     public void setMode(Mode mode) {
         this.mode = mode;
-    }
-
-    /** Per-tower shared-materialization token, or null if this stage materializes its own vectors. */
-    public String getSharedVectorsKey() {
-        return sharedVectorsKey;
-    }
-
-    public void setSharedVectorsKey(String sharedVectorsKey) {
-        this.sharedVectorsKey = sharedVectorsKey;
-    }
-
-    /** True on the single stage that materializes the shared vector run file for its tower. */
-    public boolean isVectorsWriter() {
-        return vectorsWriter;
-    }
-
-    public void setVectorsWriter(boolean vectorsWriter) {
-        this.vectorsWriter = vectorsWriter;
-    }
-
-    /** Number of stages that read the shared run file (the writer sets this as the delete refcount). */
-    public int getSharedConsumerCount() {
-        return sharedConsumerCount;
-    }
-
-    public void setSharedConsumerCount(int sharedConsumerCount) {
-        this.sharedConsumerCount = sharedConsumerCount;
     }
 
     /** OVERSAMPLE_LOOP only: base seed for the per-round, per-partition Bernoulli RNG. */

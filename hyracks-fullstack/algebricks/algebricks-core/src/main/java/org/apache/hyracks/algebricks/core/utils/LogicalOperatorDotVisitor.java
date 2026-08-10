@@ -351,17 +351,9 @@ public class LogicalOperatorDotVisitor implements ILogicalOperatorVisitor<String
         stringBuilder.setLength(0);
         stringBuilder.append("kmeans-stage ").append(str(op.getCandidateVariable()));
         switch (op.getMode()) {
-            case WEIGH:
-                stringBuilder.append(" <- weigh ").append(str(op.getVectorVariable())).append(" vs pool ")
-                        .append(str(op.getPoolVariable())).append(" (global top-").append(op.getTopCount())
-                        .append(" intake)");
-                break;
             case RECLUSTER:
                 stringBuilder.append(" <- recluster pool ").append(str(op.getPoolVariable())).append(" to ")
                         .append(op.getTopCount()).append(" means");
-                break;
-            case LLOYD:
-                stringBuilder.append(" <- lloyd-merge pool ").append(str(op.getPoolVariable()));
                 break;
             case OVERSAMPLE_LOOP:
                 stringBuilder.append(" <- oversample-loop ").append(op.getLoopRounds()).append(" rounds of ")

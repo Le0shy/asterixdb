@@ -366,17 +366,9 @@ public class LogicalOperatorPrettyPrintVisitor extends AbstractLogicalOperatorPr
         AlgebricksStringBuilderWriter out =
                 addIndent(indent).append("kmeans-stage ").append(str(op.getCandidateVariable()));
         switch (op.getMode()) {
-            case WEIGH:
-                out.append(" <- weigh ").append(str(op.getVectorVariable())).append(" vs pool ")
-                        .append(str(op.getPoolVariable())).append(" (global top-")
-                        .append(String.valueOf(op.getTopCount())).append(" intake)");
-                break;
             case RECLUSTER:
                 out.append(" <- recluster pool ").append(str(op.getPoolVariable())).append(" to ")
                         .append(String.valueOf(op.getTopCount())).append(" means");
-                break;
-            case LLOYD:
-                out.append(" <- lloyd-merge pool ").append(str(op.getPoolVariable()));
                 break;
             case OVERSAMPLE_LOOP:
                 out.append(" <- oversample-loop ").append(String.valueOf(op.getLoopRounds())).append(" rounds of ")

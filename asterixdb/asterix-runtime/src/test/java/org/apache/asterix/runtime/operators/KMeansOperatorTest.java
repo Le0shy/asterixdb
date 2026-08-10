@@ -56,17 +56,15 @@ import org.junit.Assert;
 import org.junit.Test;
 
 /**
- * Direct-drive tests of the CLUSTER BY k-means|| Score stages. WEIGH ({@link KMeansWeighOperatorDescriptor}):
- * materialize a partition of 2-D vectors, weigh them against a broadcast pool, and assert the emitted ENVELOPE
- * stream — the echoed pool (partition 0) followed by this partition's (count, sum) partials. RECLUSTER / LLOYD
- * ({@link KMeansMergeOperatorDescriptor}): feed a scrambled envelope partials stream and assert the deterministic
- * single-input merge — RECLUSTER ranks the {@code count} heaviest means and pads from the pool; LLOYD emits every
- * non-empty member's mean in pool order.
+ * Direct-drive test of the CLUSTER BY k-means|| RECLUSTER stage
+ * ({@link KMeansMergeOperatorDescriptor}): feed a scrambled envelope partials stream and assert the merge —
+ * partials accumulated per pool member regardless of arrival order, the weighted means reduced to
+ * {@code count} centroids, and the shortfall padded from the pool.
  * <p>
- * Activity order follows {@link AbstractKMeansOperatorDescriptor#contributeActivities}: StorePool (0), Score (1),
- * and — for WEIGH only — StoreVectors (2).
+ * Activity order follows {@link AbstractKMeansOperatorDescriptor#contributeActivities}: StorePool (0),
+ * Score (1).
  */
-@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.TEST_GENERATED, notes = "CLUSTER BY k-means|| weigh/merge runtime, plumbing test")
+@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.TEST_GENERATED, notes = "CLUSTER BY k-means|| recluster merge, plumbing test")
 public class KMeansOperatorTest {
 
     @SuppressWarnings("rawtypes")
@@ -74,52 +72,11 @@ public class KMeansOperatorTest {
             new RecordDescriptor(new ISerializerDeserializer[] { ByteArraySerializerDeserializer.INSTANCE });
 
     @Test
-    public void weighEmitsPoolEchoAndPartials() throws Exception {
-        IHyracksTaskContext ctx = TestUtils.create(32768);
-        JobSpecification spec = new JobSpecification();
-        // WEIGH with intake limit 1: envelope pool (0,0) plus top-1 of the candidates -> pool [(0,0),(8,8)].
-        KMeansWeighOperatorDescriptor op = new KMeansWeighOperatorDescriptor(spec, VEC_REC_DESC, 1, 0, 0, true);
-
-        // Activities: StorePool (0), Score (1), StoreVectors (2).
-        List<IActivity> activities = collectActivities(op);
-        IRecordDescriptorProvider rdp = recordDescProvider();
-
-        IOperatorNodePushable storeVectors = activities.get(2).createPushRuntime(ctx, rdp, 0, 1);
-        storeVectors.getInputFrameWriter(0).open();
-        storeVectors.getInputFrameWriter(0)
-                .nextFrame(vectorsFrame(ctx, new double[][] { { 0, 0 }, { 1, 0 }, { 8, 9 } }));
-        storeVectors.getInputFrameWriter(0).close();
-
-        IOperatorNodePushable poolStore = activities.get(0).createPushRuntime(ctx, rdp, 0, 1);
-        poolStore.getInputFrameWriter(0).open();
-        poolStore.getInputFrameWriter(0)
-                .nextFrame(envelopesFrame(ctx,
-                        new double[][] {
-                                // kind, partition, seq, score, v0, v1
-                                { 0, 0, 0, 0, 0, 0 }, // pool member (0,0)
-                                { 1, 0, 0, 128, 8, 8 }, // candidate (8,8) — survives the top-1 intake
-                                { 1, 1, 0, 2, 1, 1 } })); // candidate (1,1) — cut
-        poolStore.getInputFrameWriter(0).close();
-
-        IOperatorNodePushable score = activities.get(1).createPushRuntime(ctx, rdp, 0, 1);
-        List<double[]> out = collectOutput(score, true);
-
-        // Echoed normalized pool, then this partition's partials: (0,0),(1,0) -> pool idx 0
-        // (count 2, sum (1,0)); (8,9) -> pool idx 1 (count 1, sum (8,9)).
-        Assert.assertEquals(4, out.size());
-        Assert.assertArrayEquals(new double[] { 0, 0, 0, 0, 0, 0 }, out.get(0), 0.0);
-        Assert.assertArrayEquals(new double[] { 0, 0, 1, 0, 8, 8 }, out.get(1), 0.0);
-        Assert.assertArrayEquals(new double[] { 2, 0, 0, 2, 1, 0 }, out.get(2), 0.0);
-        Assert.assertArrayEquals(new double[] { 2, 0, 1, 1, 8, 9 }, out.get(3), 0.0);
-    }
-
-    @Test
-    public void reclusterMergesPartialsRanksAndPads() throws Exception {
+    public void reclusterMergesPartialsAndPads() throws Exception {
         IHyracksTaskContext ctx = TestUtils.create(32768);
         JobSpecification spec = new JobSpecification();
         // RECLUSTER to k=3 means; only 2 pool members attracted points, so the third is a pool pad.
-        KMeansMergeOperatorDescriptor op = new KMeansMergeOperatorDescriptor(spec, VEC_REC_DESC,
-                KMeansMergeOperatorDescriptor.Mode.RECLUSTER, 3, 0);
+        KMeansMergeOperatorDescriptor op = new KMeansMergeOperatorDescriptor(spec, VEC_REC_DESC, 3, 0);
 
         // Single-input merge — activities: StorePool (0), Score (1). No vector input.
         List<IActivity> activities = collectActivities(op);
@@ -141,45 +98,18 @@ public class KMeansOperatorTest {
         IOperatorNodePushable score = activities.get(1).createPushRuntime(ctx, rdp, 0, 1);
         List<double[]> out = collectOutput(score, false);
 
-        // idx 0: weight 3, mean (1,2); idx 1: weight 3, mean (8,9). Tie -> pool position ASC, so
-        // idx 0 first; then the k=3 pad from pool position 0.
+        // Both members attracted points, so both are selected: idx 0 -> weight 3, mean (1,2) (its two
+        // partials accumulate across the scrambled arrival order); idx 1 -> weight 3, mean (8,9). Their
+        // relative order is not asserted: the reduction draws among equally weighted candidates, so pinning
+        // an order here would only be pinning the generator's seed. The third slot is the k=3 pad, which is
+        // taken from the pool in pool order and so IS fixed.
         Assert.assertEquals(3, out.size());
-        Assert.assertArrayEquals(new double[] { 1, 2 }, out.get(0), 0.0);
-        Assert.assertArrayEquals(new double[] { 8, 9 }, out.get(1), 0.0);
+        List<double[]> selected = out.subList(0, 2);
+        Assert.assertTrue("expected mean (1,2) among the selected centroids",
+                selected.stream().anyMatch(v -> Arrays.equals(v, new double[] { 1, 2 })));
+        Assert.assertTrue("expected mean (8,9) among the selected centroids",
+                selected.stream().anyMatch(v -> Arrays.equals(v, new double[] { 8, 9 })));
         Assert.assertArrayEquals(new double[] { 0, 0 }, out.get(2), 0.0);
-    }
-
-    @Test
-    public void lloydMergeEmitsNonEmptyMeansInPoolOrder() throws Exception {
-        IHyracksTaskContext ctx = TestUtils.create(32768);
-        JobSpecification spec = new JobSpecification();
-        // LLOYD with k=3: three pool members, the middle one attracts nothing -> exactly two means,
-        // in pool order, no ranking, no pad.
-        KMeansMergeOperatorDescriptor op =
-                new KMeansMergeOperatorDescriptor(spec, VEC_REC_DESC, KMeansMergeOperatorDescriptor.Mode.LLOYD, 3, 0);
-
-        List<IActivity> activities = collectActivities(op);
-        IRecordDescriptorProvider rdp = recordDescProvider();
-
-        IOperatorNodePushable poolStore = activities.get(0).createPushRuntime(ctx, rdp, 0, 1);
-        poolStore.getInputFrameWriter(0).open();
-        poolStore.getInputFrameWriter(0)
-                .nextFrame(envelopesFrame(ctx,
-                        new double[][] {
-                                // kind, partition, seq, score, v0, v1
-                                { 0, 0, 0, 0, 0, 0 }, // pool member 0
-                                { 0, 0, 1, 0, 4, 4 }, // pool member 1 — attracts nothing, must be dropped
-                                { 0, 0, 2, 0, 8, 8 }, // pool member 2
-                                { 2, 0, 0, 2, 2, 4 }, // partial: idx 0, count 2, sum (2,4)
-                                { 2, 1, 2, 1, 6, 6 } })); // partial: idx 2, count 1, sum (6,6)
-        poolStore.getInputFrameWriter(0).close();
-
-        IOperatorNodePushable score = activities.get(1).createPushRuntime(ctx, rdp, 0, 1);
-        List<double[]> out = collectOutput(score, false);
-
-        Assert.assertEquals(2, out.size());
-        Assert.assertArrayEquals(new double[] { 1, 2 }, out.get(0), 0.0);
-        Assert.assertArrayEquals(new double[] { 6, 6 }, out.get(1), 0.0);
     }
 
     private static List<IActivity> collectActivities(AbstractKMeansOperatorDescriptor op) {

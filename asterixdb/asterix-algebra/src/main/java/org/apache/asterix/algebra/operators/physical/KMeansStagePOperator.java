@@ -20,7 +20,6 @@ package org.apache.asterix.algebra.operators.physical;
 
 import org.apache.asterix.metadata.declared.MetadataProvider;
 import org.apache.asterix.runtime.operators.KMeansMergeOperatorDescriptor;
-import org.apache.asterix.runtime.operators.KMeansWeighOperatorDescriptor;
 import org.apache.asterix.runtime.operators.kmeans.KMeansCentroidMergeOperatorDescriptor;
 import org.apache.asterix.runtime.operators.kmeans.KMeansCostControllerOperatorDescriptor;
 import org.apache.asterix.runtime.operators.kmeans.KMeansLloydControllerOperatorDescriptor;
@@ -55,10 +54,9 @@ import org.apache.hyracks.dataflow.std.connectors.MToNBroadcastConnectorDescript
 import org.apache.hyracks.util.annotations.AiProvenance;
 
 /**
- * Physical realization of {@link KMeansStageOperator}, dispatched by mode: WEIGH contributes a
- * two-input {@link KMeansWeighOperatorDescriptor} (partitioned vectors at input 0, broadcast pool at input 1);
- * RECLUSTER/LLOYD contribute a single-input {@link KMeansMergeOperatorDescriptor} whose sole input is the
- * broadcast partials; OVERSAMPLE_LOOP is injected as the systolic 5-operator sub-graph. The pool input is
+ * Physical realization of {@link KMeansStageOperator}, dispatched by mode: RECLUSTER contributes a
+ * single-input {@link KMeansMergeOperatorDescriptor} whose sole input is the broadcast partials;
+ * OVERSAMPLE_LOOP and LLOYD_LOOP are each injected as a systolic sub-graph. The pool input is
  * always REQUIRED BROADCAST, so the enforcer inserts the broadcast exchange.
  */
 @AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.GENERATED, notes = "CLUSTER BY k-means|| init physical operator")
@@ -86,7 +84,7 @@ public class KMeansStagePOperator extends AbstractPhysicalOperator {
         StructuralPropertiesVector broadcastPool = new StructuralPropertiesVector(
                 new BroadcastPartitioningProperty(context.getComputationNodeDomain()), null);
         StructuralPropertiesVector[] pv;
-        if (kop.getMode() == KMeansStageOperator.Mode.RECLUSTER || kop.getMode() == KMeansStageOperator.Mode.LLOYD) {
+        if (kop.getMode() == KMeansStageOperator.Mode.RECLUSTER) {
             // Single-input merge: the sole input IS the pool/partials and must be broadcast so every partition
             // reduces the complete partial set (an un-broadcast input would reduce only local partials).
             pv = new StructuralPropertiesVector[] { broadcastPool };
@@ -130,14 +128,12 @@ public class KMeansStagePOperator extends AbstractPhysicalOperator {
         // invisible to variable-substitution rules — so they can drift through renames; resolve the column
         // positionally, using the (possibly stale) variable lookup only as a cross-check.
         //
-        // RECLUSTER/LLOYD are single-input MERGES: they read ONLY the broadcast partials, so their sole input
-        // (index 0) IS the pool. WEIGH and OVERSAMPLE_LOOP are two-input (vectors at 0, pool at 1).
-        if (kop.getMode() == KMeansStageOperator.Mode.RECLUSTER || kop.getMode() == KMeansStageOperator.Mode.LLOYD) {
+        // RECLUSTER is a single-input MERGE: it reads ONLY the broadcast partials, so its sole input
+        // (index 0) IS the pool. The two loop modes are two-input (vectors at 0, pool at 1).
+        if (kop.getMode() == KMeansStageOperator.Mode.RECLUSTER) {
             int poolColumn = resolveSingleColumn(inputSchemas[0], kop.getPoolVariable());
-            KMeansMergeOperatorDescriptor.Mode mergeMode = kop.getMode() == KMeansStageOperator.Mode.RECLUSTER
-                    ? KMeansMergeOperatorDescriptor.Mode.RECLUSTER : KMeansMergeOperatorDescriptor.Mode.LLOYD;
-            KMeansMergeOperatorDescriptor mergeDesc = new KMeansMergeOperatorDescriptor(builder.getJobSpec(), recDesc,
-                    mergeMode, kop.getTopCount(), poolColumn);
+            KMeansMergeOperatorDescriptor mergeDesc =
+                    new KMeansMergeOperatorDescriptor(builder.getJobSpec(), recDesc, kop.getTopCount(), poolColumn);
             contributeOpDesc(builder, (AbstractLogicalOperator) op, mergeDesc);
             builder.contributeGraphEdge(op.getInputs().get(0).getValue(), 0, op, 0);
             return;
@@ -156,22 +152,13 @@ public class KMeansStagePOperator extends AbstractPhysicalOperator {
                     clusterLocations, src0, src1);
             return;
         }
-        if (kop.getMode() == KMeansStageOperator.Mode.LLOYD_LOOP) {
-            String[] clusterLocations =
-                    ((MetadataProvider) context.getMetadataProvider()).getClusterLocations().getLocations();
-            contributeLloydLoop(builder, kop, (AbstractLogicalOperator) op, recDesc, vectorColumn, poolColumn,
-                    clusterLocations, src0, src1);
-            return;
-        }
-        if (kop.getMode() != KMeansStageOperator.Mode.WEIGH) {
+        if (kop.getMode() != KMeansStageOperator.Mode.LLOYD_LOOP) {
             throw new IllegalStateException("unexpected KMeansStage mode: " + kop.getMode());
         }
-        KMeansWeighOperatorDescriptor weighDesc = new KMeansWeighOperatorDescriptor(builder.getJobSpec(), recDesc,
-                kop.getTopCount(), vectorColumn, poolColumn, kop.isPoolFromPriorRound(), kop.getSharedVectorsKey(),
-                kop.isVectorsWriter(), kop.getSharedConsumerCount());
-        contributeOpDesc(builder, (AbstractLogicalOperator) op, weighDesc);
-        builder.contributeGraphEdge(src0, 0, op, 0);
-        builder.contributeGraphEdge(src1, 0, op, 1);
+        String[] clusterLocations =
+                ((MetadataProvider) context.getMetadataProvider()).getClusterLocations().getLocations();
+        contributeLloydLoop(builder, kop, (AbstractLogicalOperator) op, recDesc, vectorColumn, poolColumn,
+                clusterLocations, src0, src1);
     }
 
     /**
@@ -192,7 +179,8 @@ public class KMeansStagePOperator extends AbstractPhysicalOperator {
         String loopKey = "kmeansSystolicLoop#" + kop.getCandidateVariable();
         int participants = clusterLocations.length;
 
-        // Op1 Cost/Controller — the registered descriptor (inputs land here; WEIGH reads output 0 = the pool).
+        // Op1 Cost/Controller — the registered descriptor (inputs land here; output 0 carries the weighed
+        // partials the downstream RECLUSTER reduces).
         KMeansCostControllerOperatorDescriptor op1 = new KMeansCostControllerOperatorDescriptor(spec,
                 poolEnvelopeRecDesc, KMeansLoopIO.SCALAR_RD, loopKey, vectorColumn, seedColumn, kop.getLoopRounds());
         contributeOpDesc(builder, op, op1);
