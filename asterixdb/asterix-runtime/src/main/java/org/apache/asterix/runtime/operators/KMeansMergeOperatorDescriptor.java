@@ -19,8 +19,11 @@
 package org.apache.asterix.runtime.operators;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Random;
 
+import org.apache.asterix.runtime.utils.VectorDistanceCalculation;
 import org.apache.hyracks.api.context.IHyracksTaskContext;
 import org.apache.hyracks.api.dataflow.value.RecordDescriptor;
 import org.apache.hyracks.api.job.IOperatorDescriptorRegistry;
@@ -30,9 +33,10 @@ import org.apache.hyracks.util.annotations.AiProvenance;
  * The CLUSTER BY k-means|| merge stages -- single-input Score operators that consume ONLY the broadcast
  * partials and emit plain centroid vectors, selected by {@link Mode}:
  * <ul>
- * <li><b>RECLUSTER</b> — merge the partials deterministically and emit the {@code count} heaviest members'
- * means (weight DESC, pool position on ties) as the initial centroids C0. Padded with pool members when
- * fewer than {@code count} members attracted points.</li>
+ * <li><b>RECLUSTER</b> — merge the partials deterministically, then reduce the weighted pool to the initial
+ * centroids C0 with weighted k-means++ (see {@link #weightedKMeansPlusPlus}), which weighs each candidate's mass
+ * against its distance from the centroids already chosen. Padded with pool members when fewer than
+ * {@code count} members attracted points.</li>
  * <li><b>LLOYD</b> — merge the partials and emit EVERY non-empty member's mean in pool order (one Lloyd
  * iteration's recomputed centroids); a centroid that attracted nothing is dropped, as GROUP BY would.</li>
  * </ul>
@@ -48,6 +52,15 @@ public final class KMeansMergeOperatorDescriptor extends AbstractKMeansOperatorD
         RECLUSTER,
         LLOYD
     }
+
+    // Seed for RECLUSTER's weighted k-means++ draw. The selection is randomized by nature, but CLUSTER BY
+    // promises that the same query over the same data returns the same clusters, so the draw must not vary
+    // between runs. A constant seed gives that: RECLUSTER runs on a single partition over one already-merged
+    // pool, so one generator sequence covers the whole decision. The value itself carries no meaning, with one
+    // constraint -- Random's constructor XORs the seed against its own multiplier (0x5DEECE66D), so that value
+    // would zero the initial state and make the first draw 0.0, which turns the first centre into a fixed
+    // choice of the lowest-indexed candidate rather than a weighted one.
+    private static final long RECLUSTER_SEED = 12345L;
 
     private final Mode mode;
 
@@ -102,31 +115,105 @@ public final class KMeansMergeOperatorDescriptor extends AbstractKMeansOperatorD
                 }
             }
         }
-        // The count heaviest means (weight DESC, pool position ASC) ...
-        List<Integer> order = new ArrayList<>();
+        // The weighted mean of every member that attracted points; these are what the reduction chooses from.
+        List<double[]> means = new ArrayList<>();
+        List<Long> memberWeights = new ArrayList<>();
         for (int i = 0; i < pool.size(); i++) {
             if (weights[i] > 0) {
-                order.add(i);
+                double[] mean = new double[sums[i].length];
+                for (int d = 0; d < mean.length; d++) {
+                    mean[d] = sums[i][d] / weights[i];
+                }
+                means.add(mean);
+                memberWeights.add(weights[i]);
             }
         }
-        order.sort((a, b) -> {
-            int c = Long.compare(weights[b], weights[a]);
-            return c != 0 ? c : Integer.compare(a, b);
-        });
         int emitted = 0;
-        for (int i = 0; i < order.size() && emitted < count; i++, emitted++) {
-            int idx = order.get(i);
-            double[] mean = new double[sums[idx].length];
-            for (int d = 0; d < mean.length; d++) {
-                mean[d] = sums[idx][d] / weights[idx];
-            }
-            emitter.plainVector(mean);
+        for (double[] centroid : weightedKMeansPlusPlus(means, memberWeights)) {
+            emitter.plainVector(centroid);
+            emitted++;
         }
-        // ... padded from the pool itself when fewer than count members attracted points
-        // (pool members are dataset points, mirroring the desugar's pad-from-the-data).
+        // Fewer than count members can attract points (a pool member that nothing is closest to has no mean),
+        // in which case top up from the pool itself. Pool members are dataset points, so the padding is drawn
+        // from the data exactly as the equivalent SQL++ formulation pads.
         for (int i = 0; emitted < count && i < pool.size(); i++, emitted++) {
             emitter.plainVector(pool.get(i));
         }
+    }
+
+    /**
+     * Reduces the weighted pool to at most {@code count} centroids with weighted k-means++ -- Bahmani et al.
+     * (VLDB'12) Algorithm 2's closing step, "recluster the weighted points in C into k clusters". The first
+     * centre is drawn with probability proportional to its weight; each further centre with probability
+     * proportional to {@code w_x * d^2(x, chosen)}, so mass and distance both count.
+     * <p>
+     * Distance has to enter the choice here, because weight alone cannot separate the candidates. Oversampling
+     * spreads its candidates evenly over the data, so each region's points divide among that region's own
+     * candidates and every weight ends up in the same narrow band. Ranking by weight and taking the heaviest
+     * {@code count} would therefore be close to an arbitrary pick: it can seat several centroids in one region
+     * and leave another with none, and Lloyd cannot repair that afterwards because it only ever refines a
+     * centroid within its own neighbourhood.
+     */
+    @AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_5, tool = AiProvenance.Tool.CLAUDE_CODE_CLI, contributionKind = AiProvenance.ContributionKind.GENERATED, notes = "weighted k-means++ pool reduction, replacing the top-k-by-weight selection")
+    private List<double[]> weightedKMeansPlusPlus(List<double[]> means, List<Long> memberWeights) {
+        List<double[]> chosen = new ArrayList<>();
+        final int n = means.size();
+        if (n == 0) {
+            return chosen;
+        }
+        final double[] nearest = new double[n]; // d^2 to the closest already-chosen centre
+        Arrays.fill(nearest, Double.POSITIVE_INFINITY);
+        final boolean[] taken = new boolean[n];
+        final Random rng = new Random(RECLUSTER_SEED);
+        final double[] score = new double[n];
+        final int target = Math.min(count, n);
+        while (chosen.size() < target) {
+            boolean first = chosen.isEmpty();
+            double total = 0.0;
+            for (int i = 0; i < n; i++) {
+                // Before the first pick there is nothing to measure against, so weight alone drives the draw.
+                double s = taken[i] ? 0.0 : memberWeights.get(i) * (first ? 1.0 : nearest[i]);
+                score[i] = s > 0 && !Double.isNaN(s) && !Double.isInfinite(s) ? s : 0.0;
+                total += score[i];
+            }
+            int pick = -1;
+            if (total > 0) {
+                double r = rng.nextDouble() * total;
+                double acc = 0.0;
+                for (int i = 0; i < n; i++) {
+                    if (score[i] > 0) {
+                        acc += score[i];
+                        if (acc >= r) {
+                            pick = i;
+                            break;
+                        }
+                    }
+                }
+            }
+            if (pick < 0) {
+                // Every remaining member coincides with one already chosen (all weighted distances vanish).
+                // Fall back to pool order so the outcome stays deterministic rather than dropping a centroid.
+                for (int i = 0; i < n && pick < 0; i++) {
+                    if (!taken[i]) {
+                        pick = i;
+                    }
+                }
+            }
+            if (pick < 0) {
+                break;
+            }
+            taken[pick] = true;
+            chosen.add(means.get(pick));
+            for (int i = 0; i < n; i++) {
+                if (!taken[i]) {
+                    double d = VectorDistanceCalculation.euclideanSquared(means.get(i), means.get(pick));
+                    if (d < nearest[i]) {
+                        nearest[i] = d;
+                    }
+                }
+            }
+        }
+        return chosen;
     }
 
     /**
