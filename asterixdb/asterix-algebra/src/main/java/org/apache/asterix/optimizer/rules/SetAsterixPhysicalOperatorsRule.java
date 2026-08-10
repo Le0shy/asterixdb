@@ -27,6 +27,7 @@ import java.util.Map;
 import org.apache.asterix.algebra.operators.physical.AssignBatchPOperator;
 import org.apache.asterix.algebra.operators.physical.BTreeSearchPOperator;
 import org.apache.asterix.algebra.operators.physical.InvertedIndexPOperator;
+import org.apache.asterix.algebra.operators.physical.KMeansReclusterPOperator;
 import org.apache.asterix.algebra.operators.physical.KMeansStagePOperator;
 import org.apache.asterix.algebra.operators.physical.RTreeSearchPOperator;
 import org.apache.asterix.algebra.operators.physical.VectorSearchPOperator;
@@ -129,6 +130,10 @@ public class SetAsterixPhysicalOperatorsRule extends SetAlgebricksPhysicalOperat
         @Override
         public IPhysicalOperator visitKMeansStageOperator(KMeansStageOperator op, Boolean topLevelOp)
                 throws AlgebricksException {
+            // One physical class per stage; the mode is read here and nowhere else below it.
+            if (op.getMode() == KMeansStageOperator.Mode.RECLUSTER) {
+                return new KMeansReclusterPOperator();
+            }
             return new KMeansStagePOperator();
         }
 

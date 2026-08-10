@@ -19,7 +19,6 @@
 package org.apache.asterix.algebra.operators.physical;
 
 import org.apache.asterix.metadata.declared.MetadataProvider;
-import org.apache.asterix.runtime.operators.KMeansMergeOperatorDescriptor;
 import org.apache.asterix.runtime.operators.kmeans.KMeansCentroidMergeOperatorDescriptor;
 import org.apache.asterix.runtime.operators.kmeans.KMeansCostControllerOperatorDescriptor;
 import org.apache.asterix.runtime.operators.kmeans.KMeansLloydControllerOperatorDescriptor;
@@ -69,27 +68,20 @@ public class KMeansStagePOperator extends AbstractKMeansStagePOperator {
     @Override
     public PhysicalRequirements getRequiredPropertiesForChildren(ILogicalOperator op,
             IPhysicalPropertiesVector reqdByParent, IOptimizationContext context) {
-        KMeansStageOperator kop = (KMeansStageOperator) op;
-        StructuralPropertiesVector broadcastPool = new StructuralPropertiesVector(
-                new BroadcastPartitioningProperty(context.getComputationNodeDomain()), null);
-        StructuralPropertiesVector[] pv;
-        if (kop.getMode() == KMeansStageOperator.Mode.RECLUSTER) {
-            // Single-input merge: the sole input IS the pool/partials and must be broadcast so every partition
-            // reduces the complete partial set (an un-broadcast input would reduce only local partials).
-            pv = new StructuralPropertiesVector[] { broadcastPool };
-        } else {
-            // Two inputs: the vectors (input 0) and the broadcast pool (input 1). The loop stages below carry
-            // an absolute partition constraint -- one instance per compute partition, so that the co-located
-            // stages can share per-partition state -- which means the vectors have to arrive at that same
-            // width. Stating a partitioning requirement over the computation node domain is what makes the
-            // property enforcer insert a repartition when the child does not already deliver one; with no
-            // requirement, a child of a different width (anything below a global LIMIT, say) is joined to
-            // this fixed-width consumer by a one-to-one connector, which then addresses a producer partition
-            // that does not exist. RANDOM is the weakest requirement that still settles the width: k-means
-            // does not care which vector lands in which partition, only that each one lands somewhere.
-            pv = new StructuralPropertiesVector[] { new StructuralPropertiesVector(
-                    new RandomPartitioningProperty(context.getComputationNodeDomain()), null), broadcastPool };
-        }
+        // Two inputs: the vectors (input 0) and the broadcast pool (input 1). A loop stage carries an absolute
+        // partition constraint -- one instance per compute partition, so that the co-located stages can share
+        // per-partition state -- which means the vectors have to arrive at that same width. Stating a
+        // partitioning requirement over the computation node domain is what makes the property enforcer insert
+        // a repartition when the child does not already deliver one; with no requirement, a child of a
+        // different width (anything below a global LIMIT, say) is joined to this fixed-width consumer by a
+        // one-to-one connector, which then addresses a producer partition that does not exist. RANDOM is the
+        // weakest requirement that still settles the width: k-means does not care which vector lands in which
+        // partition, only that each one lands somewhere.
+        StructuralPropertiesVector[] pv = new StructuralPropertiesVector[] {
+                new StructuralPropertiesVector(new RandomPartitioningProperty(context.getComputationNodeDomain()),
+                        null),
+                new StructuralPropertiesVector(new BroadcastPartitioningProperty(context.getComputationNodeDomain()),
+                        null) };
         return new PhysicalRequirements(pv, IPartitioningRequirementsCoordinator.NO_COORDINATION);
     }
 
@@ -105,16 +97,6 @@ public class KMeansStagePOperator extends AbstractKMeansStagePOperator {
         // invisible to variable-substitution rules — so they can drift through renames; resolve the column
         // positionally, using the (possibly stale) variable lookup only as a cross-check.
         //
-        // RECLUSTER is a single-input MERGE: it reads ONLY the broadcast partials, so its sole input
-        // (index 0) IS the pool. The two loop modes are two-input (vectors at 0, pool at 1).
-        if (kop.getMode() == KMeansStageOperator.Mode.RECLUSTER) {
-            int poolColumn = resolveSingleColumn(inputSchemas[0], kop.getPoolVariable());
-            KMeansMergeOperatorDescriptor mergeDesc =
-                    new KMeansMergeOperatorDescriptor(builder.getJobSpec(), recDesc, kop.getTopCount(), poolColumn);
-            contributeOpDesc(builder, (AbstractLogicalOperator) op, mergeDesc);
-            builder.contributeGraphEdge(op.getInputs().get(0).getValue(), 0, op, 0);
-            return;
-        }
         int vectorColumn = resolveSingleColumn(inputSchemas[0], kop.getVectorVariable());
         int poolColumn = resolveSingleColumn(inputSchemas[1], kop.getPoolVariable());
         ILogicalOperator src0 = op.getInputs().get(0).getValue();

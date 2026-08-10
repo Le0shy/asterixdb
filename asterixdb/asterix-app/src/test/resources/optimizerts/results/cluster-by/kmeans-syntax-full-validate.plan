@@ -86,7 +86,7 @@ distribute result [$$239]
                                                 exchange
                                                 -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
                                                   kmeans-stage $$221 <- recluster pool $$219 to 5 means
-                                                  -- KMEANS_STAGE  |PARTITIONED|
+                                                  -- KMEANS_RECLUSTER  |PARTITIONED|
                                                     exchange
                                                     -- BROADCAST_EXCHANGE  |PARTITIONED|
                                                       project ([$$219])
