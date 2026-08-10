@@ -37,7 +37,7 @@ import org.apache.hyracks.util.annotations.AiProvenance;
  * the writer stores before {@code release()} and the reader loads after {@code acquire()}, so the semaphore's
  * happens-before covers the handoff and no additional synchronization is required.
  */
-@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.GENERATED)
+@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.ASSISTED)
 public interface CentroidStore {
 
     /** Replaces the current centroid set. Called once per iteration by the loop tail. */

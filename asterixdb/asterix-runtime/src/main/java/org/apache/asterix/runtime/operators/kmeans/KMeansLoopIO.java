@@ -52,7 +52,7 @@ import org.apache.hyracks.util.annotations.AiProvenance;
  * through {@link #writeRawVector}; the serde itself is never invoked, and the broadcast/M-to-1 connectors copy
  * frames byte-for-byte without deserializing.
  */
-@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.GENERATED)
+@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.ASSISTED)
 public final class KMeansLoopIO {
 
     private KMeansLoopIO() {

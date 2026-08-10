@@ -46,7 +46,7 @@ import org.apache.hyracks.util.annotations.AiProvenance;
  * that NC's permit and pool/vector run files through joblet state; the two merges are single-partition.
  * Release is a sink dead-end, so it is registered as a job root to ensure its branch is scheduled.
  */
-@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_5, tool = AiProvenance.Tool.CLAUDE_CODE_CLI, contributionKind = AiProvenance.ContributionKind.REFACTORED)
+@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_5, tool = AiProvenance.Tool.CLAUDE_CODE_CLI, contributionKind = AiProvenance.ContributionKind.ASSISTED)
 public class KMeansOversampleLoopPOperator extends AbstractKMeansLoopPOperator {
 
     @Override

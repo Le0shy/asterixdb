@@ -30,7 +30,7 @@ import org.apache.hyracks.util.annotations.AiProvenance;
  * Result type {@code [double]} — used by the CLUSTER BY {@code CENTROID} aggregate family for both the packed partial
  * ({@code [count, sum...]}) and the final centroid vector.
  */
-@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.GENERATED)
+@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.ASSISTED)
 public class OrderedListOfADoubleTypeComputer extends AbstractResultTypeComputer {
 
     public static final OrderedListOfADoubleTypeComputer INSTANCE = new OrderedListOfADoubleTypeComputer();

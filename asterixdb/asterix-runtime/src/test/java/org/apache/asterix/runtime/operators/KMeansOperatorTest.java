@@ -64,7 +64,7 @@ import org.junit.Test;
  * Activity order follows {@link KMeansMergeOperatorDescriptor#contributeActivities}: StorePool (0),
  * Score (1).
  */
-@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.TEST_GENERATED)
+@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.ASSISTED)
 public class KMeansOperatorTest {
 
     @SuppressWarnings("rawtypes")

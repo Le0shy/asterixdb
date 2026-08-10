@@ -49,7 +49,7 @@ import org.apache.hyracks.util.annotations.AiProvenance;
  * The operator has no output. Its effect is entirely the store update plus the permit, which is why the physical
  * operator registers it as a job root — nothing downstream would otherwise pull its branch into the schedule.
  */
-@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.GENERATED)
+@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.ASSISTED)
 public class KMeansLloydReleaseOperatorDescriptor extends AbstractSingleActivityOperatorDescriptor {
     private static final long serialVersionUID = 1L;
 

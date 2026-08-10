@@ -43,7 +43,7 @@ import org.apache.hyracks.util.annotations.AiProvenance;
  * co-locates and shares that NC's permit and run files, while the centroid merge is single-partition. Release
  * is a sink dead-end, so it is registered as a job root to ensure its branch is scheduled.
  */
-@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_5, tool = AiProvenance.Tool.CLAUDE_CODE_CLI, contributionKind = AiProvenance.ContributionKind.REFACTORED)
+@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_5, tool = AiProvenance.Tool.CLAUDE_CODE_CLI, contributionKind = AiProvenance.ContributionKind.ASSISTED)
 public class KMeansLloydLoopPOperator extends AbstractKMeansLoopPOperator {
 
     @Override

@@ -56,7 +56,7 @@ import org.apache.hyracks.util.annotations.AiProvenance;
  * (the input frame buffers are transient), then re-emitted. Because the loop is globally serialized, at most one
  * round is live in the accumulator at a time (emitted and removed before the next round arrives).
  */
-@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.GENERATED)
+@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.ASSISTED)
 public class KMeansPoolMergeOperatorDescriptor extends AbstractSingleActivityOperatorDescriptor {
     private static final long serialVersionUID = 1L;
 

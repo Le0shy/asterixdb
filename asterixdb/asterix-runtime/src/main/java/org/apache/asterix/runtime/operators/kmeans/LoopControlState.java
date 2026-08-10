@@ -45,7 +45,7 @@ import org.apache.hyracks.dataflow.std.base.AbstractStateObject;
  * callers must guard the lookup with a short wait, as the prototype does; the data-flow ordering (Op3/Op5 touch
  * the loop only after Op1's first cost) guarantees it is present by first use.
  */
-@org.apache.hyracks.util.annotations.AiProvenance(agent = org.apache.hyracks.util.annotations.AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = org.apache.hyracks.util.annotations.AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = org.apache.hyracks.util.annotations.AiProvenance.ContributionKind.GENERATED)
+@org.apache.hyracks.util.annotations.AiProvenance(agent = org.apache.hyracks.util.annotations.AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = org.apache.hyracks.util.annotations.AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = org.apache.hyracks.util.annotations.AiProvenance.ContributionKind.ASSISTED)
 public final class LoopControlState extends AbstractStateObject {
 
     // Not serialized: this state never leaves the NC (joblet-local). The semaphore is created empty; the loop tail

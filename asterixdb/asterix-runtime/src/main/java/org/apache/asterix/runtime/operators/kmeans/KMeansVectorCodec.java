@@ -52,7 +52,7 @@ import org.apache.hyracks.util.annotations.AiProvenance;
  * byte-compatible, since the loop's output is consumed by the merge stage built on that class; the
  * cluster-by runtime tests pin it. A later cleanup may extract a single source of truth.
  */
-@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.GENERATED)
+@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.ASSISTED)
 public final class KMeansVectorCodec {
 
     /** Envelope kind fields (match KMeansStageRuntime.KIND_*). */

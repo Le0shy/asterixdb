@@ -56,7 +56,7 @@ import org.apache.hyracks.util.annotations.AiProvenance;
  * delivered -- which is why the pool has to be materialized rather than streamed in. Score collects the pool
  * through {@link KMeansStageRuntime} and reduces it.
  */
-@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.REFACTORED)
+@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.ASSISTED)
 public final class KMeansMergeOperatorDescriptor extends AbstractOperatorDescriptor {
     private static final long serialVersionUID = 1L;
 
@@ -165,7 +165,7 @@ public final class KMeansMergeOperatorDescriptor extends AbstractOperatorDescrip
      * and leave another with none, and Lloyd cannot repair that afterwards because it only ever refines a
      * centroid within its own neighbourhood.
      */
-    @AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_5, tool = AiProvenance.Tool.CLAUDE_CODE_CLI, contributionKind = AiProvenance.ContributionKind.GENERATED)
+    @AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_5, tool = AiProvenance.Tool.CLAUDE_CODE_CLI, contributionKind = AiProvenance.ContributionKind.ASSISTED)
     private List<double[]> weightedKMeansPlusPlus(List<double[]> means, List<Long> memberWeights) {
         List<double[]> chosen = new ArrayList<>();
         final int n = means.size();

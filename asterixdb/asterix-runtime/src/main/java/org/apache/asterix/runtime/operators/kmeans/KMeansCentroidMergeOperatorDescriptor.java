@@ -67,7 +67,7 @@ import org.apache.hyracks.util.annotations.AiProvenance;
  * Memory: the accumulator is O(partitions · k · dim) in this node's heap, held only for the iteration in flight.
  * That is the loop's dominant memory term and it is currently uncapped, which bounds usable k.
  */
-@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.GENERATED)
+@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.ASSISTED)
 public class KMeansCentroidMergeOperatorDescriptor extends AbstractSingleActivityOperatorDescriptor {
     private static final long serialVersionUID = 1L;
 

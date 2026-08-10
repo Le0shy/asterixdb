@@ -46,7 +46,7 @@ import org.apache.hyracks.util.annotations.AiProvenance;
  * <p>
  * This class settles the inputs; a subclass builds its own chain.
  */
-@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_5, tool = AiProvenance.Tool.CLAUDE_CODE_CLI, contributionKind = AiProvenance.ContributionKind.REFACTORED)
+@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_5, tool = AiProvenance.Tool.CLAUDE_CODE_CLI, contributionKind = AiProvenance.ContributionKind.ASSISTED)
 public abstract class AbstractKMeansLoopPOperator extends AbstractKMeansStagePOperator {
 
     @Override

@@ -58,7 +58,7 @@ import org.apache.hyracks.util.annotations.AiProvenance;
  * with a bounded wait. Points already covered by the pool (d^2 = 0) are never re-drawn, and a non-positive phi
  * (pool already covers everything) yields no draws, as in the paper.
  */
-@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.GENERATED)
+@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.ASSISTED)
 public class KMeansSampleOperatorDescriptor extends AbstractSingleActivityOperatorDescriptor {
     private static final long serialVersionUID = 1L;
 

@@ -55,7 +55,7 @@ import org.apache.hyracks.util.annotations.AiProvenance;
  * field is carried through (not merely counted) so the downstream Sample can seed its per-round RNG with the exact
  * round, so a partition's draws are a function of (round, partition) alone and never of frame arrival order.
  */
-@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.GENERATED)
+@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.ASSISTED)
 public class KMeansPhiMergeOperatorDescriptor extends AbstractSingleActivityOperatorDescriptor {
     private static final long serialVersionUID = 1L;
 
