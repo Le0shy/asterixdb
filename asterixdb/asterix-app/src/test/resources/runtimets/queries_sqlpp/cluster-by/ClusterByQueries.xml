@@ -31,6 +31,13 @@
             <output-dir compare="Text">kmeans-syntax</output-dir>
         </compilation-unit>
     </test-case>
+    <!-- The default kmeansPP initialization on a fixture with enough clusters to expose a bad candidate-pool
+         reduction; the shared 6-point k=2 dataset converges correctly from any seeding and so cannot. -->
+    <test-case FilePath="cluster-by">
+        <compilation-unit name="kmeans-init-kmeanspp">
+            <output-dir compare="Text">kmeans-init-kmeanspp</output-dir>
+        </compilation-unit>
+    </test-case>
     <!-- initMode "random" seeding: k vectors drawn uniformly (the k smallest row hashes), not the k
          lexicographically smallest vectors, which would be the k most similar points in the data set.
          Needs a fixture large enough for the two to differ; see the case's own comments. -->
