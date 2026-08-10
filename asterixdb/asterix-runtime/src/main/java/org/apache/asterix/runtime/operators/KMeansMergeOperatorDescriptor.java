@@ -18,6 +18,7 @@
  */
 package org.apache.asterix.runtime.operators;
 
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -25,8 +26,19 @@ import java.util.Random;
 
 import org.apache.asterix.runtime.utils.VectorDistanceCalculation;
 import org.apache.hyracks.api.context.IHyracksTaskContext;
+import org.apache.hyracks.api.dataflow.ActivityId;
+import org.apache.hyracks.api.dataflow.IActivityGraphBuilder;
+import org.apache.hyracks.api.dataflow.IOperatorNodePushable;
+import org.apache.hyracks.api.dataflow.TaskId;
+import org.apache.hyracks.api.dataflow.value.IRecordDescriptorProvider;
 import org.apache.hyracks.api.dataflow.value.RecordDescriptor;
+import org.apache.hyracks.api.exceptions.HyracksDataException;
 import org.apache.hyracks.api.job.IOperatorDescriptorRegistry;
+import org.apache.hyracks.dataflow.std.base.AbstractActivityNode;
+import org.apache.hyracks.dataflow.std.base.AbstractOperatorDescriptor;
+import org.apache.hyracks.dataflow.std.base.AbstractUnaryInputSinkOperatorNodePushable;
+import org.apache.hyracks.dataflow.std.base.AbstractUnaryOutputSourceOperatorNodePushable;
+import org.apache.hyracks.dataflow.std.misc.MaterializerTaskState;
 import org.apache.hyracks.util.annotations.AiProvenance;
 
 /**
@@ -37,13 +49,19 @@ import org.apache.hyracks.util.annotations.AiProvenance;
  * already chosen. The result is padded with pool members when fewer than {@code count} members attracted
  * points.
  * <p>
- * There is no vector input: the sole input is the broadcast partials envelope stream (always
- * {@code poolIsEnvelope}), so the stage is a pure reduction over the partials. See
- * {@link AbstractKMeansOperatorDescriptor}.
+ * There is no vector input: the sole input is the broadcast partials envelope stream, so the stage is a pure
+ * reduction over the partials. Two activities, and points never move between them. <b>StorePool</b> is a sink
+ * that materializes the broadcast input as task state ({@link MaterializerTaskState}); <b>Score</b> is a SOURCE
+ * activity behind a blocking edge, because an input connector across a blocking-edge stage boundary is never
+ * delivered -- which is why the pool has to be materialized rather than streamed in. Score collects the pool
+ * through {@link KMeansStageRuntime} and reduces it.
  */
 @AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.REFACTORED)
-public final class KMeansMergeOperatorDescriptor extends AbstractKMeansOperatorDescriptor {
+public final class KMeansMergeOperatorDescriptor extends AbstractOperatorDescriptor {
     private static final long serialVersionUID = 1L;
+
+    private static final int STORE_POOL_ACTIVITY_ID = 0;
+    private static final int SCORE_ACTIVITY_ID = 1;
 
     // Seed for RECLUSTER's weighted k-means++ draw. The selection is randomized by nature, but CLUSTER BY
     // promises that the same query over the same data returns the same clusters, so the draw must not vary
@@ -54,21 +72,32 @@ public final class KMeansMergeOperatorDescriptor extends AbstractKMeansOperatorD
     // choice of the lowest-indexed candidate rather than a weighted one.
     private static final long RECLUSTER_SEED = 12345L;
 
+    // How many centroids to keep. Non-negative.
+    private final int count;
+    // Column of the pool variable in the input's tuples.
+    private final int poolColumn;
+
     public KMeansMergeOperatorDescriptor(IOperatorDescriptorRegistry spec, RecordDescriptor vectorRecDesc, int count,
             int poolColumn) {
-        // Single input: the broadcast partials, always envelope rows (the oversample loop's output).
-        super(spec, vectorRecDesc, 1, count, poolColumn, true);
+        // One input: the broadcast partials, which are always envelope rows (the oversampling loop's output).
+        super(spec, 1, 1);
+        this.count = count;
+        this.poolColumn = poolColumn;
+        outRecDescs[0] = vectorRecDesc;
     }
 
     @Override
-    protected int poolInputIndex() {
-        return 0;
-    }
+    public void contributeActivities(IActivityGraphBuilder builder) {
+        StorePoolActivityNode storePool = new StorePoolActivityNode(new ActivityId(odId, STORE_POOL_ACTIVITY_ID));
+        ScoreActivityNode score = new ScoreActivityNode(new ActivityId(odId, SCORE_ACTIVITY_ID));
 
-    @Override
-    protected void emit(KMeansStageRuntime rt, KMeansStageRuntime.Emitter emitter, IHyracksTaskContext ctx,
-            int partition) throws Exception {
-        emitRecluster(rt, emitter, partition);
+        builder.addActivity(this, storePool);
+        builder.addSourceEdge(0, storePool, 0);
+
+        builder.addActivity(this, score);
+        builder.addTargetEdge(0, score, 0);
+
+        builder.addBlockingEdge(storePool, score);
     }
 
     private void emitRecluster(KMeansStageRuntime rt, KMeansStageRuntime.Emitter emitter, int partition)
@@ -198,4 +227,76 @@ public final class KMeansMergeOperatorDescriptor extends AbstractKMeansOperatorD
         return chosen;
     }
 
+    /** Materializes the broadcast input as task state for the Score activity to read. */
+    private final class StorePoolActivityNode extends AbstractActivityNode {
+        private static final long serialVersionUID = 1L;
+
+        private StorePoolActivityNode(ActivityId id) {
+            super(id);
+        }
+
+        @Override
+        public IOperatorNodePushable createPushRuntime(IHyracksTaskContext ctx,
+                IRecordDescriptorProvider recordDescProvider, int partition, int nPartitions) {
+            return new AbstractUnaryInputSinkOperatorNodePushable() {
+                private MaterializerTaskState state;
+
+                @Override
+                public void open() throws HyracksDataException {
+                    state = new MaterializerTaskState(ctx.getJobletContext().getJobId(),
+                            new TaskId(getActivityId(), partition));
+                    state.open(ctx);
+                }
+
+                @Override
+                public void nextFrame(ByteBuffer buffer) throws HyracksDataException {
+                    state.appendFrame(buffer);
+                }
+
+                @Override
+                public void close() throws HyracksDataException {
+                    state.close();
+                    ctx.setStateObject(state);
+                }
+
+                @Override
+                public void fail() throws HyracksDataException {
+                }
+            };
+        }
+    }
+
+    private final class ScoreActivityNode extends AbstractActivityNode {
+        private static final long serialVersionUID = 1L;
+
+        private ScoreActivityNode(ActivityId id) {
+            super(id);
+        }
+
+        @Override
+        public IOperatorNodePushable createPushRuntime(IHyracksTaskContext ctx,
+                IRecordDescriptorProvider recordDescProvider, int partition, int nPartitions) {
+            final RecordDescriptor vecRecDesc = outRecDescs[0];
+            return new AbstractUnaryOutputSourceOperatorNodePushable() {
+                @Override
+                public void initialize() throws HyracksDataException {
+                    writer.open();
+                    try {
+                        MaterializerTaskState poolState = (MaterializerTaskState) ctx.getStateObject(
+                                new TaskId(new ActivityId(getOperatorId(), STORE_POOL_ACTIVITY_ID), partition));
+                        KMeansStageRuntime rt = new KMeansStageRuntime(ctx, writer, vecRecDesc, poolColumn, count);
+                        rt.collectPool(poolState);
+                        KMeansStageRuntime.Emitter emitter = rt.newEmitter();
+                        emitRecluster(rt, emitter, partition);
+                        emitter.flush();
+                    } catch (Exception e) {
+                        writer.fail();
+                        throw HyracksDataException.create(e);
+                    } finally {
+                        writer.close();
+                    }
+                }
+            };
+        }
+    }
 }

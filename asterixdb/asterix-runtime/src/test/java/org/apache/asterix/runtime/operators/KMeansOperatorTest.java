@@ -61,7 +61,7 @@ import org.junit.Test;
  * partials accumulated per pool member regardless of arrival order, the weighted means reduced to
  * {@code count} centroids, and the shortfall padded from the pool.
  * <p>
- * Activity order follows {@link AbstractKMeansOperatorDescriptor#contributeActivities}: StorePool (0),
+ * Activity order follows {@link KMeansMergeOperatorDescriptor#contributeActivities}: StorePool (0),
  * Score (1).
  */
 @AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.TEST_GENERATED)
@@ -112,7 +112,7 @@ public class KMeansOperatorTest {
         Assert.assertArrayEquals(new double[] { 0, 0 }, out.get(2), 0.0);
     }
 
-    private static List<IActivity> collectActivities(AbstractKMeansOperatorDescriptor op) {
+    private static List<IActivity> collectActivities(KMeansMergeOperatorDescriptor op) {
         List<IActivity> activities = new ArrayList<>();
         op.contributeActivities(new IActivityGraphBuilder() {
             @Override

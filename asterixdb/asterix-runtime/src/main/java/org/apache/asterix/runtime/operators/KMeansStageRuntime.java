@@ -99,7 +99,6 @@ final class KMeansStageRuntime {
     private final IFrameWriter writer;
     private final RecordDescriptor vecRecDesc;
     private final int poolColumn;
-    private final boolean poolIsEnvelope;
     private final int count;
 
     private final FrameTupleReference tupleRef = new FrameTupleReference();
@@ -112,12 +111,11 @@ final class KMeansStageRuntime {
     private final List<Row> partials = new ArrayList<>();
 
     KMeansStageRuntime(IHyracksTaskContext ctx, IFrameWriter writer, RecordDescriptor vecRecDesc, int poolColumn,
-            boolean poolIsEnvelope, int count) {
+            int count) {
         this.ctx = ctx;
         this.writer = writer;
         this.vecRecDesc = vecRecDesc;
         this.poolColumn = poolColumn;
-        this.poolIsEnvelope = poolIsEnvelope;
         this.count = count;
     }
 
@@ -162,17 +160,13 @@ final class KMeansStageRuntime {
                 int tupleCount = poolAccessor.getTupleCount();
                 for (int i = 0; i < tupleCount; i++) {
                     tupleRef.reset(poolAccessor, i);
-                    if (poolIsEnvelope) {
-                        Row r = decodeEnvelope(tupleRef, poolColumn);
-                        if (r.kind == KIND_POOL) {
-                            poolRows.add(r);
-                        } else if (r.kind == KIND_CANDIDATE) {
-                            candRows.add(r);
-                        } else {
-                            partials.add(r);
-                        }
+                    Row r = decodeEnvelope(tupleRef, poolColumn);
+                    if (r.kind == KIND_POOL) {
+                        poolRows.add(r);
+                    } else if (r.kind == KIND_CANDIDATE) {
+                        candRows.add(r);
                     } else {
-                        poolRows.add(new Row(KIND_POOL, 0, poolRows.size(), 0.0d, decodeVector(tupleRef, poolColumn)));
+                        partials.add(r);
                     }
                 }
             }
