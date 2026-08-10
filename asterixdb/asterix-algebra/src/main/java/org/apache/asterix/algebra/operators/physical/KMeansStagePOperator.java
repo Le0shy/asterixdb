@@ -39,7 +39,6 @@ import org.apache.hyracks.algebricks.core.algebra.base.PhysicalOperatorTag;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.AbstractLogicalOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.IOperatorSchema;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.KMeansStageOperator;
-import org.apache.hyracks.algebricks.core.algebra.operators.physical.AbstractPhysicalOperator;
 import org.apache.hyracks.algebricks.core.algebra.properties.BroadcastPartitioningProperty;
 import org.apache.hyracks.algebricks.core.algebra.properties.IPartitioningRequirementsCoordinator;
 import org.apache.hyracks.algebricks.core.algebra.properties.IPhysicalPropertiesVector;
@@ -60,21 +59,11 @@ import org.apache.hyracks.util.annotations.AiProvenance;
  * always REQUIRED BROADCAST, so the enforcer inserts the broadcast exchange.
  */
 @AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.GENERATED, notes = "CLUSTER BY k-means|| init physical operator")
-public class KMeansStagePOperator extends AbstractPhysicalOperator {
+public class KMeansStagePOperator extends AbstractKMeansStagePOperator {
 
     @Override
     public PhysicalOperatorTag getOperatorTag() {
         return PhysicalOperatorTag.KMEANS_STAGE;
-    }
-
-    @Override
-    public boolean isMicroOperator() {
-        return false;
-    }
-
-    @Override
-    public boolean expensiveThanMaterialization() {
-        return true;
     }
 
     @Override
@@ -102,18 +91,6 @@ public class KMeansStagePOperator extends AbstractPhysicalOperator {
                     new RandomPartitioningProperty(context.getComputationNodeDomain()), null), broadcastPool };
         }
         return new PhysicalRequirements(pv, IPartitioningRequirementsCoordinator.NO_COORDINATION);
-    }
-
-    @Override
-    public void computeDeliveredProperties(ILogicalOperator op, IOptimizationContext context)
-            throws AlgebricksException {
-        // The output is partitioned like input 0 but carries ONLY the candidate variable: claiming the
-        // child's delivered properties would advertise partitioning on variables this operator drops,
-        // forcing the enforcer to insert bogus re-partitioning (e.g. hashing the candidate array).
-        deliveredProperties = new StructuralPropertiesVector(
-                new org.apache.hyracks.algebricks.core.algebra.properties.RandomPartitioningProperty(
-                        context.getComputationNodeDomain()),
-                null);
     }
 
     @Override
@@ -260,18 +237,5 @@ public class KMeansStagePOperator extends AbstractPhysicalOperator {
         spec.connect(new MToNBroadcastConnectorDescriptor(spec), op2, 0, op3, 0);
 
         spec.addRoot(op3);
-    }
-
-    private static int resolveSingleColumn(IOperatorSchema schema,
-            org.apache.hyracks.algebricks.core.algebra.base.LogicalVariable var) throws AlgebricksException {
-        int col = schema.findVariable(var);
-        if (col >= 0) {
-            return col;
-        }
-        if (schema.getSize() == 1) {
-            return 0;
-        }
-        throw AlgebricksException.create(org.apache.hyracks.api.exceptions.ErrorCode.ILLEGAL_STATE,
-                "kmeans-stage input schema", String.valueOf(schema.getSize()));
     }
 }
