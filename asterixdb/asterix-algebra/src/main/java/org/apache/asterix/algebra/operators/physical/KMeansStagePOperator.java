@@ -45,6 +45,7 @@ import org.apache.hyracks.algebricks.core.algebra.properties.BroadcastPartitioni
 import org.apache.hyracks.algebricks.core.algebra.properties.IPartitioningRequirementsCoordinator;
 import org.apache.hyracks.algebricks.core.algebra.properties.IPhysicalPropertiesVector;
 import org.apache.hyracks.algebricks.core.algebra.properties.PhysicalRequirements;
+import org.apache.hyracks.algebricks.core.algebra.properties.RandomPartitioningProperty;
 import org.apache.hyracks.algebricks.core.algebra.properties.StructuralPropertiesVector;
 import org.apache.hyracks.algebricks.core.jobgen.impl.JobGenContext;
 import org.apache.hyracks.algebricks.core.jobgen.impl.JobGenHelper;
@@ -90,8 +91,17 @@ public class KMeansStagePOperator extends AbstractPhysicalOperator {
             // reduces the complete partial set (an un-broadcast input would reduce only local partials).
             pv = new StructuralPropertiesVector[] { broadcastPool };
         } else {
-            // Two inputs: the partitioned vectors (input 0, no requirement) and the broadcast pool (input 1).
-            pv = new StructuralPropertiesVector[] { StructuralPropertiesVector.EMPTY_PROPERTIES_VECTOR, broadcastPool };
+            // Two inputs: the vectors (input 0) and the broadcast pool (input 1). The loop stages below carry
+            // an absolute partition constraint -- one instance per compute partition, so that the co-located
+            // stages can share per-partition state -- which means the vectors have to arrive at that same
+            // width. Stating a partitioning requirement over the computation node domain is what makes the
+            // property enforcer insert a repartition when the child does not already deliver one; with no
+            // requirement, a child of a different width (anything below a global LIMIT, say) is joined to
+            // this fixed-width consumer by a one-to-one connector, which then addresses a producer partition
+            // that does not exist. RANDOM is the weakest requirement that still settles the width: k-means
+            // does not care which vector lands in which partition, only that each one lands somewhere.
+            pv = new StructuralPropertiesVector[] { new StructuralPropertiesVector(
+                    new RandomPartitioningProperty(context.getComputationNodeDomain()), null), broadcastPool };
         }
         return new PhysicalRequirements(pv, IPartitioningRequirementsCoordinator.NO_COORDINATION);
     }
