@@ -31,6 +31,22 @@
             <output-dir compare="Text">kmeans-syntax</output-dir>
         </compilation-unit>
     </test-case>
+    <!-- initMode "random" seeding: k vectors drawn uniformly (the k smallest row hashes), not the k
+         lexicographically smallest vectors, which would be the k most similar points in the data set.
+         Needs a fixture large enough for the two to differ; see the case's own comments. -->
+    <test-case FilePath="cluster-by">
+        <compilation-unit name="kmeans-init-random">
+            <output-dir compare="Text">kmeans-init-random</output-dir>
+        </compilation-unit>
+    </test-case>
+    <!-- CLUSTER BY over an input of differing parallelism (a global LIMIT): the loop stages are pinned to one
+         instance per compute partition, so the plan must repartition into them. Previously an
+         ArrayIndexOutOfBoundsException at job-build time. -->
+    <test-case FilePath="cluster-by">
+        <compilation-unit name="kmeans-limit-input">
+            <output-dir compare="Text">kmeans-limit-input</output-dir>
+        </compilation-unit>
+    </test-case>
     <!-- nearest_centroid_distance scalar: the k-means|| sampling score d2(x, C). -->
     <test-case FilePath="cluster-by">
         <compilation-unit name="nearest-centroid-distance">
