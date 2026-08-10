@@ -38,7 +38,7 @@ distribute result [$$204]
                                 exchange
                                 -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
                                   kmeans-stage $$191 <- LLOYD_LOOP $$182 vs pool $$186
-                                  -- KMEANS_STAGE  |PARTITIONED|
+                                  -- KMEANS_LLOYD_LOOP  |PARTITIONED|
                                     exchange
                                     -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
                                       assign [$$182] <- [$$186] project: [$$182]

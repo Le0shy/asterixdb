@@ -46,7 +46,7 @@ distribute result [$$239]
                                         exchange
                                         -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
                                           kmeans-stage $$223 <- LLOYD_LOOP $$202 vs pool $$221
-                                          -- KMEANS_STAGE  |PARTITIONED|
+                                          -- KMEANS_LLOYD_LOOP  |PARTITIONED|
                                             exchange
                                             -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
                                               assign [$$202] <- [$$208] project: [$$202]
@@ -94,7 +94,7 @@ distribute result [$$239]
                                                         exchange
                                                         -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
                                                           kmeans-stage $$219 <- oversample-loop 5 rounds of $$208 vs seed $$214
-                                                          -- KMEANS_STAGE  |PARTITIONED|
+                                                          -- KMEANS_OVERSAMPLE_LOOP  |PARTITIONED|
                                                             exchange
                                                             -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
                                                               replicate
