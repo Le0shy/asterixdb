@@ -97,7 +97,7 @@ import org.apache.hyracks.util.annotations.AiProvenance;
  * </pre>
  *
  * For {@code initMode "random"} the {@code kmeans_oversample_loop}/{@code kmeans_recluster} init is skipped
- * entirely and Lloyd seeds directly from the {@code k} lexicographically smallest vectors of {@code __vecs}; the
+ * entirely and Lloyd seeds directly from {@code k} vectors of {@code __vecs} drawn uniformly (Forgy); the
  * Lloyd stages still run as the same runtime operator tower.
  *
  * The centroid lists {@code C0..C3} are query-level LETs (constants, in scope after the GROUP BY). The two-step
@@ -115,10 +115,11 @@ import org.apache.hyracks.util.annotations.AiProvenance;
  * number of Lloyd iterations. Two init modes are supported: {@code kmeansPP} (the default) runs the exact
  * k-means|| initialization (VLDB'12 "Scalable K-Means++") as the {@code kmeans_oversample_loop} runtime operator
  * -- a seeded-Bernoulli oversampling loop over the global potential, whose pool is then weighted and reduced
- * to {@code k} centroids by {@code kmeans_recluster}; {@code random} skips init and seeds Lloyd from the
- * {@code k} lexicographically smallest vectors. The WITH options are also validated.
+ * to {@code k} centroids by {@code kmeans_recluster}; {@code random} skips init and seeds Lloyd from
+ * {@code k} uniformly drawn vectors. The WITH options are also validated.
  */
 @AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.GENERATED, notes = "CLUSTER BY -> k-means SQL++ desugar")
+@AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_5, tool = AiProvenance.Tool.CLAUDE_CODE_CLI, contributionKind = AiProvenance.ContributionKind.ASSISTED, notes = "uniform seeding for both init modes: order by random(v[0]) instead of by vector value")
 public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor {
 
     // WITH option keys, compared case-insensitively.
@@ -142,7 +143,7 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
     // al. VLDB'12, Algorithm 2) exact Bernoulli oversampling: per round a global potential phi = Sigma d^2(x,
     // pool) is reduced and each point is drawn independently with probability p_x = l * d^2(x, pool) / phi. It
     // runs as the self-iterating systolic operator sub-graph (KMEANS_OVERSAMPLE_LOOP).
-    // "random" = the k lexicographically smallest vectors as C0 (skip init; cheap, but seeding quality is what
+    // "random" = k uniformly drawn vectors as C0 (Forgy; skip init -- cheap, but seeding quality is what
     // kmeansPP exists for). These are the only two initModes.
     private static final String INIT_MODE_KMEANSPP = "kmeanspp";
     private static final String INIT_MODE_RANDOM = "random";
@@ -266,7 +267,7 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
         centroidLets.add(letClause(vecs, vecsQuery, loc));
 
         // Init: kmeansPP runs the exact Bernoulli k-means|| oversampling as the runtime systolic loop; random
-        // seeds C0 with the k lexicographically smallest vectors. Both then run Lloyd, all as a linear TOWER of
+        // seeds C0 with k uniformly drawn vectors. Both then run Lloyd, all as a linear TOWER of
         // nested internal calls: round r's pool argument IS round r-1's call (the operator echoes its pool
         // through). The subquery args become the operator's stream inputs in the translator; they must be
         // SELF-CONTAINED pipelines (deep copies of the defining subqueries), because the operator's input
@@ -276,24 +277,33 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
         boolean randomInit = INIT_MODE_RANDOM.equals(getInitMode(cbc));
         Expression c0Stream;
         if (randomInit) {
-            // initMode "random": C0 = the k lexicographically smallest vectors (deterministic) -- no
-            // oversampling tower; the Lloyd stages below are unchanged.
+            // initMode "random": C0 = k vectors drawn uniformly (Forgy) -- no oversampling tower; the Lloyd
+            // stages below are unchanged. Taking the k smallest shuffle keys (see uniformRowKey) is a uniform
+            // sample of size k without replacement. Ordering by the vector VALUE instead would return the k
+            // lexicographically smallest vectors, i.e. the k most SIMILAR points in the data set rather than a
+            // sample of it: all k centroids would sit in one corner, most clusters would start empty, and
+            // Lloyd -- which only refines a centroid within its own neighbourhood -- could not recover them.
+            // A uniform sample still misses regions sometimes; that is inherent to Forgy, and is why kmeansPP
+            // is the default.
             VariableExpr rv0 = newVar(loc);
             LimitClause limitKInit = new LimitClause(intLit(k, loc), null);
             limitKInit.setSourceLocation(loc);
-            c0Stream = selectValueFrom(copy(vecsQuery), rv0, rv0, null, null, ascOrder(varRef(rv0.getVar(), loc)), null,
+            c0Stream = selectValueFrom(copy(vecsQuery), rv0, rv0, null, null, ascOrder(uniformRowKey(rv0, loc)), null,
                     limitKInit, loc);
         } else {
             // kmeansPP: the self-iterating systolic loop. It loops INIT_OVERSAMPLING_ROUNDS times internally
             // (exact Bernoulli oversampling -- all-reducing the per-round global phi and the drawn candidates),
             // then folds in the terminal WEIGH and emits the (count,sum) partials directly for RECLUSTER. The
-            // innermost pool is the deterministic seed: the lexicographically smallest vector (ORDER BY value
-            // LIMIT 1 -> a streaming per-partition top-1, a pure function of the data set).
+            // innermost pool is the single initial centre, which k-means|| draws uniformly at random -- hence
+            // the smallest shuffle key (see uniformRowKey) rather than the smallest vector. Ordering by the
+            // vector VALUE would always return a geometric extreme, the corner of the data with the smallest
+            // leading coordinate. That is the worst available starting point for a D^2 walk, and it biases
+            // every round that follows, because each round's draw probabilities are measured from the pool.
             VariableExpr pv = newVar(loc);
             LimitClause seedLimit = new LimitClause(intLit(1, loc), null);
             seedLimit.setSourceLocation(loc);
             Expression poolStream = selectValueFrom(copy(vecsQuery), pv, pv, null, null,
-                    ascOrder(varRef(pv.getVar(), loc)), null, seedLimit, loc);
+                    ascOrder(uniformRowKey(pv, loc)), null, seedLimit, loc);
             Expression weighed = call(BuiltinFunctions.KMEANS_OVERSAMPLE_LOOP, loc, copy(vecsQuery), poolStream,
                     intLit(OVERSAMPLING_FACTOR_PER_K * k, loc), intLit(INIT_OVERSAMPLING_ROUNDS, loc),
                     intLit(EXACT_SEED_BASE, loc));
@@ -470,6 +480,25 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
         IndexAccessor ia = new IndexAccessor(listExpr, IndexAccessor.IndexKind.ELEMENT, intLit(idx, loc));
         ia.setSourceLocation(loc);
         return ia;
+    }
+
+    /**
+     * {@code random(<rowVar>[0])} -- an ORDER BY key that shuffles the vectors rather than ranking them, so
+     * that {@code ORDER BY <key> LIMIT n} draws n rows uniformly instead of returning n neighbours. Both init
+     * modes need that: seeding k-means from rows selected by their coordinates picks a corner of the data,
+     * which is exactly where centroids should not start.
+     * <p>
+     * {@code random(x)} reseeds its generator whenever its argument differs from the previous call's, so
+     * passing a per-row argument yields one draw per seed -- a hash of that row -- where a constant argument
+     * would instead walk a single sequence. Consecutive rows with an equal leading coordinate skip the reseed
+     * and continue that sequence, so their keys remain distinct but depend on arrival order rather than on the
+     * row alone; the sample stays uniform either way, and stays reproducible for a given input order.
+     * <p>
+     * The key costs nothing: {@code ORDER BY ... LIMIT n} still compiles to a streaming top-n that holds n
+     * rows, and ranking one double is cheaper than ranking a vector element by element.
+     */
+    private Expression uniformRowKey(VariableExpr rowVar, SourceLocation loc) {
+        return call(BuiltinFunctions.RANDOM_WITH_SEED, loc, elementAt(varRef(rowVar.getVar(), loc), 0, loc));
     }
 
     /** {@code <left> <op> <right>} as an OperatorExpr. */
