@@ -818,7 +818,11 @@ public class BTreeAccessMethod implements IAccessMethod {
         Mutable<ILogicalOperator> rootOp;
 
         if (probeSubTree == null) {
-            rootOp = new MutableObject<>(OperatorManipulationUtil.deepCopy(dataSourceOp.getInputs().get(0).getValue()));
+            // Root of this plan is whatever fed the dataSourceScan: an EmptyTupleSource for an ordinary
+            // scan, but a real pipeline when a value is bound beneath it. Copy bottom-up -- deepCopy()
+            // copies a single operator without its inputs and would truncate such a pipeline.
+            rootOp = new MutableObject<>(
+                    OperatorManipulationUtil.bottomUpCopyOperators(dataSourceOp.getInputs().get(0).getValue()));
             executionMode = dataSourceOp.getExecutionMode();
         } else {
             rootOp = probeSubTree.getRootRef();
@@ -1356,10 +1360,12 @@ public class BTreeAccessMethod implements IAccessMethod {
             AssignOperator assignSearchKeys = new AssignOperator(assignKeyVarList, assignKeyExprList);
             assignSearchKeys.setSourceLocation(dataSrcLoc);
             if (probeSubTree == null) {
-                // We are optimizing a selection query.
-                // Input to this assign is the EmptyTupleSource (which the dataSourceScan also must have had as input).
+                // We are optimizing a selection query. Input to this assign is whatever fed the
+                // dataSourceScan: an EmptyTupleSource for an ordinary scan, but a real pipeline when a
+                // value is bound beneath it. Copy bottom-up -- deepCopy() copies a single operator without
+                // its inputs and would truncate such a pipeline.
                 assignSearchKeys.getInputs().add(new MutableObject<>(
-                        OperatorManipulationUtil.deepCopy(dataSourceOp.getInputs().get(0).getValue())));
+                        OperatorManipulationUtil.bottomUpCopyOperators(dataSourceOp.getInputs().get(0).getValue())));
                 assignSearchKeys.setExecutionMode(dataSourceOp.getExecutionMode());
             } else {
                 // We are optimizing a join, place the assign op top of the probe subtree.

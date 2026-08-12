@@ -258,6 +258,15 @@ public class IntroduceSelectAccessMethodRule extends AbstractIntroduceAccessMeth
             throw CompilationException.create(ErrorCode.CHOSEN_INDEX_COUNT_SHOULD_BE_GREATER_THAN_ONE);
         }
 
+        // Each index plan below re-roots at its own copy of whatever fed the dataSourceScan. That is fine
+        // for an EmptyTupleSource, but a pipeline that produces variables cannot be duplicated: the copies
+        // would define the same variables in sibling branches of the intersection. Decline the intersection
+        // in that case -- the plan keeps the full scan, which answers the query correctly.
+        if (subTree.getDataSourceRef().getValue().getInputs().get(0).getValue()
+                .getOperatorTag() != LogicalOperatorTag.EMPTYTUPLESOURCE) {
+            return false;
+        }
+
         // Intersect all secondary indexes, and postpone the primary index search.
         Mutable<ILogicalExpression> conditionRef = selectOp.getCondition();
 
