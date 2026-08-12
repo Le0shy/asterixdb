@@ -16,11 +16,21 @@
  * specific language governing permissions and limitations
  * under the License.
  */
--- APE 33 Database Design #3 (reviews nested inside movies): UNNEST attaches a correlate clause to the
--- FROM term, which v1 CLUSTER BY must reject at compile time.
-from [{"movie_year": 2019, "reviews": [{"reviewEmbedding": [1.0, 2.0]}]}] as m
-unnest m.reviews as re
-cluster by re.reviewEmbedding as sc
-cluster as rvc
-with { "NumClusters": 5 }
-select sc.cluster_id as cid, array_count(rvc) as cnt, rvc;
+
+-- Six of eight movies pass "< 2020". Group is taken from the review block, not the movie, so each of the four
+-- groups keeps 30 qualifying rows; without the predicate it would be 40. Centres 10 apart, jitter about one.
+
+use test;
+
+insert into Movies (
+  select i as movie_id, 2000 + i * 3 as movie_year
+  from range(1, 8) as i
+);
+
+insert into Reviews (
+  select r as review_id,
+         ((r - 1) % 8) + 1 as movie_id,
+         [ (to_bigint(floor((r - 1) / 8)) % 4) * 10.0 + sin(r),
+           (to_bigint(floor((r - 1) / 8)) % 4) * 10.0 + cos(r) ] as vec
+  from range(1, 160) as r
+);

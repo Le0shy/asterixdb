@@ -127,19 +127,23 @@
             <expected-error>CLUSTER BY currently does not support LET in its query block.</expected-error>
         </compilation-unit>
     </test-case>
-    <!-- v1 scope restrictions: single FROM term, no joins/UNNEST, no set operations. -->
-    <test-case FilePath="cluster-by/negative">
-        <compilation-unit name="multiple-from-terms">
-            <output-dir compare="Text">multiple-from-terms</output-dir>
-            <expected-error>CLUSTER BY currently requires exactly one FROM term.</expected-error>
-        </compilation-unit>
-    </test-case>
-    <test-case FilePath="cluster-by/negative">
+    <!-- A two-term FROM clause: the clustered vector comes from one dataset while the predicate spans both, so
+         the rewrite rebuilds its input from the whole FROM clause rather than a single source variable. Four
+         groups at k=4, with a year predicate that removes a quarter of the rows, so both the join and the filter
+         are part of the assertion. -->
+    <test-case FilePath="cluster-by">
         <compilation-unit name="join-in-from">
             <output-dir compare="Text">join-in-from</output-dir>
-            <expected-error>CLUSTER BY currently does not support joins in its FROM clause.</expected-error>
         </compilation-unit>
     </test-case>
+    <!-- The same path reached through UNNEST of a nested array, where the second FROM term is correlated with
+         the first rather than independent. -->
+    <test-case FilePath="cluster-by">
+        <compilation-unit name="unnest-in-from">
+            <output-dir compare="Text">unnest-in-from</output-dir>
+        </compilation-unit>
+    </test-case>
+    <!-- v1 scope restrictions: no set operations. -->
     <test-case FilePath="cluster-by/negative">
         <compilation-unit name="setop-with-clusterby">
             <output-dir compare="Text">setop-with-clusterby</output-dir>

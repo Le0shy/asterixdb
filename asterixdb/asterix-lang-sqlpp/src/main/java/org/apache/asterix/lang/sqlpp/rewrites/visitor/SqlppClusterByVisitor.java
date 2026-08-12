@@ -53,17 +53,21 @@ import org.apache.asterix.lang.common.struct.OperatorType;
 import org.apache.asterix.lang.common.struct.VarIdentifier;
 import org.apache.asterix.lang.common.util.ConfigurationUtil;
 import org.apache.asterix.lang.common.util.VectorDistanceMetric;
+import org.apache.asterix.lang.sqlpp.clause.AbstractBinaryCorrelateClause;
 import org.apache.asterix.lang.sqlpp.clause.ClusterbyClause;
 import org.apache.asterix.lang.sqlpp.clause.FromClause;
 import org.apache.asterix.lang.sqlpp.clause.FromTerm;
+import org.apache.asterix.lang.sqlpp.clause.JoinClause;
 import org.apache.asterix.lang.sqlpp.clause.SelectBlock;
 import org.apache.asterix.lang.sqlpp.clause.SelectClause;
 import org.apache.asterix.lang.sqlpp.clause.SelectElement;
 import org.apache.asterix.lang.sqlpp.clause.SelectSetOperation;
 import org.apache.asterix.lang.sqlpp.expression.SelectExpression;
+import org.apache.asterix.lang.sqlpp.optype.JoinType;
 import org.apache.asterix.lang.sqlpp.struct.SetOperationInput;
 import org.apache.asterix.lang.sqlpp.struct.SetOperationRight;
 import org.apache.asterix.lang.sqlpp.util.SqlppRewriteUtil;
+import org.apache.asterix.lang.sqlpp.util.SqlppVariableUtil;
 import org.apache.asterix.lang.sqlpp.visitor.base.AbstractSqlppSimpleExpressionVisitor;
 import org.apache.asterix.om.functions.BuiltinFunctions;
 import org.apache.hyracks.algebricks.common.utils.Pair;
@@ -96,27 +100,22 @@ import org.apache.hyracks.util.annotations.AiProvenance;
  *   SELECT ...   -- sc.cluster_id -&gt; nearest_centroid(t.vec, C3), sc.centroid -&gt; centroid(t.vec), radius -&gt; 0.0
  * </pre>
  *
- * For {@code initMode "random"} the {@code kmeans_oversample_loop}/{@code kmeans_recluster} init is skipped
- * entirely and Lloyd seeds directly from {@code k} vectors of {@code __vecs} drawn uniformly (Forgy); the
- * Lloyd stage still runs as the same runtime operator.
- *
- * The centroid lists {@code C0..C3} are query-level LETs (constants, in scope after the GROUP BY). The two-step
- * distributed CENTROID aggregate + {@code nearest_centroid} broadcast labeling are supplied by the downstream
- * group-by / aggregation rewrites, so this pass rides the normal SQL++ pipeline. It must run BEFORE
- * {@code substituteGroupbyKeyExpression()}/{@code rewriteGroupBys()} so the emitted GROUP BY is desugared like a
- * parsed one. The descriptor {@code sc} is not a materialized variable: its field accesses are substituted
- * directly ({@code sc.cluster_id} -&gt; the grouping-key expression, {@code sc.centroid} -&gt; {@code centroid(vec)} as
- * a per-cluster aggregate, {@code sc.cluster_radius} -&gt; sqrt(max of a pre-group distance binding)). Keeping
- * every post-group descriptor field on the
- * group-aggregation path (rather than constructing a record or indexing {@code C3[cluster_id]}) avoids an
- * optimizer type-inference failure when {@code CLUSTER AS members} is also referenced.
+ * {@code initMode "random"} skips the oversampling/recluster init and seeds Lloyd from {@code k} vectors drawn
+ * uniformly (Forgy); the Lloyd stage is the same runtime operator either way.
  * <p>
- * Supports a single FROM term (no explicit joins), K-Means only, Euclidean(-squared) distance, and a fixed
- * number of Lloyd iterations. Two init modes are supported: {@code kmeansPP} (the default) runs the exact
- * k-means|| initialization (VLDB'12 "Scalable K-Means++") as the {@code kmeans_oversample_loop} runtime operator
- * -- a seeded-Bernoulli oversampling loop over the global potential, whose pool is then weighted and reduced
- * to {@code k} centroids by {@code kmeans_recluster}; {@code random} skips init and seeds Lloyd from
- * {@code k} uniformly drawn vectors. The WITH options are also validated.
+ * The centroid lists are query-level LETs, so the two-step distributed CENTROID aggregate and the
+ * {@code nearest_centroid} broadcast labeling come from the downstream group-by / aggregation rewrites. This
+ * pass must therefore run BEFORE {@code substituteGroupbyKeyExpression()}/{@code rewriteGroupBys()}, so the
+ * GROUP BY it emits is desugared like a parsed one. The descriptor {@code sc} is never materialized: its field
+ * accesses are substituted with their values.
+ * <p>
+ * {@code CLUSTER AS} members are {@code GROUP AS} members -- one field per FROM binding -- with one exception:
+ * {@code sc.cluster_radius} aggregates a pre-group distance binding, and only group fields can be aggregated,
+ * so a query reading the radius also sees {@code $__cbdist} in its members.
+ * <p>
+ * Supports inner joins and UNNEST in the FROM clause (outer joins are refused), K-Means only,
+ * Euclidean(-squared) distance, a fixed number of Lloyd iterations, and the two init modes above. The WITH
+ * options are validated here.
  */
 @AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.ASSISTED)
 @AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_5, tool = AiProvenance.Tool.CLAUDE_CODE_CLI, contributionKind = AiProvenance.ContributionKind.ASSISTED)
@@ -139,12 +138,8 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
     // so they are rejected until that is implemented. Names are the builtins VectorDistanceMetric resolves to.
     private static final Set<String> SUPPORTED_DISTANCE_BUILTINS = Set.of(BuiltinFunctions.EUCLIDEAN_DISTANCE.getName(),
             BuiltinFunctions.EUCLIDEAN_SQUARED_DISTANCE.getName());
-    // initMode "kmeanspp" (default) = the k-means|| initialization, realized as the paper-faithful (Bahmani et
-    // al. VLDB'12, Algorithm 2) exact Bernoulli oversampling: per round a global potential phi = Sigma d^2(x,
-    // pool) is reduced and each point is drawn independently with probability p_x = l * d^2(x, pool) / phi. It
-    // runs as the self-iterating systolic operator sub-graph (KMEANS_OVERSAMPLE_LOOP).
-    // "random" = k uniformly drawn vectors as C0 (Forgy; skip init -- cheap, but seeding quality is what
-    // kmeansPP exists for). These are the only two initModes.
+    // "kmeanspp" (default) = k-means|| oversampling (Bahmani et al. VLDB'12, Algorithm 2), drawing each point
+    // with probability p_x = l * d^2(x, pool) / phi. "random" = k uniformly drawn vectors (Forgy).
     private static final String INIT_MODE_KMEANSPP = "kmeanspp";
     private static final String INIT_MODE_RANDOM = "random";
     private static final Set<String> KNOWN_INIT_MODES = Set.of(INIT_MODE_KMEANSPP, INIT_MODE_RANDOM);
@@ -155,13 +150,9 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
     // Fixed number of Lloyd iterations (unrolled as nested centroid subqueries).
     private static final int LLOYD_ITERATIONS = 3;
 
-    // k-means|| initialization: oversampling factor l = OVERSAMPLING_FACTOR_PER_K * k, and the number of
-    // unrolled oversampling rounds.
-    //
-    // 5 rounds per the VLDB'12 experiments. Safe ONLY because every centroid-list LET this rewrite emits is
-    // marked no-inline (markNoInlineLetVar): each binding compiles once and is shared. With default per-reference
-    // inlining, chained rounds grow the plan exponentially (5 rounds formerly put the optimizer fixpoint pass
-    // into the hours range).
+    // Oversampling factor l = OVERSAMPLING_FACTOR_PER_K * k; 5 rounds per the VLDB'12 experiments. Safe only
+    // because every centroid-list LET here is marked no-inline: under per-reference inlining, chained rounds
+    // grow the plan exponentially.
     private static final int OVERSAMPLING_FACTOR_PER_K = 2;
     private static final int INIT_OVERSAMPLING_ROUNDS = 5;
 
@@ -223,18 +214,27 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
         }
         int k = validateWithOptionsAndGetK(cbc);
 
-        // Only a single FROM term is supported (no explicit joins).
+        // The FROM clause may hold several terms and correlate clauses -- inner joins and UNNEST both arrive
+        // that way -- because the input is copied wholesale into each operator branch below. Outer joins are
+        // still refused: an unmatched row leaves the clustering expression MISSING, and which cluster a
+        // missing vector belongs to has no answer yet.
         FromClause fromClause = selectBlock.getFromClause();
-        if (fromClause == null || fromClause.getFromTerms().size() != 1) {
-            throw new CompilationException(ErrorCode.COMPILATION_ERROR, loc,
-                    "CLUSTER BY currently requires exactly one FROM term.");
+        if (fromClause == null || fromClause.getFromTerms().isEmpty()) {
+            throw new CompilationException(ErrorCode.COMPILATION_ERROR, loc, "CLUSTER BY requires a FROM clause.");
         }
-        FromTerm fromTerm = fromClause.getFromTerms().get(0);
-        if (!fromTerm.getCorrelateClauses().isEmpty() || fromTerm.getLeftVariable() == null) {
-            throw new CompilationException(ErrorCode.COMPILATION_ERROR, loc,
-                    "CLUSTER BY currently does not support joins in its FROM clause.");
+        for (FromTerm term : fromClause.getFromTerms()) {
+            if (term.getLeftVariable() == null) {
+                throw new CompilationException(ErrorCode.COMPILATION_ERROR, loc,
+                        "CLUSTER BY requires every FROM term to bind a variable.");
+            }
+            for (AbstractBinaryCorrelateClause correlate : term.getCorrelateClauses()) {
+                if (correlate instanceof JoinClause && ((JoinClause) correlate).getJoinType() != JoinType.INNER) {
+                    throw new CompilationException(ErrorCode.COMPILATION_ERROR, loc,
+                            "CLUSTER BY currently supports inner joins only; an outer join can leave the "
+                                    + "clustering expression MISSING.");
+                }
+            }
         }
-        VariableExpr fromVar = fromTerm.getLeftVariable();
         Expression clusteringExpr = cbc.getClusteringExpression();
 
         // The clustering input is the QUALIFIED block input: the block's WHERE must apply to the centroid
@@ -252,54 +252,43 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
             }
         }
 
-        // __vecs = (FROM <src clone> AS v0 [WHERE <block where[fromVar := v0]>]
-        //           SELECT VALUE <clusteringExpr[fromVar := v0]>)
-        VariableExpr v0 = newVar(loc);
-        Expression srcClone = (Expression) SqlppRewriteUtil.deepCopy(fromTerm.getLeftExpression());
-        Expression vecExprForVecs = substitute(clusteringExpr, fromVar, v0, loc);
-        Expression whereExprForVecs = whereForVecs == null ? null : substitute(copy(whereForVecs), fromVar, v0, loc);
+        // __vecs = (FROM <clone of the whole FROM clause> [WHERE <clone of the block WHERE>]
+        //           SELECT VALUE <clone of the clustering expression>)
+        //
+        // Copied whole rather than rebuilt from one source variable, so a join or UNNEST carries all its
+        // bindings across. This runs before variable resolution and DeepCopyVisitor keeps the original names,
+        // so each copy resolves independently in its own scope.
+        FromClause fromCloneForVecs = (FromClause) SqlppRewriteUtil.deepCopy(fromClause);
+        Expression vecExprForVecs = (Expression) SqlppRewriteUtil.deepCopy(clusteringExpr);
+        Expression whereExprForVecs =
+                whereForVecs == null ? null : (Expression) SqlppRewriteUtil.deepCopy(whereForVecs);
         VarIdentifier vecs = context.newVariable();
-        SelectExpression vecsQuery =
-                selectValueFrom(srcClone, v0, vecExprForVecs, null, whereExprForVecs, null, null, null, loc);
+        SelectExpression vecsQuery = selectValueFromClause(fromCloneForVecs, vecExprForVecs, whereExprForVecs, loc);
 
         // ---- k-means|| initialization (VLDB'12 "Scalable K-Means++") as runtime operators ----
         List<LetClause> centroidLets = new ArrayList<>();
         centroidLets.add(letClause(vecs, vecsQuery, loc));
 
-        // Init: kmeansPP runs the exact Bernoulli k-means|| oversampling as the runtime systolic loop; random
-        // seeds C0 with k uniformly drawn vectors. Both then run Lloyd, all as a linear TOWER of
-        // nested internal calls: round r's pool argument IS round r-1's call (the operator echoes its pool
-        // through). The subquery args become the operator's stream inputs in the translator; they must be
-        // SELF-CONTAINED pipelines (deep copies of the defining subqueries), because the operator's input
-        // branches cannot reference the chain's LET vars -- the per-round dataset re-scan this implies is
-        // collapsed by the optimizer's common-subtree REPLICATE sharing. Only the final centroid list is
-        // LET-bound; intermediate rounds never materialize as arrays.
+        // Init then Lloyd, built as a tower of nested calls: each round's pool argument is the previous round's
+        // call. The subquery arguments become the operators' stream inputs, so they must be self-contained
+        // pipelines -- an input branch cannot reference the chain's LET vars. The repeated scans this implies
+        // are collapsed by the optimizer's common-subtree REPLICATE sharing. Only the final list is LET-bound.
         boolean randomInit = INIT_MODE_RANDOM.equals(getInitMode(cbc));
         Expression c0Stream;
         if (randomInit) {
-            // initMode "random": C0 = k vectors drawn uniformly (Forgy) -- no oversampling stage; the Lloyd
-            // stages below are unchanged. Taking the k smallest shuffle keys (see uniformRowKey) is a uniform
-            // sample of size k without replacement. Ordering by the vector VALUE instead would return the k
-            // lexicographically smallest vectors, i.e. the k most SIMILAR points in the data set rather than a
-            // sample of it: all k centroids would sit in one corner, most clusters would start empty, and
-            // Lloyd -- which only refines a centroid within its own neighbourhood -- could not recover them.
-            // A uniform sample still misses regions sometimes; that is inherent to Forgy, and is why kmeansPP
-            // is the default.
+            // C0 = k vectors drawn uniformly (Forgy). The k smallest shuffle keys (uniformRowKey) are a uniform
+            // sample without replacement; ordering by the vector VALUE would instead return the k most similar
+            // points, seating every centroid in one corner where Lloyd cannot recover them.
             VariableExpr rv0 = newVar(loc);
             LimitClause limitKInit = new LimitClause(intLit(k, loc), null);
             limitKInit.setSourceLocation(loc);
             c0Stream = selectValueFrom(copy(vecsQuery), rv0, rv0, null, null, ascOrder(uniformRowKey(rv0, loc)), null,
                     limitKInit, loc);
         } else {
-            // kmeansPP: the self-iterating systolic loop. It loops INIT_OVERSAMPLING_ROUNDS times internally
-            // (exact Bernoulli oversampling -- all-reducing the per-round global phi and the drawn candidates),
-            // then weighs the residents against the final pool and emits the (count,sum) partials that
-            // RECLUSTER reduces. The
-            // innermost pool is the single initial centre, which k-means|| draws uniformly at random -- hence
-            // the smallest shuffle key (see uniformRowKey) rather than the smallest vector. Ordering by the
-            // vector VALUE would always return a geometric extreme, the corner of the data with the smallest
-            // leading coordinate. That is the worst available starting point for a D^2 walk, and it biases
-            // every round that follows, because each round's draw probabilities are measured from the pool.
+            // The oversampling loop runs INIT_OVERSAMPLING_ROUNDS rounds internally, then weighs the vectors
+            // against the final pool into the (count, sum) partials RECLUSTER reduces. The innermost pool is
+            // the single initial centre, drawn uniformly -- hence the smallest shuffle key, not the smallest
+            // vector, which would be a geometric extreme and bias every round measured from it.
             VariableExpr pv = newVar(loc);
             LimitClause seedLimit = new LimitClause(intLit(1, loc), null);
             seedLimit.setSourceLocation(loc);
@@ -312,34 +301,28 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
             // padded from pool members if fewer than k attracted points.
             c0Stream = call(BuiltinFunctions.KMEANS_RECLUSTER, loc, weighed, intLit(k, loc));
         }
-        // Lloyd refinement is one self-iterating stage: it loops LLOYD_ITERATIONS times internally, each
-        // iteration assigning every vector to its nearest current centroid and all-reducing the per-centroid
-        // (count, sum) partials into the next centroid set. A centroid that attracts nothing is dropped, so the
-        // set can shrink. Only the final centroid list is LET-bound.
+        // Lloyd refinement loops LLOYD_ITERATIONS times inside one stage, all-reducing the per-centroid
+        // (count, sum) partials each iteration. A centroid that attracts nothing is dropped, so k can shrink.
         Expression centroidStream = call(BuiltinFunctions.KMEANS_LLOYD_LOOP, loc, copy(vecsQuery), c0Stream,
                 intLit(k, loc), intLit(LLOYD_ITERATIONS, loc));
         VarIdentifier cFinal = context.newVariable();
         centroidLets.add(letClause(cFinal, centroidStream, loc));
         context.markNoInlineLetVar(cFinal);
         VarIdentifier prev = cFinal;
-        // The final centroid list is sorted BY VALUE before labeling: the list is otherwise assembled
-        // in merge-arrival order, which varies run to run — the cluster PARTITION was already
-        // deterministic, but cid labels (indexes into this list) were not. A k-row sort makes the
-        // labeling deterministic and identical across the desugar and runtime paths.
+        // Sorted by value before labeling: merge-arrival order varies run to run, so while the partition was
+        // already deterministic, the cid labels (indexes into this list) were not.
         VariableExpr cSortVar = newVar(loc);
         VarIdentifier finalCentroids = context.newVariable();
         centroidLets.add(letClause(finalCentroids, selectValueFrom(varRef(prev, loc), cSortVar, cSortVar, null, null,
                 ascOrder(varRef(cSortVar.getVar(), loc)), null, null, loc), loc));
         context.markNoInlineLetVar(finalCentroids);
 
-        // Per-row distance to the assignment centroid, LET-bound in the BLOCK before the GROUP BY:
-        // cluster_radius aggregates it with a plain MAX. Binding it pre-group matters twice over: an
-        // aggregate whose argument references a variable from OUTSIDE the group (Cfinal) cannot be
-        // decomposed into the two-step local/global form, so the group-by would degrade to
-        // materializing every group (blowing the operator budget at scale); and the aggregation sugar
-        // only accepts aggregate arguments that are group fields, which block LET bindings become.
-        // Consequence: when CLUSTER AS is used, member records carry this binding as an extra
-        // "__cbdist" field (the standard GROUP AS treatment of block LETs).
+        // Per-row distance to the assignment centroid, bound in the block before the GROUP BY so that the MAX
+        // behind cluster_radius stays a two-step local/global aggregate: an aggregate over Cfinal, a variable
+        // from outside the group, cannot decompose and would materialize every group. Only group fields can be
+        // aggregated, and group fields are what CLUSTER AS members are made of -- so this is bound only when
+        // the query reads cluster_radius, leaving members clean otherwise.
+        boolean usesRadius = readsDescriptorField(selectExpression, cbc.getClusterDescriptorVar(), "cluster_radius");
         VariableExpr distVar = new VariableExpr(new VarIdentifier("$__cbdist"));
         distVar.setSourceLocation(loc);
         Expression distExpr = call(BuiltinFunctions.NEAREST_CENTROID_DISTANCE, loc, copy(clusteringExpr),
@@ -347,17 +330,30 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
         LetClause distLet = new LetClause(distVar, distExpr);
         distLet.setSourceLocation(loc);
         List<AbstractClause> letWhere = selectBlock.getLetWhereList();
-        letWhere.add(distLet);
+        if (usesRadius) {
+            letWhere.add(distLet);
+        }
 
         // Convert the block to: GROUP BY nearest_centroid(clusteringExpr, C3) AS $cid [GROUP AS members]
         VariableExpr cidVar = newVar(loc);
         Expression labelExpr =
                 call(BuiltinFunctions.NEAREST_CENTROID, loc, clusteringExpr, varRef(finalCentroids, loc));
-        // GROUP AS <members>: use its var when present; leave the field list null unless the user gave an explicit
-        // member map, so the group-by sugar derives it from the FROM/LET bindings (as for a plain GROUP AS).
+        // The field list mirrors SqlppGroupByVisitor.createGroupFieldList: the FROM bindings, which are the
+        // whole user-visible set since LET in a CLUSTER BY block is rejected, plus $__cbdist when the radius
+        // needs it as a group field.
         VariableExpr groupVar = cbc.hasClusterMembersVar() ? cbc.getClusterMembersVar() : null;
-        List<Pair<Expression, Identifier>> groupFieldList =
-                cbc.hasClusterFieldList() ? cbc.getClusterFieldList() : null;
+        List<Pair<Expression, Identifier>> groupFieldList = null;
+        if (cbc.hasClusterFieldList()) {
+            groupFieldList = cbc.getClusterFieldList();
+        } else if (groupVar != null) {
+            groupFieldList = new ArrayList<>();
+            for (VariableExpr fromVarExpr : SqlppVariableUtil.getBindingVariables(selectBlock.getFromClause())) {
+                SqlppVariableUtil.addToFieldVariableList(fromVarExpr, groupFieldList);
+            }
+            if (usesRadius) {
+                SqlppVariableUtil.addToFieldVariableList(distVar, groupFieldList);
+            }
+        }
         GroupbyClause mainGby = groupBy(labelExpr, cidVar, groupVar, groupFieldList, loc);
 
         // Splice into the AST: query-level centroid LETs + GROUP BY on the block.
@@ -365,30 +361,53 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
         selectBlock.setClusterbyClause(null);
         selectBlock.setGroupbyClause(mainGby);
 
-        // Replace the descriptor field accesses (sc.cluster_id / sc.centroid / sc.cluster_radius) directly with their
-        // values, where <label> is a copy of the grouping-key expression nearest_centroid(vec, C3).
-        // substituteGroupbyKeyExpression (which runs next) maps those copies to the group-by key variable.
-        // Substituting the field accesses (rather than binding sc to a record) avoids constructing an
-        // OpenRecordConstructor whose type inference breaks when the group (members) variable is also referenced.
-        // sc.centroid is the mean of the cluster's members: centroid(vec) as a SQL aggregate over the group (the
-        // group-by aggregation rewrite turns it into the two-step CENTROID over the group variable). Using this
-        // instead of indexing the constant list C3[cluster_id] keeps every post-group descriptor field on the
-        // group-aggregation path, avoiding an optimizer type-inference failure when members is also referenced.
+        // Substitute the descriptor's field accesses with their values rather than binding sc to a record: an
+        // OpenRecordConstructor here breaks type inference when the members variable is also referenced. For
+        // the same reason sc.centroid becomes centroid(vec) as a group aggregate rather than C3[cluster_id],
+        // keeping every post-group descriptor field on the group-aggregation path.
         VariableExpr scVar = cbc.getClusterDescriptorVar();
         Map<Expression, Expression> scSubst = new HashMap<>();
         scSubst.put(fieldAccess(scVar, "cluster_id", loc), copy(labelExpr));
         scSubst.put(fieldAccess(scVar, "centroid", loc),
                 call(BuiltinFunctions.SCALAR_CENTROID, loc, copy(clusteringExpr)));
-        // cluster_radius = sqrt(MAX(distance to the assignment centroid)); MAX is emitted name-based
-        // (like count in __wpairs) so the aggregation sugar resolves it over the group, and sqrt is a
-        // scalar over the aggregate result (distances are the squared-Euclidean kernel). Measured to
-        // the ASSIGNMENT centroid, which may differ from the reported members-mean centroid.
+        // cluster_radius = sqrt(MAX(distance)); MAX is emitted name-based so the aggregation sugar resolves it
+        // over the group. Measured to the ASSIGNMENT centroid, which may differ from the reported centroid.
         CallExpr radiusMax =
                 new CallExpr(new FunctionSignature(null, null, "max", 1), List.of(new VariableExpr(distVar.getVar())));
         radiusMax.setSourceLocation(loc);
         Expression radiusExpr = call(BuiltinFunctions.NUMERIC_SQRT, loc, radiusMax);
-        scSubst.put(fieldAccess(scVar, "cluster_radius", loc), radiusExpr);
+        if (usesRadius) {
+            scSubst.put(fieldAccess(scVar, "cluster_radius", loc), radiusExpr);
+        }
         SqlppRewriteUtil.substituteExpression(selectExpression, scSubst, context);
+    }
+
+    /** Whether the query reads {@code <descriptor>.<field>}, e.g. sc.cluster_radius. */
+    private static boolean readsDescriptorField(ILangExpression expr, VariableExpr descriptorVar, String field)
+            throws CompilationException {
+        DescriptorFieldFinder finder = new DescriptorFieldFinder(descriptorVar, field);
+        expr.accept(finder, null);
+        return finder.found;
+    }
+
+    private static final class DescriptorFieldFinder extends AbstractSqlppSimpleExpressionVisitor {
+        private final VariableExpr descriptorVar;
+        private final String field;
+        private boolean found;
+
+        private DescriptorFieldFinder(VariableExpr descriptorVar, String field) {
+            this.descriptorVar = descriptorVar;
+            this.field = field;
+        }
+
+        @Override
+        public Expression visit(FieldAccessor fa, ILangExpression arg) throws CompilationException {
+            if (field.equals(fa.getIdent().getValue()) && fa.getExpr().getKind() == Expression.Kind.VARIABLE_EXPRESSION
+                    && descriptorVar.getVar().getValue().equals(((VariableExpr) fa.getExpr()).getVar().getValue())) {
+                found = true;
+            }
+            return super.visit(fa, arg);
+        }
     }
 
     private FieldAccessor fieldAccess(VariableExpr recordVar, String field, SourceLocation loc) {
@@ -402,6 +421,32 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
     }
 
     /** Build {@code SELECT VALUE <valueExpr> FROM <fromSource> AS <fromVar> [LET] [WHERE] [gby] [orderBy] [limit]}. */
+    /**
+     * {@code (FROM <fromClause> [WHERE <whereExpr>] SELECT VALUE <valueExpr>)} over a ready-made FROM clause,
+     * for inputs that bind more than one variable. {@link #selectValueFrom} is the single-source form.
+     */
+    private SelectExpression selectValueFromClause(FromClause fromClause, Expression valueExpr, Expression whereExpr,
+            SourceLocation loc) {
+        SelectElement selectElement = new SelectElement(valueExpr);
+        selectElement.setSourceLocation(loc);
+        SelectClause selectClause = new SelectClause(selectElement, null, false);
+        selectClause.setSourceLocation(loc);
+        List<AbstractClause> letWhereList = null;
+        if (whereExpr != null) {
+            WhereClause whereClause = new WhereClause(whereExpr);
+            whereClause.setSourceLocation(loc);
+            letWhereList = new ArrayList<>(List.of(whereClause));
+        }
+        SelectBlock selectBlock = new SelectBlock(selectClause, fromClause, letWhereList, null, null);
+        selectBlock.setSourceLocation(loc);
+        SetOperationInput setOpInput = new SetOperationInput(selectBlock, null);
+        SelectSetOperation setOp = new SelectSetOperation(setOpInput, null);
+        setOp.setSourceLocation(loc);
+        SelectExpression selectExpression = new SelectExpression(null, setOp, null, null, true);
+        selectExpression.setSourceLocation(loc);
+        return selectExpression;
+    }
+
     private SelectExpression selectValueFrom(Expression fromSource, VariableExpr fromVar, Expression valueExpr,
             LetClause letBinding, Expression whereExpr, OrderbyClause orderBy, GroupbyClause gby, LimitClause limit,
             SourceLocation loc) {
@@ -449,14 +494,6 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
         LetClause let = new LetClause(varRef(var, loc), bindExpr);
         let.setSourceLocation(loc);
         return let;
-    }
-
-    private Expression substitute(Expression expr, VariableExpr from, VariableExpr to, SourceLocation loc)
-            throws CompilationException {
-        Expression copy = (Expression) SqlppRewriteUtil.deepCopy(expr);
-        Map<Expression, Expression> subst = new HashMap<>();
-        subst.put(from, to);
-        return SqlppRewriteUtil.substituteExpression(copy, subst, context);
     }
 
     private CallExpr call(org.apache.hyracks.algebricks.core.algebra.functions.FunctionIdentifier fid,
@@ -564,6 +601,21 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
         // distanceFunction is optional. Validate against the engine's shared vector-distance vocabulary and
         // accept only the Euclidean family (see SUPPORTED_DISTANCE_BUILTINS); unknown names and metrics
         // without a matching centroid update (cosine, dot) are both rejected here.
+        // Cross-pollination (overlapping clusters) is not implemented, but only a request to turn it ON is an
+        // error -- false asks for the disjoint clusters this release already produces. Accepting a true would
+        // silently hand back disjoint clusters to a query that asked for overlapping ones.
+        String crossPollination = opts.get(OPT_CROSS_POLLINATION);
+        if (crossPollination != null) {
+            String value = crossPollination.trim();
+            if (!"true".equalsIgnoreCase(value) && !"false".equalsIgnoreCase(value)) {
+                throw new CompilationException(ErrorCode.COMPILATION_ERROR, cbc.getSourceLocation(),
+                        "CLUSTER BY 'CrossPollination' must be true or false, but was: " + crossPollination);
+            }
+            if (Boolean.parseBoolean(value)) {
+                throw new CompilationException(ErrorCode.COMPILATION_ERROR, cbc.getSourceLocation(),
+                        "CLUSTER BY cross-pollination is currently not enabled; clusters are always disjoint.");
+            }
+        }
         String distance = opts.get(OPT_DISTANCE);
         if (distance != null) {
             Optional<String> builtin = VectorDistanceMetric.resolve(distance);
@@ -586,7 +638,8 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
             throw new CompilationException(ErrorCode.COMPILATION_ERROR, cbc.getSourceLocation(),
                     "Unknown CLUSTER BY initMode '" + initMode + "'. Supported: kmeansPP, random.");
         }
-        // CrossPollination / CrossPollinationDistanceRatio are accepted but inert in this release.
+        // CrossPollinationDistanceRatio is accepted but inert: it only has meaning once cross-pollination
+        // itself is enabled, which the check above guarantees it is not.
         return k;
     }
 
