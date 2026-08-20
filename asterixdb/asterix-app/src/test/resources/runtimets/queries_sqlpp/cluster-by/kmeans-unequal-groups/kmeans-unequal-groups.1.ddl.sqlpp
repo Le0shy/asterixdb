@@ -1,0 +1,31 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+-- Four well-separated groups of very unequal size. Trivially separable -- the groups are rings of radius 1
+-- centred ten apart -- so the exact partition is knowable in advance, which makes this a check on
+-- initialization quality rather than on convergence.
+--
+-- It exists because an inertia sweep did not catch a seeding regression here. Total inertia over a large,
+-- roughly uniform embedding cloud barely moves when one small group is missed, so a quality loss that is
+-- obvious on structured data was invisible in the aggregate. This fixture is the structured case.
+drop dataverse test if exists;
+create dataverse test;
+use test;
+
+create type PointType as closed { id : integer, vec : [double] };
+create dataset Points(PointType) primary key id;

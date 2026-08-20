@@ -19,5 +19,5 @@
 
 from [{"x": [1.0, 2.0]}] as r
 cluster by r.x as sc
-with { "NumClusters": 0 }
+with { "dimension": [2], "num_clusters": 0 }
 select sc.cluster_id;

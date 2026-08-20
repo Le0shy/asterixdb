@@ -1,0 +1,103 @@
+distribute result [$$172]
+-- DISTRIBUTE_RESULT  |PARTITIONED|
+  exchange
+  -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
+    assign [$$172] <- [{"cid": $#5}] project: [$$172]
+    -- ASSIGN  |PARTITIONED|
+      exchange
+      -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
+        group by ([$#5 := $$180]) decor ([]) {
+                  aggregate [] <- [] [cardinality: 0.0, doc-size: 0.0, op-cost: 0.0, total-cost: 0.0]
+                  -- AGGREGATE  |LOCAL|
+                    nested tuple source [cardinality: 0.0, doc-size: 0.0, op-cost: 0.0, total-cost: 0.0]
+                    -- NESTED_TUPLE_SOURCE  |LOCAL|
+               }
+        -- SORT_GROUP_BY[$$180]  |PARTITIONED|
+          exchange
+          -- HASH_PARTITION_EXCHANGE [$$180]  |PARTITIONED|
+            select (and(is-array($$175), eq(len($$175), 2), not(is-unknown($$180)))) project: [$$180]
+            -- STREAM_SELECT  |PARTITIONED|
+              assign [$$180] <- [nearest-centroid($$175, $$155)] project: [$$175, $$180]
+              -- ASSIGN  |PARTITIONED|
+                assign [$$175] <- [$$r.getField(1)] project: [$$155, $$175]
+                -- ASSIGN  |PARTITIONED|
+                  project ([$$155, $$r])
+                  -- STREAM_PROJECT  |PARTITIONED|
+                    exchange
+                    -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
+                      data-scan []<-[$$178, $$r] <- clusterby_test.Reviews
+                      -- DATASOURCE_SCAN  |PARTITIONED|
+                        exchange
+                        -- BROADCAST_EXCHANGE  |PARTITIONED|
+                          aggregate [$$155] <- [listify($$151)]
+                          -- AGGREGATE  |UNPARTITIONED|
+                            exchange
+                            -- SORT_MERGE_EXCHANGE [$$151(ASC) ]  |PARTITIONED|
+                              order (ASC, $$151)
+                              -- STABLE_SORT [$$151(ASC)]  |PARTITIONED|
+                                exchange
+                                -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
+                                  kmeans-stage $$151 <- lloyd-loop $$174 vs pool $$179
+                                  -- KMEANS_LLOYD_LOOP  |PARTITIONED|
+                                    exchange
+                                    -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
+                                      assign [$$174] <- [$$179] project: [$$174]
+                                      -- ASSIGN  |PARTITIONED|
+                                        exchange
+                                        -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
+                                          replicate
+                                          -- REPLICATE  |PARTITIONED|
+                                            exchange
+                                            -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
+                                              select (and(is-array($$179), eq(len($$179), 2)))
+                                              -- STREAM_SELECT  |PARTITIONED|
+                                                assign [$$179] <- [$$r.getField(1)] project: [$$179]
+                                                -- ASSIGN  |PARTITIONED|
+                                                  project ([$$r])
+                                                  -- STREAM_PROJECT  |PARTITIONED|
+                                                    exchange
+                                                    -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
+                                                      data-scan []<-[$$177, $$r] <- clusterby_test.Reviews
+                                                      -- DATASOURCE_SCAN  |PARTITIONED|
+                                                        exchange
+                                                        -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
+                                                          empty-tuple-source
+                                                          -- EMPTY_TUPLE_SOURCE  |PARTITIONED|
+                                    exchange
+                                    -- BROADCAST_EXCHANGE  |PARTITIONED|
+                                      limit 3
+                                      -- STREAM_LIMIT  |UNPARTITIONED|
+                                        project ([$$179])
+                                        -- STREAM_PROJECT  |PARTITIONED|
+                                          exchange
+                                          -- SORT_MERGE_EXCHANGE [$$148(ASC) ]  |PARTITIONED|
+                                            limit 3
+                                            -- STREAM_LIMIT  |PARTITIONED|
+                                              exchange
+                                              -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
+                                                order (topK: 3) (ASC, $$148)
+                                                -- STABLE_SORT [topK: 3] [$$148(ASC)]  |PARTITIONED|
+                                                  exchange
+                                                  -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
+                                                    assign [$$148] <- [random(get-item($$179, 0))]
+                                                    -- ASSIGN  |PARTITIONED|
+                                                      exchange
+                                                      -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
+                                                        replicate
+                                                        -- REPLICATE  |PARTITIONED|
+                                                          exchange
+                                                          -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
+                                                            select (and(is-array($$179), eq(len($$179), 2)))
+                                                            -- STREAM_SELECT  |PARTITIONED|
+                                                              assign [$$179] <- [$$r.getField(1)] project: [$$179]
+                                                              -- ASSIGN  |PARTITIONED|
+                                                                project ([$$r])
+                                                                -- STREAM_PROJECT  |PARTITIONED|
+                                                                  exchange
+                                                                  -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
+                                                                    data-scan []<-[$$177, $$r] <- clusterby_test.Reviews
+                                                                    -- DATASOURCE_SCAN  |PARTITIONED|
+                                                                      exchange
+                                                                      -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
+                                                                        empty-tuple-source
+                                                                        -- EMPTY_TUPLE_SOURCE  |PARTITIONED|

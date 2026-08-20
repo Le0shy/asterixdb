@@ -62,10 +62,9 @@ import org.apache.hyracks.dataflow.common.data.accessors.IFrameTupleReference;
  * count, and averages them into a centroid. Two-step (local/global) distributed aggregation follows AVG exactly
  * ({@link AbstractAvgAggregateFunction}): the partial is a closed record {@code {sum, count}} built with
  * {@link ClosedRecordConstructorEval} and read back with {@link ARecordSerializerDeserializer#getFieldOffsetById},
- * except {@code sum} is a {@code [double]} list field instead of a scalar. This standard record-field path replaces
- * the earlier hand-built "packed list" intermediate, which did not round-trip local-&gt;global. One wrinkle: a closed
- * record strips the outer type tag of a list field on store, so {@code sum} is placed last and its tag is prepended
- * back before reading (see {@link #processPartialResults}). v1 supports DOUBLE vectors only.
+ * except {@code sum} is a {@code [double]} list field instead of a scalar. One wrinkle: a closed record strips the
+ * outer type tag of a list field on store, so {@code sum} is placed last and its tag is prepended back before
+ * reading (see {@link #processPartialResults}). v1 supports DOUBLE vectors only.
  */
 public abstract class AbstractCentroidAggregateFunction extends AbstractAggregateFunction {
 
