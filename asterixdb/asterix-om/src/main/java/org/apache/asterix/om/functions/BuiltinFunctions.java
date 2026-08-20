@@ -1251,23 +1251,6 @@ public class BuiltinFunctions {
     // for it. The translator turns this into a ClusterByOperator; a rewrite rule expands that into whichever
     // stages the algorithm needs. The three kmeans-* markers below are what that rule produces today.
     public static final FunctionIdentifier CLUSTER_BY = FunctionConstants.newAsterix("cluster-by", 5);
-    // kmeans-recluster(partials, k, metric): single-input merge — reduce partials, then weighted k-means++
-    // to k (C0).
-    public static final FunctionIdentifier KMEANS_RECLUSTER = FunctionConstants.newAsterix("kmeans-recluster", 3);
-    // CLUSTER BY initMode "kmeansPP": the exact k-means|| oversampling init as one self-iterating
-    // operator. kmeans-oversample-loop(vectors, seedPool, l, rounds,
-    // seedBase, metric): runs the whole oversample loop internally, iterating `rounds` times and all-reducing the
-    // per-round global potential + draws across partitions; the physical operator realizes it as an injected
-    // pipelined systolic sub-graph. The final pool is weighed and emitted for kmeans-recluster.
-    public static final FunctionIdentifier KMEANS_OVERSAMPLE_LOOP =
-            FunctionConstants.newAsterix("kmeans-oversample-loop", 6);
-
-    // The Lloyd refinement as one self-iterating operator. kmeans-lloyd-loop(vectors, centroids, k,
-    // iterations, metric): runs every refinement iteration internally, all-reducing each iteration's per-centroid
-    // (count, sum) partials into the next centroid set; the physical operator realizes it as an injected
-    // pipelined systolic sub-graph. Emits the final centroid set as plain vectors.
-    public static final FunctionIdentifier KMEANS_LLOYD_LOOP = FunctionConstants.newAsterix("kmeans-lloyd-loop", 5);
-
     // Temporal functions
     public static final FunctionIdentifier UNIX_TIME_FROM_DATE_IN_DAYS =
             FunctionConstants.newAsterix("unix-time-from-date-in-days", 1);
@@ -2022,9 +2005,7 @@ public class BuiltinFunctions {
 
         addPrivateFunction(NEAREST_CENTROID, AInt32TypeComputer.INSTANCE_NULLABLE, true);
         addPrivateFunction(NEAREST_CENTROID_DISTANCE, ADoubleTypeComputer.INSTANCE_NULLABLE, true);
-        addPrivateFunction(KMEANS_RECLUSTER, OrderedListOfAnyTypeComputer.INSTANCE, true);
-        addPrivateFunction(KMEANS_OVERSAMPLE_LOOP, OrderedListOfAnyTypeComputer.INSTANCE, true);
-        addPrivateFunction(KMEANS_LLOYD_LOOP, OrderedListOfAnyTypeComputer.INSTANCE, true);
+        addPrivateFunction(CLUSTER_BY, OrderedListOfAnyTypeComputer.INSTANCE, true);
         // Window functions
 
         addFunction(CUME_DIST, ADoubleTypeComputer.INSTANCE, false);
