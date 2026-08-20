@@ -174,6 +174,11 @@ public class ExpandClusterByRule extends AbstractDecorrelationRule {
         lloyd.setDistanceVariable(rowDist, cop.getRadiusVarType());
         lloyd.getInputs().add(vectors);
         lloyd.getInputs().add(centroidsIn);
+        // Every partition emits its own rows now, where only partition 0 spoke when the output was the
+        // global centroid set. Left unset, the stage still reads as unpartitioned and the group-by below it
+        // inherits that, so the enforcer never repartitions on the cluster id and each partition groups only
+        // what it holds.
+        OperatorManipulationUtil.setOperatorMode(lloyd);
         lloyd.recomputeSchema();
         context.computeAndSetTypeEnvironmentForOperator(lloyd);
         return clustersOf(cop, lloyd, rowCid, rowDist, context, loc);
