@@ -35,14 +35,10 @@ import org.apache.asterix.common.vector.VectorSimilarityMetric;
 import org.apache.asterix.lang.common.base.AbstractClause;
 import org.apache.asterix.lang.common.base.Expression;
 import org.apache.asterix.lang.common.base.ILangExpression;
-import org.apache.asterix.lang.common.clause.GroupbyClause;
 import org.apache.asterix.lang.common.clause.LetClause;
-import org.apache.asterix.lang.common.clause.LimitClause;
-import org.apache.asterix.lang.common.clause.OrderbyClause;
 import org.apache.asterix.lang.common.clause.WhereClause;
 import org.apache.asterix.lang.common.expression.CallExpr;
 import org.apache.asterix.lang.common.expression.FieldAccessor;
-import org.apache.asterix.lang.common.expression.GbyVariableExpressionPair;
 import org.apache.asterix.lang.common.expression.LiteralExpr;
 import org.apache.asterix.lang.common.expression.OperatorExpr;
 import org.apache.asterix.lang.common.expression.VariableExpr;
@@ -60,11 +56,8 @@ import org.apache.asterix.lang.sqlpp.clause.FromClause;
 import org.apache.asterix.lang.sqlpp.clause.FromTerm;
 import org.apache.asterix.lang.sqlpp.clause.JoinClause;
 import org.apache.asterix.lang.sqlpp.clause.SelectBlock;
-import org.apache.asterix.lang.sqlpp.clause.SelectClause;
-import org.apache.asterix.lang.sqlpp.clause.SelectElement;
 import org.apache.asterix.lang.sqlpp.clause.SelectSetOperation;
 import org.apache.asterix.lang.sqlpp.clause.UnnestClause;
-import org.apache.asterix.lang.sqlpp.expression.ClusterByExpr;
 import org.apache.asterix.lang.sqlpp.expression.SelectExpression;
 import org.apache.asterix.lang.sqlpp.optype.JoinType;
 import org.apache.asterix.lang.sqlpp.optype.UnnestType;
@@ -220,93 +213,50 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
         return selectBlock != null && selectBlock.hasClusterbyClause() ? selectBlock : null;
     }
 
+    /**
+     * Turns CLUSTER BY into a clause the translator can build an operator from.
+     * <p>
+     * The clause stays on the block. What this does is validate the WITH options, put the vector
+     * well-formedness test on the block as an ordinary WHERE, and name the four variables the operator
+     * produces so the descriptor fields can be pointed at them. Nothing is copied and nothing is rebuilt:
+     * the operator consumes the block's own pipeline and emits one tuple per cluster.
+     */
     private void desugarClusterBy(SelectExpression selectExpression, SelectBlock selectBlock)
             throws CompilationException {
         ClusterbyClause cbc = selectBlock.getClusterbyClause();
         SourceLocation loc = cbc.getSourceLocation();
-
-        FromClause fromClause = rejectUnsupportedShapes(selectExpression, selectBlock, loc);
+        rejectUnsupportedShapes(selectExpression, selectBlock, loc);
         int k = validateWithOptionsAndGetK(cbc);
         int dimension = validateDimensionAndGet(cbc);
-        Expression clusteringExpr = cbc.getClusteringExpression();
-
-        Expression whereForVecs = vectorFilter(selectBlock, clusteringExpr, dimension, loc);
-
-        // __vecs = (FROM <clone of the whole FROM clause> [WHERE <clone of the block WHERE>]
-        //           SELECT VALUE <clone of the clustering expression>)
-        //
-        // Copied whole rather than rebuilt from one source variable, so a join or UNNEST carries all its
-        // bindings across. This runs before variable resolution and DeepCopyVisitor keeps the original names,
-        // so each copy resolves independently in its own scope.
-        FromClause fromCloneForVecs = (FromClause) SqlppRewriteUtil.deepCopy(fromClause);
-        Expression vecExprForVecs = (Expression) SqlppRewriteUtil.deepCopy(clusteringExpr);
-        Expression whereExprForVecs =
-                whereForVecs == null ? null : (Expression) SqlppRewriteUtil.deepCopy(whereForVecs);
-        // Not bound to a LET: every consumer below takes its own copy of this query, so a binding would
-        // compute the vector stream into a variable nothing reads.
-        SelectExpression vecsQuery = selectValueFromClause(fromCloneForVecs, vecExprForVecs, whereExprForVecs, loc);
-
         String metric = getMetric(cbc);
-        List<LetClause> centroidLets = new ArrayList<>();
-        VarIdentifier finalCentroids = bindCentroidLets(centroidLets, cbc, vecsQuery, k, metric, loc);
+        cbc.setResolvedOptions(k, getInitMode(cbc), metric);
 
-        // Per-row distance to the assignment centroid, bound in the block before the GROUP BY so that the MAX
-        // behind cluster_radius stays a two-step local/global aggregate: an aggregate over C, a variable
-        // from outside the group, cannot decompose and would materialize every group. Only group fields can be
-        // aggregated, and group fields are what CLUSTER AS members are made of -- so this is bound only when
-        // the query reads cluster_radius, leaving members clean otherwise.
-        boolean usesRadius = readsDescriptorField(selectExpression, cbc.getClusterDescriptorVar(), SC_CLUSTER_RADIUS);
-        VariableExpr distVar = new VariableExpr(new VarIdentifier("$__cbdist"));
-        distVar.setSourceLocation(loc);
-        Expression distExpr = call(BuiltinFunctions.NEAREST_CENTROID_DISTANCE, loc, copy(clusteringExpr),
-                varRef(finalCentroids, loc), strLit(metric, loc));
-        LetClause distLet = new LetClause(distVar, distExpr);
-        distLet.setSourceLocation(loc);
-        List<AbstractClause> letWhere = selectBlock.getLetWhereList();
-        if (usesRadius) {
-            letWhere.add(distLet);
+        Expression clusteringExpr = cbc.getClusteringExpression();
+        // Shape and width, as a WHERE on the block: a row whose vector is absent, null or the wrong length is
+        // not a member of any cluster, so it must be gone before the operator sees it rather than dropped
+        // inside it. Declared width, not the first row's -- the verdict cannot depend on read order.
+        vectorFilter(selectBlock, clusteringExpr, dimension, loc);
+
+        // The operator's output. members always exists, whether or not the query named it: it is what carries
+        // the rows through, and the centroid and radius are derived from the same assignment.
+        cbc.setClusterIdVar(newVar(loc));
+        cbc.setCentroidVar(newVar(loc));
+        cbc.setRadiusVar(newVar(loc));
+        if (!cbc.hasClusterMembersVar()) {
+            cbc.setClusterMembersVar(newVar(loc));
         }
-
-        // Convert the block to: GROUP BY nearest_centroid(clusteringExpr, C) AS $cid [GROUP AS members]
-        VariableExpr cidVar = newVar(loc);
-        Expression labelExpr = call(BuiltinFunctions.NEAREST_CENTROID, loc, clusteringExpr, varRef(finalCentroids, loc),
-                strLit(metric, loc));
-        // Drop rows the labeling cannot place. nearest_centroid returns NULL (with a warning) for a vector it
-        // cannot measure -- a non-numeric element, or a magnitude whose square overflows -- and without this
-        // those rows would group under a NULL key, handing back num_clusters + 1 clusters. The training side
-        // already excludes them in the decoder; this is the same policy on the labeling side.
-        //
-        // The predicate repeats the group-by key rather than binding it to a LET on purpose: a LET here would
-        // land in the CLUSTER AS members record for every query, the way $__cbdist does for the radius. The
-        // repeated call is common-subexpression-eliminated, so it costs no extra distance work.
-        CallExpr labeled = call(BuiltinFunctions.IS_UNKNOWN, loc, copy(labelExpr));
-        WhereClause labelable = new WhereClause(call(BuiltinFunctions.NOT, loc, labeled));
-        labelable.setSourceLocation(loc);
-        letWhere.add(labelable);
-        // The field list mirrors SqlppGroupByVisitor.createGroupFieldList: the FROM bindings, which are the
-        // whole user-visible set since LET in a CLUSTER BY block is rejected, plus $__cbdist when the radius
-        // needs it as a group field.
-        VariableExpr groupVar = cbc.hasClusterMembersVar() ? cbc.getClusterMembersVar() : null;
-        List<Pair<Expression, Identifier>> groupFieldList = null;
-        if (cbc.hasClusterFieldList()) {
-            groupFieldList = cbc.getClusterFieldList();
-        } else if (groupVar != null) {
-            groupFieldList = new ArrayList<>();
+        // What a member looks like: one field per FROM binding, mirroring
+        // SqlppGroupByVisitor.createGroupFieldList. LET inside the block is rejected, so the FROM bindings are
+        // the whole user-visible set.
+        if (!cbc.hasClusterFieldList()) {
+            List<Pair<Expression, Identifier>> memberFields = new ArrayList<>();
             for (VariableExpr fromVarExpr : SqlppVariableUtil.getBindingVariables(selectBlock.getFromClause())) {
-                SqlppVariableUtil.addToFieldVariableList(fromVarExpr, groupFieldList);
+                SqlppVariableUtil.addToFieldVariableList(fromVarExpr, memberFields);
             }
-            if (usesRadius) {
-                SqlppVariableUtil.addToFieldVariableList(distVar, groupFieldList);
-            }
+            cbc.setClusterFieldList(memberFields);
         }
-        GroupbyClause mainGby = groupBy(labelExpr, cidVar, groupVar, groupFieldList, loc);
 
-        // Splice into the AST: query-level centroid LETs + GROUP BY on the block.
-        selectExpression.getLetList().addAll(centroidLets);
-        selectBlock.setClusterbyClause(null);
-        selectBlock.setGroupbyClause(mainGby);
-
-        substituteDescriptorFields(selectExpression, cbc, clusteringExpr, labelExpr, distVar, usesRadius, metric, loc);
+        substituteDescriptorFields(selectExpression, cbc, loc);
     }
 
     /**
@@ -406,55 +356,19 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
     }
 
     /**
-     * Appends the query-level LETs that compute the centroids, and returns the variable holding the final,
-     * ordered list.
+     * Points the descriptor's fields at the variables the operator produces.
+     * <p>
+     * Each is a plain variable reference now. They used to be expressions rebuilt from the centroid list --
+     * an aggregate for the centre, a MAX over a per-row distance for the radius -- because the operator
+     * emitted neither.
      */
-    private VarIdentifier bindCentroidLets(List<LetClause> centroidLets, ClusterbyClause cbc,
-            SelectExpression vecsQuery, int k, String metric, SourceLocation loc) throws CompilationException {
-        // One node, whatever the algorithm. How it is carried out is decided by the rule that expands it.
-        ClusterByExpr centroidStream = new ClusterByExpr(copy(vecsQuery), k, getInitMode(cbc), metric);
-        centroidStream.setSourceLocation(loc);
-        VarIdentifier cFinal = context.newVariable();
-        centroidLets.add(letClause(cFinal, centroidStream, loc));
-        context.markNoInlineLetVar(cFinal);
-
-        // Sorted by value before labeling. The partition was already deterministic, but the list arrives in
-        // merge order, which varies run to run -- so the cid labels, being indexes into it, would not be.
-        VariableExpr cSortVar = newVar(loc);
-        VarIdentifier finalCentroids = context.newVariable();
-        centroidLets.add(letClause(finalCentroids, selectValueFrom(varRef(cFinal, loc), cSortVar, cSortVar, null, null,
-                ascOrder(varRef(cSortVar.getVar(), loc)), null, null, loc), loc));
-        context.markNoInlineLetVar(finalCentroids);
-        return finalCentroids;
-    }
-
-    /**
-     * Replaces every {@code <descriptor>.<field>} read with the expression that computes it. The descriptor is
-     * substituted field by field rather than bound to a record: an OpenRecordConstructor here breaks type
-     * inference when the members variable is also referenced. For the same reason {@code sc.centroid} becomes
-     * {@code centroid(vec)} as a group aggregate rather than an index into the centroid list, keeping every
-     * post-group descriptor field on the group-aggregation path.
-     */
-    private void substituteDescriptorFields(SelectExpression selectExpression, ClusterbyClause cbc,
-            Expression clusteringExpr, Expression labelExpr, VariableExpr distVar, boolean usesRadius, String metric,
-            SourceLocation loc) throws CompilationException {
+    private void substituteDescriptorFields(SelectExpression selectExpression, ClusterbyClause cbc, SourceLocation loc)
+            throws CompilationException {
         VariableExpr scVar = cbc.getClusterDescriptorVar();
         Map<Expression, Expression> scSubst = new HashMap<>();
-        scSubst.put(fieldAccess(scVar, SC_CLUSTER_ID, loc), copy(labelExpr));
-        scSubst.put(fieldAccess(scVar, SC_CENTROID, loc),
-                call(BuiltinFunctions.SCALAR_CENTROID, loc, copy(clusteringExpr)));
-        if (usesRadius) {
-            // cluster_radius = MAX(distance); MAX is emitted name-based so the aggregation sugar resolves it
-            // over the group. Measured to the ASSIGNMENT centroid, which may differ from the reported one.
-            CallExpr radiusMax = new CallExpr(new FunctionSignature(null, null, "max", 1),
-                    List.of(new VariableExpr(distVar.getVar())));
-            radiusMax.setSourceLocation(loc);
-            // A square root only undoes a squaring. Squared Euclidean returns d^2, so its radius is the root of
-            // the max; cosine returns 1 - cos, an angle-like quantity whose root would mean nothing.
-            Expression radius = VectorSimilarityMetric.EUCLIDEAN_SQUARED.canonical().equals(metric)
-                    ? call(BuiltinFunctions.NUMERIC_SQRT, loc, radiusMax) : radiusMax;
-            scSubst.put(fieldAccess(scVar, SC_CLUSTER_RADIUS, loc), radius);
-        }
+        scSubst.put(fieldAccess(scVar, SC_CLUSTER_ID, loc), new VariableExpr(cbc.getClusterIdVar().getVar()));
+        scSubst.put(fieldAccess(scVar, SC_CENTROID, loc), new VariableExpr(cbc.getCentroidVar().getVar()));
+        scSubst.put(fieldAccess(scVar, SC_CLUSTER_RADIUS, loc), new VariableExpr(cbc.getRadiusVar().getVar()));
         SqlppRewriteUtil.substituteExpression(selectExpression, scSubst, context);
         // Substitution replaced every field the descriptor actually has. Anything still referring to it is
         // either an unknown field or the descriptor used as a whole value, neither of which survives to
@@ -535,76 +449,6 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
         return (Expression) SqlppRewriteUtil.deepCopy(expr);
     }
 
-    /**
-     * {@code (FROM <fromClause> [WHERE <whereExpr>] SELECT VALUE <valueExpr>)} over a ready-made FROM clause,
-     * for inputs that bind more than one variable. {@link #selectValueFrom} is the single-source form.
-     */
-    private SelectExpression selectValueFromClause(FromClause fromClause, Expression valueExpr, Expression whereExpr,
-            SourceLocation loc) {
-        SelectElement selectElement = new SelectElement(valueExpr);
-        selectElement.setSourceLocation(loc);
-        SelectClause selectClause = new SelectClause(selectElement, null, false);
-        selectClause.setSourceLocation(loc);
-        List<AbstractClause> letWhereList = null;
-        if (whereExpr != null) {
-            WhereClause whereClause = new WhereClause(whereExpr);
-            whereClause.setSourceLocation(loc);
-            letWhereList = new ArrayList<>(List.of(whereClause));
-        }
-        SelectBlock selectBlock = new SelectBlock(selectClause, fromClause, letWhereList, null, null);
-        selectBlock.setSourceLocation(loc);
-        SetOperationInput setOpInput = new SetOperationInput(selectBlock, null);
-        SelectSetOperation setOp = new SelectSetOperation(setOpInput, null);
-        setOp.setSourceLocation(loc);
-        SelectExpression selectExpression = new SelectExpression(null, setOp, null, null, true);
-        selectExpression.setSourceLocation(loc);
-        return selectExpression;
-    }
-
-    /** Build {@code SELECT VALUE <valueExpr> FROM <fromSource> AS <fromVar> [LET] [WHERE] [gby] [orderBy] [limit]}. */
-    private SelectExpression selectValueFrom(Expression fromSource, VariableExpr fromVar, Expression valueExpr,
-            LetClause letBinding, Expression whereExpr, OrderbyClause orderBy, GroupbyClause gby, LimitClause limit,
-            SourceLocation loc) {
-        FromTerm fromTerm = new FromTerm(fromSource, fromVar, null, null);
-        fromTerm.setSourceLocation(loc);
-        FromClause fromClause = new FromClause(new ArrayList<>(List.of(fromTerm)));
-        fromClause.setSourceLocation(loc);
-        SelectElement selectElement = new SelectElement(valueExpr);
-        selectElement.setSourceLocation(loc);
-        SelectClause selectClause = new SelectClause(selectElement, null, false);
-        selectClause.setSourceLocation(loc);
-        List<AbstractClause> letWhereList = null;
-        if (letBinding != null || whereExpr != null) {
-            letWhereList = new ArrayList<>();
-            if (letBinding != null) {
-                letWhereList.add(letBinding);
-            }
-            if (whereExpr != null) {
-                WhereClause whereClause = new WhereClause(whereExpr);
-                whereClause.setSourceLocation(loc);
-                letWhereList.add(whereClause);
-            }
-        }
-        SelectBlock selectBlock = new SelectBlock(selectClause, fromClause, letWhereList, gby, null);
-        selectBlock.setSourceLocation(loc);
-        SetOperationInput setOpInput = new SetOperationInput(selectBlock, null);
-        SelectSetOperation setOp = new SelectSetOperation(setOpInput, null);
-        setOp.setSourceLocation(loc);
-        SelectExpression selectExpression = new SelectExpression(null, setOp, orderBy, limit, true);
-        selectExpression.setSourceLocation(loc);
-        return selectExpression;
-    }
-
-    private GroupbyClause groupBy(Expression keyExpr, VariableExpr keyVar, VariableExpr groupVar,
-            List<Pair<Expression, Identifier>> groupFieldList, SourceLocation loc) {
-        GbyVariableExpressionPair pair = new GbyVariableExpressionPair(keyVar, keyExpr);
-        List<List<GbyVariableExpressionPair>> gbyList = new ArrayList<>(List.of(new ArrayList<>(List.of(pair))));
-        GroupbyClause gby =
-                new GroupbyClause(gbyList, new ArrayList<>(), new HashMap<>(), groupVar, groupFieldList, false, false);
-        gby.setSourceLocation(loc);
-        return gby;
-    }
-
     private LetClause letClause(VarIdentifier var, Expression bindExpr, SourceLocation loc) {
         LetClause let = new LetClause(varRef(var, loc), bindExpr);
         let.setSourceLocation(loc);
@@ -632,16 +476,6 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
         OperatorExpr oe = new OperatorExpr(new ArrayList<>(List.of(left, right)), new ArrayList<>(List.of(op)), false);
         oe.setSourceLocation(loc);
         return oe;
-    }
-
-    /** ORDER BY <expr> ASC (single key, default null order). */
-    private static OrderbyClause ascOrder(Expression key) {
-        List<OrderbyClause.NullOrderModifier> nullOrder = new ArrayList<>();
-        nullOrder.add(null);
-        OrderbyClause order = new OrderbyClause(new ArrayList<>(List.of(key)),
-                new ArrayList<>(List.of(OrderbyClause.OrderModifier.ASC)), nullOrder);
-        order.setSourceLocation(key.getSourceLocation());
-        return order;
     }
 
     private LiteralExpr intLit(int v, SourceLocation loc) {
