@@ -189,7 +189,14 @@ public final class KMeansLoopIO {
      */
     public static void streamRawVectors(MaterializerTaskState state, IHyracksTaskContext ctx, RawVectorConsumer sink)
             throws HyracksDataException {
-        FrameTupleAccessor accessor = new FrameTupleAccessor(POOL_RD);
+        streamRawVectors(state, ctx, 1, sink);
+    }
+
+    /** As above, for tuples of {@code fieldCount} fields whose field 0 is the vector. */
+    public static void streamRawVectors(MaterializerTaskState state, IHyracksTaskContext ctx, int fieldCount,
+            RawVectorConsumer sink) throws HyracksDataException {
+        FrameTupleAccessor accessor = new FrameTupleAccessor(
+                fieldCount == 1 ? POOL_RD : new RecordDescriptor(new ISerializerDeserializer[fieldCount]));
         FrameTupleReference tuple = new FrameTupleReference();
         VSizeFrame frame = new VSizeFrame(ctx);
         RunFileReader reader = state.createReader();
@@ -399,7 +406,16 @@ public final class KMeansLoopIO {
 
     /** Adapts a materialized run file to {@link RawVectorSource}. */
     public static RawVectorSource source(MaterializerTaskState state, IHyracksTaskContext ctx) {
-        return sink -> streamRawVectors(state, ctx, sink);
+        return source(state, ctx, 1);
+    }
+
+    /**
+     * As above, for a run file whose tuples carry more than the vector. Field 0 is still the vector, but a
+     * FrameTupleAccessor needs the true field COUNT to find any field at all -- reading a wider tuple through
+     * a one-field descriptor silently misreads every offset rather than failing.
+     */
+    public static RawVectorSource source(MaterializerTaskState state, IHyracksTaskContext ctx, int fieldCount) {
+        return sink -> streamRawVectors(state, ctx, fieldCount, sink);
     }
 
     /**

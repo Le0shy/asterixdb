@@ -359,6 +359,9 @@ public class KMeansLloydControllerOperatorDescriptor extends AbstractOperatorDes
 
                 private void runLoop(LoopControlState control, MaterializerTaskState vectorState,
                         IFrameWriter partialWriter) throws HyracksDataException, InterruptedException {
+                    // The resident tuples carry the row after the vector, so every read of them has to be
+                    // told how wide they are.
+                    final int storedWidth = outRecDescs[OUT_CENTROIDS].getFieldCount() - 1;
                     FrameTupleAppender appender = new FrameTupleAppender(new VSizeFrame(ctx));
                     ArrayTupleBuilder tb = new ArrayTupleBuilder(6);
                     for (int it = 0; it < iterations; it++) {
@@ -377,7 +380,7 @@ public class KMeansLloydControllerOperatorDescriptor extends AbstractOperatorDes
                             final KMeansLoopIO.ScoreColumnWriter scores =
                                     new KMeansLoopIO.ScoreColumnWriter(column, ctx);
                             final int[] dimension = { 0 };
-                            KMeansLoopIO.streamScoredAgainstPool(KMeansLoopIO.source(vectorState, ctx),
+                            KMeansLoopIO.streamScoredAgainstPool(KMeansLoopIO.source(vectorState, ctx, storedWidth),
                                     sink -> centroids.stream(ctx, sink), ctx, framesLimit,
                                     KMeansLoopIO.distanceFunction(metric), (vecs, n, nearest, nearestIdx) -> {
                                         if (dimension[0] == 0 && n > 0) {
@@ -388,9 +391,9 @@ public class KMeansLloydControllerOperatorDescriptor extends AbstractOperatorDes
                             scores.finish();
                             if (dimension[0] > 0) {
                                 int window = KMeansLoopIO.blockCapacity(ctx, framesLimit, dimension[0]);
-                                KMeansLoopIO.accumulateInWindows(KMeansLoopIO.source(vectorState, ctx), column, ctx,
-                                        slots, window, (index, count, sum) -> emitPartial(partialWriter, appender, tb,
-                                                iter, index, count, sum));
+                                KMeansLoopIO.accumulateInWindows(KMeansLoopIO.source(vectorState, ctx, storedWidth),
+                                        column, ctx, slots, window, (index, count, sum) -> emitPartial(partialWriter,
+                                                appender, tb, iter, index, count, sum));
                             }
                         } finally {
                             column.close();
@@ -480,7 +483,7 @@ public class KMeansLloydControllerOperatorDescriptor extends AbstractOperatorDes
                     column.open(ctx);
                     try {
                         final KMeansLoopIO.ScoreColumnWriter scores = new KMeansLoopIO.ScoreColumnWriter(column, ctx);
-                        KMeansLoopIO.streamScoredAgainstPool(KMeansLoopIO.source(vectorState, ctx),
+                        KMeansLoopIO.streamScoredAgainstPool(KMeansLoopIO.source(vectorState, ctx, payloadFields + 1),
                                 sink -> finalCentroids.stream(ctx, sink), ctx, framesLimit,
                                 KMeansLoopIO.distanceFunction(metric),
                                 (vecs, n, nearest, nearestIdx) -> scores.append(nearest, nearestIdx, n));
