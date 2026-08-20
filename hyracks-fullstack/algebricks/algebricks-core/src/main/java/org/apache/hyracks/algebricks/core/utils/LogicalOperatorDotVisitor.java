@@ -365,6 +365,7 @@ public class LogicalOperatorDotVisitor implements ILogicalOperatorVisitor<String
                         .append(str(op.getPoolVariable()));
                 break;
         }
+        stringBuilder.append(" by ").append(op.getMetric());
         appendSchema(op, showDetails);
         appendAnnotations(op, showDetails);
         appendPhysicalOperatorInfo(op, showDetails);

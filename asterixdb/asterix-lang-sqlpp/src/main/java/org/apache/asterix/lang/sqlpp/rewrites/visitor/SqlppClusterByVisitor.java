@@ -48,6 +48,7 @@ import org.apache.asterix.lang.common.expression.LiteralExpr;
 import org.apache.asterix.lang.common.expression.OperatorExpr;
 import org.apache.asterix.lang.common.expression.VariableExpr;
 import org.apache.asterix.lang.common.literal.IntegerLiteral;
+import org.apache.asterix.lang.common.literal.StringLiteral;
 import org.apache.asterix.lang.common.rewrites.LangRewritingContext;
 import org.apache.asterix.lang.common.struct.Identifier;
 import org.apache.asterix.lang.common.struct.OperatorType;
@@ -263,7 +264,7 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
         SelectExpression vecsQuery = selectValueFromClause(fromCloneForVecs, vecExprForVecs, whereExprForVecs, loc);
 
         List<LetClause> centroidLets = new ArrayList<>();
-        VarIdentifier finalCentroids = bindCentroidLets(centroidLets, cbc, vecsQuery, k, loc);
+        VarIdentifier finalCentroids = bindCentroidLets(centroidLets, cbc, vecsQuery, k, getMetric(cbc), loc);
 
         // Per-row distance to the assignment centroid, bound in the block before the GROUP BY so that the MAX
         // behind cluster_radius stays a two-step local/global aggregate: an aggregate over C, a variable
@@ -421,8 +422,8 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
     }
 
     /** C0: the initial centroid set Lloyd refines, either drawn uniformly or produced by k-means|| init. */
-    private Expression initialCentroidStream(ClusterbyClause cbc, SelectExpression vecsQuery, int k, SourceLocation loc)
-            throws CompilationException {
+    private Expression initialCentroidStream(ClusterbyClause cbc, SelectExpression vecsQuery, int k, String metric,
+            SourceLocation loc) throws CompilationException {
         if (INIT_MODE_RANDOM.equals(getInitMode(cbc))) {
             // C0 = k vectors drawn uniformly (Forgy). The k smallest shuffle keys (uniformRowKey) are a uniform
             // sample without replacement; ordering by the vector VALUE would instead return the k most similar
@@ -444,10 +445,10 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
                 null, seedLimit, loc);
         Expression weighed = call(BuiltinFunctions.KMEANS_OVERSAMPLE_LOOP, loc, copy(vecsQuery), poolStream,
                 intLit(oversamplingFactor(k, loc), loc), intLit(INIT_OVERSAMPLING_ROUNDS, loc),
-                intLit(EXACT_SEED_BASE, loc));
+                intLit(EXACT_SEED_BASE, loc), strLit(metric, loc));
         // RECLUSTER: single-input merge of the (broadcast) partials -- reduces the weighted candidates to at
         // most k initial centres with weighted k-means++.
-        return call(BuiltinFunctions.KMEANS_RECLUSTER, loc, weighed, intLit(k, loc));
+        return call(BuiltinFunctions.KMEANS_RECLUSTER, loc, weighed, intLit(k, loc), strLit(metric, loc));
     }
 
     /**
@@ -459,11 +460,12 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
      * collapsed by the optimizer's common-subtree REPLICATE sharing.
      */
     private VarIdentifier bindCentroidLets(List<LetClause> centroidLets, ClusterbyClause cbc,
-            SelectExpression vecsQuery, int k, SourceLocation loc) throws CompilationException {
+            SelectExpression vecsQuery, int k, String metric, SourceLocation loc) throws CompilationException {
         // Lloyd refinement loops LLOYD_ITERATIONS times inside one stage, all-reducing the per-centroid
         // (count, sum) partials each iteration. A centroid that attracts nothing is dropped, so k can shrink.
         Expression centroidStream = call(BuiltinFunctions.KMEANS_LLOYD_LOOP, loc, copy(vecsQuery),
-                initialCentroidStream(cbc, vecsQuery, k, loc), intLit(k, loc), intLit(LLOYD_ITERATIONS, loc));
+                initialCentroidStream(cbc, vecsQuery, k, metric, loc), intLit(k, loc), intLit(LLOYD_ITERATIONS, loc),
+                strLit(metric, loc));
         VarIdentifier cFinal = context.newVariable();
         centroidLets.add(letClause(cFinal, centroidStream, loc));
         context.markNoInlineLetVar(cFinal);
@@ -723,6 +725,12 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
         return lit;
     }
 
+    private LiteralExpr strLit(String v, SourceLocation loc) {
+        LiteralExpr lit = new LiteralExpr(new StringLiteral(v));
+        lit.setSourceLocation(loc);
+        return lit;
+    }
+
     /**
      * The scalar WITH options, lower-cased. {@code Dimension} is excluded because it is an array, and
      * {@link ConfigurationUtil#toProperties} rejects every type outside boolean/number/string -- so the whole
@@ -908,5 +916,23 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
         }
         String lower = mode.toLowerCase();
         return INIT_MODE_KMEANSPP_DEPRECATED.equals(lower) ? INIT_MODE_KMEANS_PARALLEL : lower;
+    }
+
+    /**
+     * The canonical name of the metric every stage measures with, passed to each of them as a trailing
+     * argument. Absent means squared Euclidean.
+     * <p>
+     * EUCLIDEAN normalizes to EUCLIDEAN_SQUARED: they name the same clustering, since a cluster assignment is
+     * an argmin and squaring is monotone, but the oversampling draw probability is defined on d^2, so the two
+     * spellings would otherwise sample differently. The squared form is the one both mean.
+     */
+    private String getMetric(ClusterbyClause cbc) throws CompilationException {
+        String similarity = scalarOptions(cbc).get(OPT_SIMILARITY);
+        VectorSimilarityMetric metric = similarity == null ? VectorSimilarityMetric.EUCLIDEAN_SQUARED
+                : VectorSimilarityMetric.fromAlias(similarity);
+        if (metric == VectorSimilarityMetric.EUCLIDEAN) {
+            metric = VectorSimilarityMetric.EUCLIDEAN_SQUARED;
+        }
+        return metric.canonical();
     }
 }

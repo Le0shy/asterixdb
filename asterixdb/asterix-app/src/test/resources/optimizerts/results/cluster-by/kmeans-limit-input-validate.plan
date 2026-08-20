@@ -69,7 +69,7 @@ distribute result [$$264]
                         -- STABLE_SORT [$$241(ASC)]  |PARTITIONED|
                           exchange
                           -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-                            kmeans-stage $$241 <- lloyd-loop $$266 vs pool $$239
+                            kmeans-stage $$241 <- lloyd-loop $$266 vs pool $$239 by euclidean_squared
                             -- KMEANS_LLOYD_LOOP  |PARTITIONED|
                               exchange
                               -- RANDOM_PARTITION_EXCHANGE  |PARTITIONED|
@@ -105,11 +105,11 @@ distribute result [$$264]
                                                             -- EMPTY_TUPLE_SOURCE  |PARTITIONED|
                               exchange
                               -- BROADCAST_EXCHANGE  |PARTITIONED|
-                                kmeans-stage $$239 <- recluster pool $$237 to 2 means
+                                kmeans-stage $$239 <- recluster pool $$237 to 2 means by euclidean_squared
                                 -- KMEANS_RECLUSTER  |PARTITIONED|
                                   exchange
                                   -- BROADCAST_EXCHANGE  |PARTITIONED|
-                                    kmeans-stage $$237 <- oversample-loop 5 rounds of $$267 vs seed $$273
+                                    kmeans-stage $$237 <- oversample-loop 5 rounds of $$267 vs seed $$273 by euclidean_squared
                                     -- KMEANS_OVERSAMPLE_LOOP  |PARTITIONED|
                                       exchange
                                       -- RANDOM_PARTITION_EXCHANGE  |PARTITIONED|

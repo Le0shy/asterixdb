@@ -206,8 +206,9 @@ public class SqlppExpressionToPlanTranslator extends LangExpressionToPlanTransla
 
     // The internal CLUSTER BY stage markers. Matching on the whole FunctionSignature -- database, dataverse,
     // name and arity -- keeps a user function that happens to share the name, or the same name at a different
-    // arity, from being mistaken for one. The arities are RECLUSTER (partials, k); OVERSAMPLE_LOOP (vectors,
-    // seedPool, l, rounds, seedBase); LLOYD_LOOP (vectors, centroids, k, iterations).
+    // arity, from being mistaken for one. Each arity counts the trailing metric argument: RECLUSTER
+    // (partials, k, metric); OVERSAMPLE_LOOP (vectors, seedPool, l, rounds, seedBase, metric); LLOYD_LOOP
+    // (vectors, centroids, k, iterations, metric).
     private static final FunctionSignature KMEANS_RECLUSTER_SIG =
             new FunctionSignature(BuiltinFunctions.KMEANS_RECLUSTER);
     private static final FunctionSignature KMEANS_OVERSAMPLE_LOOP_SIG =
@@ -238,6 +239,17 @@ public class SqlppExpressionToPlanTranslator extends LangExpressionToPlanTransla
                             + "argument " + index);
         }
         return ((IntegerLiteral) ((LiteralExpr) arg).getValue()).getValue().longValue();
+    }
+
+    /** The string counterpart of {@link #longArg}, guarded the same way and for the same reason. */
+    private static String stringArg(CallExpr fcall, int index) throws CompilationException {
+        Expression arg = fcall.getExprList().get(index);
+        if (!(arg instanceof LiteralExpr) || !(((LiteralExpr) arg).getValue() instanceof StringLiteral)) {
+            throw new CompilationException(ErrorCode.COMPILATION_ILLEGAL_STATE, fcall.getSourceLocation(),
+                    "CLUSTER BY stage marker " + fcall.getFunctionSignature() + " expects a string literal at "
+                            + "argument " + index);
+        }
+        return ((StringLiteral) ((LiteralExpr) arg).getValue()).getValue();
     }
 
     /**
@@ -323,6 +335,8 @@ public class SqlppExpressionToPlanTranslator extends LangExpressionToPlanTransla
                 new MutableObject<org.apache.hyracks.algebricks.core.algebra.base.ILogicalExpression>(poolRefE),
                 candVar, org.apache.asterix.om.types.BuiltinType.ANY, topCount);
         kop.setMode(mode);
+        // The metric is the trailing argument of every stage marker, so one read serves all three modes.
+        kop.setMetric(stringArg(fcall, fcall.getExprList().size() - 1));
         // OVERSAMPLE_LOOP: 4th arg is the iteration count, 5th the seed base (per-round seed = base + r).
         if (mode == KMeansStageOperator.Mode.OVERSAMPLE_LOOP) {
             kop.setLoopRounds((int) longArg(fcall, 3));

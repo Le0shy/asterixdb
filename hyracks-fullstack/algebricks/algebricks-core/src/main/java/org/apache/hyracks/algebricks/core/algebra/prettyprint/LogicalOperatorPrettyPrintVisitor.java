@@ -379,6 +379,7 @@ public class LogicalOperatorPrettyPrintVisitor extends AbstractLogicalOperatorPr
                         .append(str(op.getPoolVariable()));
                 break;
         }
+        out.append(" by ").append(op.getMetric());
         return null;
     }
 

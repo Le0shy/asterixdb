@@ -100,6 +100,9 @@ public class KMeansStageOperator extends AbstractLogicalOperator {
     private long seed;
     // OVERSAMPLE_LOOP only: number of oversample iterations the operator runs internally. Unused otherwise.
     private int loopRounds;
+    // Which distance every stage measures with, as the metric's canonical name. A String rather than the
+    // metric enum because that enum lives above Algebricks; the physical operators resolve it.
+    private String metric;
 
     public KMeansStageOperator(Mutable<ILogicalExpression> vectorRef, Mutable<ILogicalExpression> poolRef,
             LogicalVariable candidateVar, Object candidateVarType, int topCount) {
@@ -220,5 +223,13 @@ public class KMeansStageOperator extends AbstractLogicalOperator {
 
     public void setLoopRounds(int loopRounds) {
         this.loopRounds = loopRounds;
+    }
+
+    public String getMetric() {
+        return metric;
+    }
+
+    public void setMetric(String metric) {
+        this.metric = metric;
     }
 }

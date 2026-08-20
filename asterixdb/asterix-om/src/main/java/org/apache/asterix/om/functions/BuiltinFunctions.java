@@ -1246,21 +1246,22 @@ public class BuiltinFunctions {
     // (the k-means|| sampling score d2(x, C)).
     public static final FunctionIdentifier NEAREST_CENTROID_DISTANCE =
             FunctionConstants.newAsterix("nearest-centroid-distance", 2);
-    // kmeans-recluster(partials, k): single-input merge — reduce partials, then weighted k-means++ to k (C0).
-    public static final FunctionIdentifier KMEANS_RECLUSTER = FunctionConstants.newAsterix("kmeans-recluster", 2);
+    // kmeans-recluster(partials, k, metric): single-input merge — reduce partials, then weighted k-means++
+    // to k (C0).
+    public static final FunctionIdentifier KMEANS_RECLUSTER = FunctionConstants.newAsterix("kmeans-recluster", 3);
     // CLUSTER BY initMode "kmeansPP": the exact k-means|| oversampling init as one self-iterating
     // operator. kmeans-oversample-loop(vectors, seedPool, l, rounds,
-    // seedBase): runs the whole oversample loop internally, iterating `rounds` times and all-reducing the
+    // seedBase, metric): runs the whole oversample loop internally, iterating `rounds` times and all-reducing the
     // per-round global potential + draws across partitions; the physical operator realizes it as an injected
     // pipelined systolic sub-graph. The final pool is weighed and emitted for kmeans-recluster.
     public static final FunctionIdentifier KMEANS_OVERSAMPLE_LOOP =
-            FunctionConstants.newAsterix("kmeans-oversample-loop", 5);
+            FunctionConstants.newAsterix("kmeans-oversample-loop", 6);
 
     // The Lloyd refinement as one self-iterating operator. kmeans-lloyd-loop(vectors, centroids, k,
-    // iterations): runs every refinement iteration internally, all-reducing each iteration's per-centroid
+    // iterations, metric): runs every refinement iteration internally, all-reducing each iteration's per-centroid
     // (count, sum) partials into the next centroid set; the physical operator realizes it as an injected
     // pipelined systolic sub-graph. Emits the final centroid set as plain vectors.
-    public static final FunctionIdentifier KMEANS_LLOYD_LOOP = FunctionConstants.newAsterix("kmeans-lloyd-loop", 4);
+    public static final FunctionIdentifier KMEANS_LLOYD_LOOP = FunctionConstants.newAsterix("kmeans-lloyd-loop", 5);
 
     // Temporal functions
     public static final FunctionIdentifier UNIX_TIME_FROM_DATE_IN_DAYS =

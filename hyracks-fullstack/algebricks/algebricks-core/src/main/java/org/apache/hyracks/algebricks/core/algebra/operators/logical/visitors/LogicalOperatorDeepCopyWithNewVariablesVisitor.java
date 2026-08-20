@@ -547,6 +547,7 @@ public class LogicalOperatorDeepCopyWithNewVariablesVisitor
         opCopy.setMode(op.getMode());
         opCopy.setSeed(op.getSeed());
         opCopy.setLoopRounds(op.getLoopRounds());
+        opCopy.setMetric(op.getMetric());
         deepCopyInputsAnnotationsAndExecutionMode(op, arg, opCopy);
         return opCopy;
     }

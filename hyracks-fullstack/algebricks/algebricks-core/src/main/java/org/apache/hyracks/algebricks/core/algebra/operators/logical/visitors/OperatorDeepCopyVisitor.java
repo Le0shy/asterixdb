@@ -252,6 +252,7 @@ public class OperatorDeepCopyVisitor implements ILogicalOperatorVisitor<ILogical
         opCopy.setMode(op.getMode());
         opCopy.setSeed(op.getSeed());
         opCopy.setLoopRounds(op.getLoopRounds());
+        opCopy.setMetric(op.getMetric());
         return opCopy;
     }
 
