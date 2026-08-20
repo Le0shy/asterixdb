@@ -140,7 +140,10 @@ public class KMeansLloydControllerOperatorDescriptor extends AbstractOperatorDes
                 private final FrameTupleAccessor accessor = new FrameTupleAccessor(inRecDesc);
                 private final FrameTupleReference tuple = new FrameTupleReference();
                 private final KMeansVectorCodec.ListVectorDecoder decoder = new KMeansVectorCodec.ListVectorDecoder();
-                private final ArrayTupleBuilder tb = new ArrayTupleBuilder(1);
+                // Field 0 is the raw vector, as it has always been -- every reader indexes field 0, so none of
+                // them notice the rest. The input tuple follows it, so the rows survive the loop and can be
+                // emitted with their assignment instead of being fetched again from upstream.
+                private final ArrayTupleBuilder tb = new ArrayTupleBuilder(1 + inRecDesc.getFieldCount());
                 private MaterializerTaskState state;
                 private VSizeFrame frame;
                 private FrameTupleAppender appender;
@@ -169,6 +172,9 @@ public class KMeansLloydControllerOperatorDescriptor extends AbstractOperatorDes
                         }
                         tb.reset();
                         KMeansLoopIO.writeRawVector(tb, vec);
+                        for (int f = 0; f < inRecDesc.getFieldCount(); f++) {
+                            tb.addField(accessor, i, f);
+                        }
                         if (!appender.append(tb.getFieldEndOffsets(), tb.getByteArray(), 0, tb.getSize())) {
                             flushToState();
                             if (!appender.append(tb.getFieldEndOffsets(), tb.getByteArray(), 0, tb.getSize())) {
