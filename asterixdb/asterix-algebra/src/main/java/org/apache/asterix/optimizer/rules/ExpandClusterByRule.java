@@ -19,8 +19,10 @@
 package org.apache.asterix.optimizer.rules;
 
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
+import org.apache.asterix.common.vector.VectorSimilarityMetric;
 import org.apache.asterix.om.base.AInt64;
 import org.apache.asterix.om.constants.AsterixConstantValue;
 import org.apache.asterix.om.functions.BuiltinFunctions;
@@ -34,15 +36,21 @@ import org.apache.hyracks.algebricks.core.algebra.base.ILogicalPlan;
 import org.apache.hyracks.algebricks.core.algebra.base.IOptimizationContext;
 import org.apache.hyracks.algebricks.core.algebra.base.LogicalOperatorTag;
 import org.apache.hyracks.algebricks.core.algebra.base.LogicalVariable;
+import org.apache.hyracks.algebricks.core.algebra.expressions.AggregateFunctionCallExpression;
 import org.apache.hyracks.algebricks.core.algebra.expressions.ConstantExpression;
 import org.apache.hyracks.algebricks.core.algebra.expressions.ScalarFunctionCallExpression;
 import org.apache.hyracks.algebricks.core.algebra.expressions.VariableReferenceExpression;
+import org.apache.hyracks.algebricks.core.algebra.functions.FunctionIdentifier;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.AbstractOperatorWithNestedPlans;
+import org.apache.hyracks.algebricks.core.algebra.operators.logical.AggregateOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.AssignOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.ClusterByOperator;
+import org.apache.hyracks.algebricks.core.algebra.operators.logical.GroupByOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.KMeansStageOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.LimitOperator;
+import org.apache.hyracks.algebricks.core.algebra.operators.logical.NestedTupleSourceOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.OrderOperator;
+import org.apache.hyracks.algebricks.core.algebra.plan.ALogicalPlanImpl;
 import org.apache.hyracks.algebricks.core.algebra.util.OperatorManipulationUtil;
 import org.apache.hyracks.algebricks.rewriter.rules.AbstractDecorrelationRule;
 import org.apache.hyracks.api.exceptions.ErrorCode;
@@ -157,19 +165,75 @@ public class ExpandClusterByRule extends AbstractDecorrelationRule {
         KMeansStageOperator lloyd = stage(cop, KMeansStageOperator.Mode.LLOYD_LOOP, context, ref(vectorVar),
                 ref(centroidsVar), cop.getNumClusters());
         lloyd.setLoopRounds(LLOYD_ITERATIONS);
-        // The operator now passes its input rows through, adding a cluster id and a distance to each. The
-        // stage chain still ends by emitting centroids, so it cannot yet produce that: the rows are resident
-        // inside the loop but carry no payload, and there is no stage that emits them labelled. Raise rather
-        // than wire the cluster-id variable to a stream of centroids, which would type-check and be wrong.
-        if (cop.getClusterIdVariable() != null) {
-            throw new AlgebricksException("CLUSTER BY expansion pending: the stage chain emits centroids, not "
-                    + "labelled rows. Needs a payload column through the loop and a labelling emission.");
-        }
+        // The refinement stage returns the rows it held, each carrying its cluster and its distance to that
+        // cluster's centre. These two are internal: the cluster id the query sees is the group-by's key, and
+        // the distance is consumed by the radius aggregate.
+        LogicalVariable rowCid = context.newVar();
+        LogicalVariable rowDist = context.newVar();
+        lloyd.setCandidateVariable(rowCid);
+        lloyd.setDistanceVariable(rowDist, cop.getRadiusVarType());
         lloyd.getInputs().add(vectors);
         lloyd.getInputs().add(centroidsIn);
         lloyd.recomputeSchema();
         context.computeAndSetTypeEnvironmentForOperator(lloyd);
-        return lloyd;
+        return clustersOf(cop, lloyd, rowCid, rowDist, context, loc);
+    }
+
+    /**
+     * Turns the labelled rows into one tuple per cluster.
+     * <p>
+     * This is an ordinary GROUP BY on the assignment, with the three things a cluster is made of hanging off
+     * it as nested aggregates. It lives in the expansion rather than in the plan the query produced, because
+     * from the optimizer's side CLUSTER BY is one operator -- how it is carried out is this rule's business.
+     */
+    private ILogicalOperator clustersOf(ClusterByOperator cop, ILogicalOperator labelled, LogicalVariable rowCid,
+            LogicalVariable rowDist, IOptimizationContext context, SourceLocation loc) throws AlgebricksException {
+        GroupByOperator gby = new GroupByOperator();
+        gby.setSourceLocation(loc);
+        gby.addGbyExpression(cop.getClusterIdVariable(), ref(rowCid).getValue());
+        gby.getInputs().add(new MutableObject<>(labelled));
+
+        // The members are the rows themselves, as the record the translator built; the centre is their mean,
+        // which is where the reported centroid has always come from; the radius is the furthest member.
+        gby.getNestedPlans().add(aggregate(gby, cop.getMembersVariable(), BuiltinFunctions.LISTIFY,
+                cop.getMemberRecordRef().getValue(), context, loc));
+        gby.getNestedPlans().add(aggregate(gby, cop.getCentroidVariable(), BuiltinFunctions.CENTROID,
+                cop.getVectorRef().getValue(), context, loc));
+        LogicalVariable maxDist = context.newVar();
+        gby.getNestedPlans().add(aggregate(gby, maxDist, BuiltinFunctions.MAX, ref(rowDist).getValue(), context, loc));
+        gby.recomputeSchema();
+        context.computeAndSetTypeEnvironmentForOperator(gby);
+
+        // A square root only undoes a squaring. Squared Euclidean returns d^2, so its radius is the root of
+        // the max; cosine returns 1 - cos, an angle-like quantity whose root would mean nothing.
+        ILogicalExpression radius = VectorSimilarityMetric.EUCLIDEAN_SQUARED.canonical().equals(cop.getMetric())
+                ? new ScalarFunctionCallExpression(
+                        BuiltinFunctions.getBuiltinFunctionInfo(BuiltinFunctions.NUMERIC_SQRT), ref(maxDist))
+                : ref(maxDist).getValue();
+        AssignOperator radiusOp = new AssignOperator(cop.getRadiusVariable(), new MutableObject<>(radius));
+        radiusOp.setSourceLocation(loc);
+        radiusOp.getInputs().add(new MutableObject<>(gby));
+        radiusOp.recomputeSchema();
+        context.computeAndSetTypeEnvironmentForOperator(radiusOp);
+        return radiusOp;
+    }
+
+    /** One nested aggregate over the group: {@code out <- fid(arg)}. */
+    private ILogicalPlan aggregate(GroupByOperator gby, LogicalVariable out, FunctionIdentifier fid,
+            ILogicalExpression arg, IOptimizationContext context, SourceLocation loc) throws AlgebricksException {
+        NestedTupleSourceOperator nts = new NestedTupleSourceOperator(new MutableObject<>(gby));
+        nts.setSourceLocation(loc);
+        AggregateFunctionCallExpression call = BuiltinFunctions.makeAggregateFunctionExpression(fid,
+                new ArrayList<>(List.of(new MutableObject<>(arg.cloneExpression()))));
+        call.setSourceLocation(loc);
+        AggregateOperator agg = new AggregateOperator(new ArrayList<>(List.of(out)),
+                new ArrayList<>(List.of(new MutableObject<>(call))));
+        agg.setSourceLocation(loc);
+        agg.getInputs().add(new MutableObject<>(nts));
+        context.computeAndSetTypeEnvironmentForOperator(nts);
+        agg.recomputeSchema();
+        context.computeAndSetTypeEnvironmentForOperator(agg);
+        return new ALogicalPlanImpl(new MutableObject<>(agg));
     }
 
     /**

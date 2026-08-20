@@ -61,6 +61,9 @@ public class ClusterByOperator extends AbstractLogicalOperator {
     // acceptExpressionTransform) so variable-substitution and pruning rules see it; a plain LogicalVariable
     // field silently drifts through renames.
     private final Mutable<ILogicalExpression> vectorRef;
+    // Reference to the variable holding one member's record -- the row as CLUSTER AS sees it. Built by the
+    // translator, which owns the field names the user declared; the expansion only has to listify it.
+    private Mutable<ILogicalExpression> memberRecordRef;
     // One tuple per cluster: its id, its centre, how far its furthest member sits from that centre, and the
     // members themselves. This is the whole of what CLUSTER BY means, so nothing downstream has to rebuild
     // any of it -- which is what forced the input to be produced a second time when only centres came out.
@@ -144,6 +147,7 @@ public class ClusterByOperator extends AbstractLogicalOperator {
     public boolean acceptExpressionTransform(ILogicalExpressionReferenceTransform visitor) throws AlgebricksException {
         // vectorRef is null only for RECLUSTER, the one mode with a pool input and no vector input.
         boolean changed = vectorRef != null && visitor.transform(vectorRef);
+        changed |= memberRecordRef != null && visitor.transform(memberRecordRef);
         return changed;
     }
 
@@ -168,6 +172,20 @@ public class ClusterByOperator extends AbstractLogicalOperator {
 
     public Mutable<ILogicalExpression> getVectorRef() {
         return vectorRef;
+    }
+
+    public Mutable<ILogicalExpression> getMemberRecordRef() {
+        return memberRecordRef;
+    }
+
+    public void setMemberRecordRef(Mutable<ILogicalExpression> memberRecordRef) {
+        this.memberRecordRef = memberRecordRef;
+    }
+
+    /** The member-record variable, or null before the translator has set it. */
+    public LogicalVariable getMemberRecordVariable() {
+        return memberRecordRef == null ? null
+                : ((VariableReferenceExpression) memberRecordRef.getValue()).getVariableReference();
     }
 
     public LogicalVariable getClusterIdVariable() {

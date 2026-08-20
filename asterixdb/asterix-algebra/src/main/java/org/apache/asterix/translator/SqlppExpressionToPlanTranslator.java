@@ -326,6 +326,17 @@ public class SqlppExpressionToPlanTranslator extends LangExpressionToPlanTransla
         vecAssign.getInputs().add(clustering.second);
         VariableReferenceExpression vecRef = new VariableReferenceExpression(vecVar);
         vecRef.setSourceLocation(clusterbyClause.getSourceLocation());
+        // One member's record, built here because the field names are the ones the user declared in
+        // CLUSTER AS and naming belongs to this layer. The expansion only has to listify the variable.
+        Mutable<ILogicalOperator> memberInput = new MutableObject<>(vecAssign);
+        AbstractFunctionCallExpression memberRecord = createRecordConstructor(clusterbyClause.getClusterFieldList(),
+                memberInput, clusterbyClause.getSourceLocation());
+        LogicalVariable memberRecVar = context.newVar();
+        AssignOperator memberAssign = new AssignOperator(memberRecVar, new MutableObject<>(memberRecord));
+        memberAssign.setSourceLocation(clusterbyClause.getSourceLocation());
+        memberAssign.getInputs().add(memberInput);
+        VariableReferenceExpression memberRef = new VariableReferenceExpression(memberRecVar);
+        memberRef.setSourceLocation(clusterbyClause.getSourceLocation());
         LogicalVariable cidVar = context.newVarFromExpression(clusterbyClause.getClusterIdVar());
         LogicalVariable centroidVar = context.newVarFromExpression(clusterbyClause.getCentroidVar());
         LogicalVariable radiusVar = context.newVarFromExpression(clusterbyClause.getRadiusVar());
@@ -337,7 +348,8 @@ public class SqlppExpressionToPlanTranslator extends LangExpressionToPlanTransla
         cop.setInitMode(clusterbyClause.getInitMode());
         cop.setMetric(clusterbyClause.getMetric());
         cop.setSourceLocation(clusterbyClause.getSourceLocation());
-        cop.getInputs().add(new MutableObject<>(vecAssign));
+        cop.setMemberRecordRef(new MutableObject<>(memberRef));
+        cop.getInputs().add(new MutableObject<>(memberAssign));
         return new Pair<>(cop, cidVar);
     }
 
