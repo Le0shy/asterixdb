@@ -317,18 +317,27 @@ public class SqlppExpressionToPlanTranslator extends LangExpressionToPlanTransla
             Mutable<ILogicalOperator> tupSource) throws CompilationException {
         Pair<ILogicalExpression, Mutable<ILogicalOperator>> clustering =
                 langExprToAlgExpression(clusterbyClause.getClusteringExpression(), tupSource);
+        // Bind the clustering expression to a variable of its own. The operator names it rather than holding
+        // the expression, so the expansion has one column to hand the stages and the rows keep flowing beside
+        // it untouched.
+        LogicalVariable vecVar = context.newVar();
+        AssignOperator vecAssign = new AssignOperator(vecVar, new MutableObject<>(clustering.first));
+        vecAssign.setSourceLocation(clusterbyClause.getSourceLocation());
+        vecAssign.getInputs().add(clustering.second);
+        VariableReferenceExpression vecRef = new VariableReferenceExpression(vecVar);
+        vecRef.setSourceLocation(clusterbyClause.getSourceLocation());
         LogicalVariable cidVar = context.newVarFromExpression(clusterbyClause.getClusterIdVar());
         LogicalVariable centroidVar = context.newVarFromExpression(clusterbyClause.getCentroidVar());
         LogicalVariable radiusVar = context.newVarFromExpression(clusterbyClause.getRadiusVar());
         LogicalVariable membersVar = context.newVarFromExpression(clusterbyClause.getClusterMembersVar());
-        ClusterByOperator cop = new ClusterByOperator(new MutableObject<>(clustering.first), cidVar, BuiltinType.AINT64,
+        ClusterByOperator cop = new ClusterByOperator(new MutableObject<>(vecRef), cidVar, BuiltinType.AINT64,
                 centroidVar, BuiltinType.ANY, radiusVar, BuiltinType.ADOUBLE, membersVar, BuiltinType.ANY,
                 clusterbyClause.getNumClusters());
         cop.setAlgorithm(ALGORITHM_KMEANS);
         cop.setInitMode(clusterbyClause.getInitMode());
         cop.setMetric(clusterbyClause.getMetric());
         cop.setSourceLocation(clusterbyClause.getSourceLocation());
-        cop.getInputs().add(clustering.second);
+        cop.getInputs().add(new MutableObject<>(vecAssign));
         return new Pair<>(cop, cidVar);
     }
 

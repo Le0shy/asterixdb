@@ -30,6 +30,7 @@ import org.apache.hyracks.algebricks.core.algebra.expressions.VariableReferenceE
 import org.apache.hyracks.algebricks.core.algebra.properties.VariablePropagationPolicy;
 import org.apache.hyracks.algebricks.core.algebra.typing.ITypingContext;
 import org.apache.hyracks.algebricks.core.algebra.typing.NonPropagatingTypeEnvironment;
+import org.apache.hyracks.algebricks.core.algebra.typing.PropagatingTypeEnvironment;
 import org.apache.hyracks.algebricks.core.algebra.visitors.ILogicalExpressionReferenceTransform;
 import org.apache.hyracks.algebricks.core.algebra.visitors.ILogicalOperatorVisitor;
 import org.apache.hyracks.util.annotations.AiProvenance;
@@ -89,6 +90,10 @@ public class KMeansStageOperator extends AbstractLogicalOperator {
     private final Mutable<ILogicalExpression> poolRef;
     // The single produced variable: a candidate vector, same type as vectorVar (opaque; from translator).
     private LogicalVariable candidateVar;
+    // Set only for the refinement stage, which reports how far each row sits from its cluster's centre.
+    // Null elsewhere, and that is what emitsRows() keys on.
+    private LogicalVariable distanceVar;
+    private Object distanceVarType;
     private final Object candidateVarType;
     // RECLUSTER: k, the number of initial centroids to keep. Always non-negative.
     private final int topCount;
@@ -131,9 +136,24 @@ public class KMeansStageOperator extends AbstractLogicalOperator {
 
     @Override
     public void recomputeSchema() throws AlgebricksException {
-        // Only the candidate variable is live downstream; input tuples are consumed, not propagated.
         schema = new ArrayList<>();
+        if (emitsRows()) {
+            // The refinement stage held these rows for the whole loop, so they leave with their assignment
+            // rather than being fetched again. candidateVar is the cluster each row landed in.
+            schema.addAll(inputs.get(0).getValue().getSchema());
+        }
         schema.add(candidateVar);
+        if (emitsRows()) {
+            schema.add(distanceVar);
+        }
+    }
+
+    /**
+     * Whether this stage returns the rows it consumed. Only the refinement loop does: the sampling stages
+     * produce candidates, which are a summary of the input rather than the rows themselves.
+     */
+    public boolean emitsRows() {
+        return mode == Mode.LLOYD_LOOP && distanceVar != null;
     }
 
     @Override
@@ -142,7 +162,13 @@ public class KMeansStageOperator extends AbstractLogicalOperator {
             @Override
             public void propagateVariables(IOperatorSchema target, IOperatorSchema... sources)
                     throws AlgebricksException {
+                if (emitsRows()) {
+                    target.addAllVariables(sources[0]);
+                }
                 target.addVariable(candidateVar);
+                if (emitsRows()) {
+                    target.addVariable(distanceVar);
+                }
             }
         };
     }
@@ -157,9 +183,15 @@ public class KMeansStageOperator extends AbstractLogicalOperator {
 
     @Override
     public IVariableTypeEnvironment computeOutputTypeEnvironment(ITypingContext ctx) throws AlgebricksException {
-        // Non-propagating, to agree with recomputeSchema and the propagation policy: the input tuples are
-        // consumed, and the candidate variable is the only thing live downstream. Propagating the inputs here
-        // would advertise types for variables the schema says are gone. Same shape as AggregateOperator.
+        // Follows recomputeSchema and the propagation policy, so the environment never advertises a type for
+        // a variable the schema says is gone: propagating for the refinement stage, which returns its rows,
+        // non-propagating for the sampling stages, which do not.
+        if (emitsRows()) {
+            PropagatingTypeEnvironment rowEnv = createPropagatingAllInputsTypeEnvironment(ctx);
+            rowEnv.setVarType(candidateVar, candidateVarType);
+            rowEnv.setVarType(distanceVar, distanceVarType);
+            return rowEnv;
+        }
         IVariableTypeEnvironment env =
                 new NonPropagatingTypeEnvironment(ctx.getExpressionTypeComputer(), ctx.getMetadataProvider());
         env.setVarType(candidateVar, candidateVarType);
@@ -189,6 +221,15 @@ public class KMeansStageOperator extends AbstractLogicalOperator {
 
     public Object getCandidateVarType() {
         return candidateVarType;
+    }
+
+    public LogicalVariable getDistanceVariable() {
+        return distanceVar;
+    }
+
+    public void setDistanceVariable(LogicalVariable v, Object type) {
+        this.distanceVar = v;
+        this.distanceVarType = type;
     }
 
     public void setCandidateVariable(LogicalVariable v) {
