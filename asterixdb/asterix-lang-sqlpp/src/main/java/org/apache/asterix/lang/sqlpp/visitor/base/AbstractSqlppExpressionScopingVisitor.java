@@ -293,9 +293,12 @@ public class AbstractSqlppExpressionScopingVisitor extends AbstractSqlppSimpleEx
                 memberField.first = visit(memberField.first, cc);
             }
         }
-        // After CLUSTER BY, the pre-cluster bindings are replaced by the descriptor (sc) and members (rvc) variables;
-        // variables defined before the current SELECT BLOCK (e.g., a WITH clause or outer scope) remain visible.
-        Scope newScope = new Scope(scopeChecker, scopeChecker.getPrecedingScope());
+        // The descriptor, the members and the operator's variables are added to what is already visible
+        // rather than replacing it. GROUP BY can build its scope on the preceding one because the group-by
+        // pipeline rewrites every reference to a pre-group variable before resolution runs; CLUSTER BY has no
+        // such pass, and its block's own subqueries -- CLUSTER AS members read as a FROM source, say -- are
+        // resolved during the block traversal, before this clause is reached.
+        Scope newScope = new Scope(scopeChecker, scopeChecker.getCurrentScope());
         VariableExpr descriptorVar = cc.getClusterDescriptorVar();
         addNewVarSymbolToScope(newScope, descriptorVar.getVar(), descriptorVar.getSourceLocation());
         if (cc.hasClusterMembersVar()) {
