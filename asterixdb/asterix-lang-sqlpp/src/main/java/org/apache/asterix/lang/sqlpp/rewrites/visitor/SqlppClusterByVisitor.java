@@ -256,7 +256,13 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
             cbc.setClusterFieldList(memberFields);
         }
 
+        // Detached for the substitution, then put back. SqlppSubstituteExpressionVisitor refuses to replace
+        // an expression whose free variables are live in the current scope, and the clause is what keeps $sc
+        // live -- so with it attached, not one descriptor field would be substituted. The old rewrite got
+        // this for free, having removed the clause outright by this point; this one still needs it.
+        selectBlock.setClusterbyClause(null);
         substituteDescriptorFields(selectExpression, cbc, loc);
+        selectBlock.setClusterbyClause(cbc);
     }
 
     /**
@@ -370,10 +376,6 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
         scSubst.put(fieldAccess(scVar, SC_CENTROID, loc), new VariableExpr(cbc.getCentroidVar().getVar()));
         scSubst.put(fieldAccess(scVar, SC_CLUSTER_RADIUS, loc), new VariableExpr(cbc.getRadiusVar().getVar()));
         SqlppRewriteUtil.substituteExpression(selectExpression, scSubst, context);
-        // The clause stays on the block for the translator, and it holds the descriptor variable itself.
-        // That is not a reference the user wrote, so drop it before looking for leftovers -- otherwise the
-        // check below finds the clause's own field and reports the query as referencing $sc as a value.
-        cbc.setClusterDescriptorVar(null);
         // Substitution replaced every field the descriptor actually has. Anything still referring to it is
         // either an unknown field or the descriptor used as a whole value, neither of which survives to
         // runtime -- and left alone both reach the user as a bare "unresolved identifier" naming a variable

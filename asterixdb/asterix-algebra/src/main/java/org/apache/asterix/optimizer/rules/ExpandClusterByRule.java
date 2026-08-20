@@ -201,6 +201,9 @@ public class ExpandClusterByRule extends AbstractDecorrelationRule {
                 cop.getVectorRef().getValue(), context, loc));
         LogicalVariable maxDist = context.newVar();
         gby.getNestedPlans().add(aggregate(gby, maxDist, BuiltinFunctions.MAX, ref(rowDist).getValue(), context, loc));
+        // Rules must set execution mode as well as schema: left unset the group-by stays unpartitioned and
+        // property enforcement never repartitions on the key, so each partition groups only its own rows.
+        OperatorManipulationUtil.setOperatorMode(gby);
         gby.recomputeSchema();
         context.computeAndSetTypeEnvironmentForOperator(gby);
 
@@ -213,6 +216,7 @@ public class ExpandClusterByRule extends AbstractDecorrelationRule {
         AssignOperator radiusOp = new AssignOperator(cop.getRadiusVariable(), new MutableObject<>(radius));
         radiusOp.setSourceLocation(loc);
         radiusOp.getInputs().add(new MutableObject<>(gby));
+        OperatorManipulationUtil.setOperatorMode(radiusOp);
         radiusOp.recomputeSchema();
         context.computeAndSetTypeEnvironmentForOperator(radiusOp);
         return radiusOp;
@@ -230,7 +234,12 @@ public class ExpandClusterByRule extends AbstractDecorrelationRule {
                 new ArrayList<>(List.of(new MutableObject<>(call))));
         agg.setSourceLocation(loc);
         agg.getInputs().add(new MutableObject<>(nts));
+        // Rules that insert operators must set their schema themselves; nothing walks the plan afterwards
+        // filling them in, and a nested tuple source without one fails at job generation.
+        OperatorManipulationUtil.setOperatorMode(nts);
+        nts.recomputeSchema();
         context.computeAndSetTypeEnvironmentForOperator(nts);
+        OperatorManipulationUtil.setOperatorMode(agg);
         agg.recomputeSchema();
         context.computeAndSetTypeEnvironmentForOperator(agg);
         return new ALogicalPlanImpl(new MutableObject<>(agg));

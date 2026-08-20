@@ -18,6 +18,13 @@
  ! under the License.
  !-->
 <test-suite xmlns="urn:xml.testframework.asterix.apache.org" ResultOffsetPath="results" QueryOffsetPath="queries_sqlpp" QueryFileExtension=".sqlpp">
+  <test-group name="cluster-by">
+    <test-case FilePath="cluster-by">
+        <compilation-unit name="kmeans-syntax">
+            <output-dir compare="Text">kmeans-syntax</output-dir>
+        </compilation-unit>
+    </test-case>
+  </test-group>
   <test-group name="failed">
   </test-group>
 </test-suite>

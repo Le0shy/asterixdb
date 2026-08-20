@@ -302,6 +302,15 @@ public class AbstractSqlppExpressionScopingVisitor extends AbstractSqlppSimpleEx
             VariableExpr membersVar = cc.getClusterMembersVar();
             addNewVarSymbolToScope(newScope, membersVar.getVar(), membersVar.getSourceLocation());
         }
+        // The variables the CLUSTER BY operator produces. The rewrite names them and points the descriptor's
+        // fields at them, so from here on they are what the query actually reads; null before the rewrite has
+        // run, which is why each is guarded.
+        for (VariableExpr produced : new VariableExpr[] { cc.getClusterIdVar(), cc.getCentroidVar(),
+                cc.getRadiusVar() }) {
+            if (produced != null) {
+                addNewVarSymbolToScope(newScope, produced.getVar(), produced.getSourceLocation());
+            }
+        }
         scopeChecker.replaceCurrentScope(newScope);
         return null;
     }

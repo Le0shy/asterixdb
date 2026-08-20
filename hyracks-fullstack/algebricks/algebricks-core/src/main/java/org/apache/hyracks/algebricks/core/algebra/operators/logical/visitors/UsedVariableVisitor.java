@@ -333,6 +333,11 @@ public class UsedVariableVisitor implements ILogicalOperatorVisitor<Void, Void> 
     @Override
     public Void visitClusterByOperator(ClusterByOperator op, Void arg) throws AlgebricksException {
         usedVariables.add(op.getVectorVariable());
+        // The member record is read by the expansion, which listifies it into the members list. Without it
+        // here the assign that builds it looks dead, and removing it leaves this reference dangling.
+        if (op.getMemberRecordVariable() != null) {
+            usedVariables.add(op.getMemberRecordVariable());
+        }
         return null;
     }
 
