@@ -1251,7 +1251,6 @@ public class BuiltinFunctions {
     // for it. Seeding is not here: how many starting points an algorithm wants is the algorithm's business,
     // so the rule that expands this derives them from the vectors. The translator turns this into a ClusterByOperator; a rewrite rule expands that into whichever
     // stages the algorithm needs. The three kmeans-* markers below are what that rule produces today.
-    public static final FunctionIdentifier CLUSTER_BY = FunctionConstants.newAsterix("cluster-by", 4);
     // Temporal functions
     public static final FunctionIdentifier UNIX_TIME_FROM_DATE_IN_DAYS =
             FunctionConstants.newAsterix("unix-time-from-date-in-days", 1);
@@ -2006,7 +2005,6 @@ public class BuiltinFunctions {
 
         addPrivateFunction(NEAREST_CENTROID, AInt32TypeComputer.INSTANCE_NULLABLE, true);
         addPrivateFunction(NEAREST_CENTROID_DISTANCE, ADoubleTypeComputer.INSTANCE_NULLABLE, true);
-        addPrivateFunction(CLUSTER_BY, OrderedListOfAnyTypeComputer.INSTANCE, true);
         // Window functions
 
         addFunction(CUME_DIST, ADoubleTypeComputer.INSTANCE, false);

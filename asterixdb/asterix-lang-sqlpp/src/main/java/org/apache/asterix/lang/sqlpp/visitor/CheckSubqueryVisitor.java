@@ -65,6 +65,7 @@ import org.apache.asterix.lang.sqlpp.clause.SelectSetOperation;
 import org.apache.asterix.lang.sqlpp.clause.UnnestClause;
 import org.apache.asterix.lang.sqlpp.expression.CaseExpression;
 import org.apache.asterix.lang.sqlpp.expression.ChangeExpression;
+import org.apache.asterix.lang.sqlpp.expression.ClusterByExpr;
 import org.apache.asterix.lang.sqlpp.expression.SelectExpression;
 import org.apache.asterix.lang.sqlpp.expression.WindowExpression;
 import org.apache.asterix.lang.sqlpp.struct.SetOperationRight;
@@ -167,6 +168,11 @@ public class CheckSubqueryVisitor extends AbstractSqlppQueryExpressionVisitor<Bo
     @Override
     public Boolean visit(HavingClause havingClause, ILangExpression arg) throws CompilationException {
         return visit(havingClause.getFilterExpression(), arg);
+    }
+
+    @Override
+    public Boolean visit(ClusterByExpr clusterByExpr, ILangExpression arg) throws CompilationException {
+        return visit(clusterByExpr.getVectors(), arg);
     }
 
     @Override

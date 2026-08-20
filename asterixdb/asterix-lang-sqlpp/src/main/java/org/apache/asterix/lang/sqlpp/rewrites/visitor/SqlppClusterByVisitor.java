@@ -64,6 +64,7 @@ import org.apache.asterix.lang.sqlpp.clause.SelectClause;
 import org.apache.asterix.lang.sqlpp.clause.SelectElement;
 import org.apache.asterix.lang.sqlpp.clause.SelectSetOperation;
 import org.apache.asterix.lang.sqlpp.clause.UnnestClause;
+import org.apache.asterix.lang.sqlpp.expression.ClusterByExpr;
 import org.apache.asterix.lang.sqlpp.expression.SelectExpression;
 import org.apache.asterix.lang.sqlpp.optype.JoinType;
 import org.apache.asterix.lang.sqlpp.optype.UnnestType;
@@ -410,9 +411,9 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
      */
     private VarIdentifier bindCentroidLets(List<LetClause> centroidLets, ClusterbyClause cbc,
             SelectExpression vecsQuery, int k, String metric, SourceLocation loc) throws CompilationException {
-        // One call, whatever the algorithm. How it is carried out is decided by the rule that expands this.
-        Expression centroidStream = call(BuiltinFunctions.CLUSTER_BY, loc, copy(vecsQuery), intLit(k, loc),
-                strLit(getInitMode(cbc), loc), strLit(metric, loc));
+        // One node, whatever the algorithm. How it is carried out is decided by the rule that expands it.
+        ClusterByExpr centroidStream = new ClusterByExpr(copy(vecsQuery), k, getInitMode(cbc), metric);
+        centroidStream.setSourceLocation(loc);
         VarIdentifier cFinal = context.newVariable();
         centroidLets.add(letClause(cFinal, centroidStream, loc));
         context.markNoInlineLetVar(cFinal);

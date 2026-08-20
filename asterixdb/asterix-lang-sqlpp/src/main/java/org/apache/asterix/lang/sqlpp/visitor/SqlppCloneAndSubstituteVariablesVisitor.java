@@ -54,6 +54,7 @@ import org.apache.asterix.lang.sqlpp.clause.SelectSetOperation;
 import org.apache.asterix.lang.sqlpp.clause.UnnestClause;
 import org.apache.asterix.lang.sqlpp.expression.CaseExpression;
 import org.apache.asterix.lang.sqlpp.expression.ChangeExpression;
+import org.apache.asterix.lang.sqlpp.expression.ClusterByExpr;
 import org.apache.asterix.lang.sqlpp.expression.SelectExpression;
 import org.apache.asterix.lang.sqlpp.expression.WindowExpression;
 import org.apache.asterix.lang.sqlpp.struct.SetOperationInput;
@@ -417,6 +418,16 @@ public class SqlppCloneAndSubstituteVariablesVisitor extends CloneAndSubstituteV
         HavingClause newHavingClause = new HavingClause((Expression) p.first);
         newHavingClause.setSourceLocation(havingClause.getSourceLocation());
         return new Pair<>(newHavingClause, p.second);
+    }
+
+    @Override
+    public Pair<ILangExpression, VariableSubstitutionEnvironment> visit(ClusterByExpr clusterByExpr,
+            VariableSubstitutionEnvironment env) throws CompilationException {
+        ClusterByExpr newClusterByExpr =
+                new ClusterByExpr((Expression) clusterByExpr.getVectors().accept(this, env).first,
+                        clusterByExpr.getNumClusters(), clusterByExpr.getInitMode(), clusterByExpr.getMetric());
+        newClusterByExpr.setSourceLocation(clusterByExpr.getSourceLocation());
+        return new Pair<>(newClusterByExpr, env);
     }
 
     @Override

@@ -77,6 +77,7 @@ import org.apache.asterix.lang.sqlpp.clause.SelectSetOperation;
 import org.apache.asterix.lang.sqlpp.clause.UnnestClause;
 import org.apache.asterix.lang.sqlpp.expression.CaseExpression;
 import org.apache.asterix.lang.sqlpp.expression.ChangeExpression;
+import org.apache.asterix.lang.sqlpp.expression.ClusterByExpr;
 import org.apache.asterix.lang.sqlpp.expression.SelectExpression;
 import org.apache.asterix.lang.sqlpp.expression.WindowExpression;
 import org.apache.asterix.lang.sqlpp.optype.JoinType;
@@ -195,64 +196,15 @@ public class SqlppExpressionToPlanTranslator extends LangExpressionToPlanTransla
         }
     }
 
+    /**
+     * Realizes a CLUSTER BY: builds the operator over its vector branch and listifies the emitted centroids
+     * back into a value for the enclosing LET.
+     */
     @Override
-    public Pair<ILogicalOperator, LogicalVariable> visit(CallExpr fcall, Mutable<ILogicalOperator> tupSource)
-            throws CompilationException {
-        if (isClusterByCall(fcall)) {
-            return translateClusterByMarker(fcall, tupSource);
-        }
-        return super.visit(fcall, tupSource);
-    }
-
-    // The internal CLUSTER BY marker. Matching on the whole FunctionSignature -- database, dataverse, name
-    // and arity -- keeps a user function that happens to share the name from being mistaken for it.
-    // cluster-by(vectors, k, initMode, metric).
-    private static final FunctionSignature CLUSTER_BY_SIG = new FunctionSignature(BuiltinFunctions.CLUSTER_BY);
-
-    /** The internal CLUSTER BY marker the rewrite leaves behind. */
-    @AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_5, tool = AiProvenance.Tool.CLAUDE_CODE_CLI, contributionKind = AiProvenance.ContributionKind.REFACTORED, notes = "Match CLUSTER BY stage markers by whole FunctionSignature rather than name plus arity")
-    private static boolean isClusterByCall(Expression expr) {
-        if (!(expr instanceof CallExpr)) {
-            return false;
-        }
-        FunctionSignature sig = ((CallExpr) expr).getFunctionSignature();
-        return CLUSTER_BY_SIG.equals(sig);
-    }
-
-    /**
-     * Reads a positional integer argument of a stage marker. The signature match fixes the arity, so the
-     * position is known -- but the literal shape is not checked anywhere else, and an unguarded cast would
-     * surface as a ClassCastException, i.e. an internal server error with no source location.
-     */
-    private static long longArg(CallExpr fcall, int index) throws CompilationException {
-        Expression arg = fcall.getExprList().get(index);
-        if (!(arg instanceof LiteralExpr) || !(((LiteralExpr) arg).getValue() instanceof IntegerLiteral)) {
-            throw new CompilationException(ErrorCode.COMPILATION_ILLEGAL_STATE, fcall.getSourceLocation(),
-                    "CLUSTER BY stage marker " + fcall.getFunctionSignature() + " expects an integer literal at "
-                            + "argument " + index);
-        }
-        return ((IntegerLiteral) ((LiteralExpr) arg).getValue()).getValue().longValue();
-    }
-
-    /** The string counterpart of {@link #longArg}, guarded the same way and for the same reason. */
-    private static String stringArg(CallExpr fcall, int index) throws CompilationException {
-        Expression arg = fcall.getExprList().get(index);
-        if (!(arg instanceof LiteralExpr) || !(((LiteralExpr) arg).getValue() instanceof StringLiteral)) {
-            throw new CompilationException(ErrorCode.COMPILATION_ILLEGAL_STATE, fcall.getSourceLocation(),
-                    "CLUSTER BY stage marker " + fcall.getFunctionSignature() + " expects a string literal at "
-                            + "argument " + index);
-        }
-        return ((StringLiteral) ((LiteralExpr) arg).getValue()).getValue();
-    }
-
-    /**
-     * Realizes the CLUSTER BY marker: builds the operator over its two stream branches and listifies the
-     * emitted centroids back into a value for the enclosing LET.
-     */
-    private Pair<ILogicalOperator, LogicalVariable> translateClusterByMarker(CallExpr fcall,
+    public Pair<ILogicalOperator, LogicalVariable> visit(ClusterByExpr clusterByExpr,
             Mutable<ILogicalOperator> tupSource) throws CompilationException {
-        SourceLocation loc = fcall.getSourceLocation();
-        Pair<ILogicalOperator, LogicalVariable> constructed = translateClusterBy(fcall, loc);
+        SourceLocation loc = clusterByExpr.getSourceLocation();
+        Pair<ILogicalOperator, LogicalVariable> constructed = translateClusterBy(clusterByExpr, loc);
         Pair<ILogicalOperator, LogicalVariable> listified =
                 aggListifyForSubquery(constructed.second, new MutableObject<>(constructed.first), false);
         // The construct rides a SUBPLAN over the enclosing chain, so upstream LET variables keep flowing;
@@ -272,21 +224,21 @@ public class SqlppExpressionToPlanTranslator extends LangExpressionToPlanTransla
     }
 
     /**
-     * Builds the CLUSTER BY operator from {@code cluster-by(vectors, k, initMode, metric)}. The node says only what the
-     * query asked for; the rule that expands it decides the rest, including how the algorithm seeds itself.
+     * Builds the CLUSTER BY operator. The node says only what the query asked for; the rule that expands it
+     * decides the rest, including how the algorithm seeds itself.
      */
-    private Pair<ILogicalOperator, LogicalVariable> translateClusterBy(CallExpr fcall, SourceLocation loc)
+    private Pair<ILogicalOperator, LogicalVariable> translateClusterBy(ClusterByExpr clusterByExpr, SourceLocation loc)
             throws CompilationException {
         Pair<ILogicalOperator, LogicalVariable> vecBranch =
-                translateStreamBranch((SelectExpression) fcall.getExprList().get(0));
+                translateStreamBranch((SelectExpression) clusterByExpr.getVectors());
         VariableReferenceExpression vecRef = new VariableReferenceExpression(vecBranch.second);
         vecRef.setSourceLocation(loc);
         LogicalVariable candVar = context.newVar();
         ClusterByOperator cop = new ClusterByOperator(new MutableObject<>(vecRef), candVar,
-                org.apache.asterix.om.types.BuiltinType.ANY, (int) longArg(fcall, 1));
+                org.apache.asterix.om.types.BuiltinType.ANY, clusterByExpr.getNumClusters());
         cop.setAlgorithm("kmeans");
-        cop.setInitMode(stringArg(fcall, 2));
-        cop.setMetric(stringArg(fcall, 3));
+        cop.setInitMode(clusterByExpr.getInitMode());
+        cop.setMetric(clusterByExpr.getMetric());
         cop.setSourceLocation(loc);
         cop.getInputs().add(new MutableObject<>(vecBranch.first));
         // The same anchor-ASSIGN discipline the stage markers use: the consumer holds the anchor's reference

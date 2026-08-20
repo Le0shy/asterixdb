@@ -59,6 +59,7 @@ import org.apache.asterix.lang.sqlpp.clause.SelectSetOperation;
 import org.apache.asterix.lang.sqlpp.clause.UnnestClause;
 import org.apache.asterix.lang.sqlpp.expression.CaseExpression;
 import org.apache.asterix.lang.sqlpp.expression.ChangeExpression;
+import org.apache.asterix.lang.sqlpp.expression.ClusterByExpr;
 import org.apache.asterix.lang.sqlpp.expression.SelectExpression;
 import org.apache.asterix.lang.sqlpp.expression.WindowExpression;
 import org.apache.asterix.lang.sqlpp.struct.SetOperationRight;
@@ -361,6 +362,14 @@ public class SqlppAstPrintVisitor extends QueryPrintVisitor implements ISqlppVis
             }
             pair.getExpr().accept(this, step);
         }
+    }
+
+    @Override
+    public Void visit(ClusterByExpr clusterByExpr, Integer step) throws CompilationException {
+        out.println(skip(step) + "CLUSTER BY " + clusterByExpr.getNumClusters() + " " + clusterByExpr.getInitMode()
+                + " " + clusterByExpr.getMetric());
+        clusterByExpr.getVectors().accept(this, step + 2);
+        return null;
     }
 
     @Override

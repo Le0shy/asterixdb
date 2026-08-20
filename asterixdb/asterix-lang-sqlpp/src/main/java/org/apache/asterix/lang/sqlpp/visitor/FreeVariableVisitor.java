@@ -69,6 +69,7 @@ import org.apache.asterix.lang.sqlpp.clause.SelectSetOperation;
 import org.apache.asterix.lang.sqlpp.clause.UnnestClause;
 import org.apache.asterix.lang.sqlpp.expression.CaseExpression;
 import org.apache.asterix.lang.sqlpp.expression.ChangeExpression;
+import org.apache.asterix.lang.sqlpp.expression.ClusterByExpr;
 import org.apache.asterix.lang.sqlpp.expression.SelectExpression;
 import org.apache.asterix.lang.sqlpp.expression.WindowExpression;
 import org.apache.asterix.lang.sqlpp.struct.SetOperationRight;
@@ -494,6 +495,12 @@ public class FreeVariableVisitor extends AbstractSqlppQueryExpressionVisitor<Voi
     @Override
     public Void visit(IVisitorExtension ve, Collection<VariableExpr> arg) throws CompilationException {
         ve.freeVariableDispatch(this, arg);
+        return null;
+    }
+
+    @Override
+    public Void visit(ClusterByExpr clusterByExpr, Collection<VariableExpr> freeVars) throws CompilationException {
+        clusterByExpr.getVectors().accept(this, freeVars);
         return null;
     }
 

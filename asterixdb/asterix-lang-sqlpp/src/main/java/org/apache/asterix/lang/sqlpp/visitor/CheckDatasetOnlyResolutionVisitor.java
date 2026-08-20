@@ -60,6 +60,7 @@ import org.apache.asterix.lang.sqlpp.clause.SelectSetOperation;
 import org.apache.asterix.lang.sqlpp.clause.UnnestClause;
 import org.apache.asterix.lang.sqlpp.expression.CaseExpression;
 import org.apache.asterix.lang.sqlpp.expression.ChangeExpression;
+import org.apache.asterix.lang.sqlpp.expression.ClusterByExpr;
 import org.apache.asterix.lang.sqlpp.expression.SelectExpression;
 import org.apache.asterix.lang.sqlpp.expression.WindowExpression;
 import org.apache.asterix.lang.sqlpp.util.SqlppVariableUtil;
@@ -266,6 +267,11 @@ public final class CheckDatasetOnlyResolutionVisitor
 
     @Override
     public Boolean visit(HavingClause havingClause, VariableExpr arg) throws CompilationException {
+        return false;
+    }
+
+    @Override
+    public Boolean visit(ClusterByExpr clusterByExpr, VariableExpr arg) throws CompilationException {
         return false;
     }
 

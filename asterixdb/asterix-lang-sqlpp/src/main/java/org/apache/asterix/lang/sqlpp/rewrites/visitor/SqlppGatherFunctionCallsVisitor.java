@@ -45,6 +45,7 @@ import org.apache.asterix.lang.sqlpp.clause.SelectSetOperation;
 import org.apache.asterix.lang.sqlpp.clause.UnnestClause;
 import org.apache.asterix.lang.sqlpp.expression.CaseExpression;
 import org.apache.asterix.lang.sqlpp.expression.ChangeExpression;
+import org.apache.asterix.lang.sqlpp.expression.ClusterByExpr;
 import org.apache.asterix.lang.sqlpp.expression.SelectExpression;
 import org.apache.asterix.lang.sqlpp.expression.WindowExpression;
 import org.apache.asterix.lang.sqlpp.struct.SetOperationRight;
@@ -181,6 +182,12 @@ public final class SqlppGatherFunctionCallsVisitor extends GatherFunctionCallsVi
     @Override
     public Void visit(HavingClause havingClause, Void arg) throws CompilationException {
         havingClause.getFilterExpression().accept(this, arg);
+        return null;
+    }
+
+    @Override
+    public Void visit(ClusterByExpr clusterByExpr, Void arg) throws CompilationException {
+        clusterByExpr.getVectors().accept(this, arg);
         return null;
     }
 

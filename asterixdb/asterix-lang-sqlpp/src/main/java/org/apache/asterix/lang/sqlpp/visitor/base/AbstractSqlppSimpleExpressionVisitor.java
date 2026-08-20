@@ -68,6 +68,7 @@ import org.apache.asterix.lang.sqlpp.clause.SelectSetOperation;
 import org.apache.asterix.lang.sqlpp.clause.UnnestClause;
 import org.apache.asterix.lang.sqlpp.expression.CaseExpression;
 import org.apache.asterix.lang.sqlpp.expression.ChangeExpression;
+import org.apache.asterix.lang.sqlpp.expression.ClusterByExpr;
 import org.apache.asterix.lang.sqlpp.expression.SelectExpression;
 import org.apache.asterix.lang.sqlpp.expression.WindowExpression;
 import org.apache.asterix.lang.sqlpp.struct.SetOperationRight;
@@ -410,6 +411,12 @@ public class AbstractSqlppSimpleExpressionVisitor
     @Override
     public Expression visit(IVisitorExtension ve, ILangExpression arg) throws CompilationException {
         return ve.simpleExpressionDispatch(this, arg);
+    }
+
+    @Override
+    public Expression visit(ClusterByExpr clusterByExpr, ILangExpression arg) throws CompilationException {
+        clusterByExpr.setVectors(visit(clusterByExpr.getVectors(), arg));
+        return clusterByExpr;
     }
 
     @Override

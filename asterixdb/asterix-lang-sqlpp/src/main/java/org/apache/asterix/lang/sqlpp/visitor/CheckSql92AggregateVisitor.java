@@ -61,6 +61,7 @@ import org.apache.asterix.lang.sqlpp.clause.SelectSetOperation;
 import org.apache.asterix.lang.sqlpp.clause.UnnestClause;
 import org.apache.asterix.lang.sqlpp.expression.CaseExpression;
 import org.apache.asterix.lang.sqlpp.expression.ChangeExpression;
+import org.apache.asterix.lang.sqlpp.expression.ClusterByExpr;
 import org.apache.asterix.lang.sqlpp.expression.SelectExpression;
 import org.apache.asterix.lang.sqlpp.expression.WindowExpression;
 import org.apache.asterix.lang.sqlpp.util.FunctionMapUtil;
@@ -305,6 +306,11 @@ public class CheckSql92AggregateVisitor extends AbstractSqlppQueryExpressionVisi
     @Override
     public Boolean visit(HavingClause havingClause, ILangExpression parentSelectBlock) throws CompilationException {
         return false;
+    }
+
+    @Override
+    public Boolean visit(ClusterByExpr clusterByExpr, ILangExpression arg) throws CompilationException {
+        return clusterByExpr.getVectors().accept(this, arg);
     }
 
     @Override

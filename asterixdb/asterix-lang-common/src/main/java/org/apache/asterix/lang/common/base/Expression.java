@@ -42,5 +42,6 @@ public interface Expression extends ILangExpression {
         CASE_EXPRESSION,
         WINDOW_EXPRESSION,
         UPDATE_CHANGE_EXPRESSION,
+        CLUSTER_BY_EXPRESSION,
     }
 }

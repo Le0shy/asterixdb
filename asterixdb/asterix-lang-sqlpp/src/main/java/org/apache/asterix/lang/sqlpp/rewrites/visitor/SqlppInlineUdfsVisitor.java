@@ -50,6 +50,7 @@ import org.apache.asterix.lang.sqlpp.clause.SelectSetOperation;
 import org.apache.asterix.lang.sqlpp.clause.UnnestClause;
 import org.apache.asterix.lang.sqlpp.expression.CaseExpression;
 import org.apache.asterix.lang.sqlpp.expression.ChangeExpression;
+import org.apache.asterix.lang.sqlpp.expression.ClusterByExpr;
 import org.apache.asterix.lang.sqlpp.expression.SelectExpression;
 import org.apache.asterix.lang.sqlpp.expression.WindowExpression;
 import org.apache.asterix.lang.sqlpp.struct.SetOperationRight;
@@ -226,6 +227,13 @@ public class SqlppInlineUdfsVisitor extends AbstractInlineUdfsVisitor implements
         Pair<Boolean, Expression> p = inlineUdfsAndViewsInExpr(havingClause.getFilterExpression());
         havingClause.setFilterExpression(p.second);
         return p.first;
+    }
+
+    @Override
+    public Boolean visit(ClusterByExpr clusterByExpr, Void arg) throws CompilationException {
+        Pair<Boolean, Expression> result = inlineUdfsAndViewsInExpr(clusterByExpr.getVectors());
+        clusterByExpr.setVectors(result.second);
+        return result.first;
     }
 
     @Override

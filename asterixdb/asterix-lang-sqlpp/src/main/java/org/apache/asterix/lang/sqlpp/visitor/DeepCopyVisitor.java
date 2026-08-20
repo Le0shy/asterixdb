@@ -70,6 +70,7 @@ import org.apache.asterix.lang.sqlpp.clause.SelectSetOperation;
 import org.apache.asterix.lang.sqlpp.clause.UnnestClause;
 import org.apache.asterix.lang.sqlpp.expression.CaseExpression;
 import org.apache.asterix.lang.sqlpp.expression.ChangeExpression;
+import org.apache.asterix.lang.sqlpp.expression.ClusterByExpr;
 import org.apache.asterix.lang.sqlpp.expression.SelectExpression;
 import org.apache.asterix.lang.sqlpp.expression.WindowExpression;
 import org.apache.asterix.lang.sqlpp.struct.SetOperationInput;
@@ -540,6 +541,15 @@ public class DeepCopyVisitor extends AbstractSqlppQueryExpressionVisitor<ILangEx
     @Override
     public ILangExpression visit(IVisitorExtension ve, Void arg) throws CompilationException {
         return ve.deepCopyDispatch(this);
+    }
+
+    @Override
+    public ILangExpression visit(ClusterByExpr clusterByExpr, Void arg) throws CompilationException {
+        ClusterByExpr copy = new ClusterByExpr((Expression) clusterByExpr.getVectors().accept(this, arg),
+                clusterByExpr.getNumClusters(), clusterByExpr.getInitMode(), clusterByExpr.getMetric());
+        copy.setSourceLocation(clusterByExpr.getSourceLocation());
+        copy.addHints(clusterByExpr.getHints());
+        return copy;
     }
 
     @Override
