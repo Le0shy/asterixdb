@@ -337,8 +337,14 @@ public class SubstituteVariableVisitor
         if (op.getClusterIdVariable().equals(pair.first)) {
             op.setClusterIdVariable(pair.second);
         }
-        if (op.getDistanceVariable().equals(pair.first)) {
-            op.setDistanceVariable(pair.second);
+        if (op.getCentroidVariable().equals(pair.first)) {
+            op.setCentroidVariable(pair.second);
+        }
+        if (op.getRadiusVariable().equals(pair.first)) {
+            op.setRadiusVariable(pair.second);
+        }
+        if (op.getMembersVariable().equals(pair.first)) {
+            op.setMembersVariable(pair.second);
         }
         return null;
     }

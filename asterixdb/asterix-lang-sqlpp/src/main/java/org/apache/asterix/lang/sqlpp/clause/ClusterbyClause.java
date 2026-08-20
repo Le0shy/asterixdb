@@ -60,7 +60,8 @@ public class ClusterbyClause extends AbstractClause {
     // GROUP BY and the descriptor around them before the translator binds them to logical variables --
     // the same hand-off GroupbyClause makes for its grouping variables.
     private VariableExpr clusterIdVar;
-    private VariableExpr distanceVar;
+    private VariableExpr centroidVar;
+    private VariableExpr radiusVar;
 
     public ClusterbyClause(Expression clusteringExpr, VariableExpr clusterDescriptorVar, VariableExpr clusterMembersVar,
             List<Pair<Expression, Identifier>> clusterFieldList, RecordConstructor withOptions) {
@@ -152,12 +153,20 @@ public class ClusterbyClause extends AbstractClause {
         this.clusterIdVar = clusterIdVar;
     }
 
-    public VariableExpr getDistanceVar() {
-        return distanceVar;
+    public VariableExpr getCentroidVar() {
+        return centroidVar;
     }
 
-    public void setDistanceVar(VariableExpr distanceVar) {
-        this.distanceVar = distanceVar;
+    public void setCentroidVar(VariableExpr centroidVar) {
+        this.centroidVar = centroidVar;
+    }
+
+    public VariableExpr getRadiusVar() {
+        return radiusVar;
+    }
+
+    public void setRadiusVar(VariableExpr radiusVar) {
+        this.radiusVar = radiusVar;
     }
 
     public boolean hasClusterMembersVar() {

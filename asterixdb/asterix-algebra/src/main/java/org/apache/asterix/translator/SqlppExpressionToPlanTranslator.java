@@ -307,11 +307,10 @@ public class SqlppExpressionToPlanTranslator extends LangExpressionToPlanTransla
     /**
      * CLUSTER BY over the block's own pipeline, the way GROUP BY consumes it.
      * <p>
-     * The operator adds two variables to every input row -- which cluster it landed in, and how far its
-     * clustering expression sits from that cluster's centre -- and passes the row itself through. Nothing is
-     * re-read: whatever produced the rows, a scan or a join or an UNNEST, is consumed exactly once. The
-     * rewrite has already validated the WITH options and built the GROUP BY and the cluster descriptor
-     * around the two variables named on the clause.
+     * The operator consumes the block's rows and emits one tuple per cluster -- its id, its centre, its
+     * radius, and its members. That is the whole of what the clause means, so nothing downstream has to
+     * rebuild any of it, and whatever produced the rows -- a scan, a join, an UNNEST -- is read exactly
+     * once. The rewrite has already validated the WITH options and named the four variables on the clause.
      */
     @Override
     public Pair<ILogicalOperator, LogicalVariable> visit(ClusterbyClause clusterbyClause,
@@ -319,9 +318,12 @@ public class SqlppExpressionToPlanTranslator extends LangExpressionToPlanTransla
         Pair<ILogicalExpression, Mutable<ILogicalOperator>> clustering =
                 langExprToAlgExpression(clusterbyClause.getClusteringExpression(), tupSource);
         LogicalVariable cidVar = context.newVarFromExpression(clusterbyClause.getClusterIdVar());
-        LogicalVariable distVar = context.newVarFromExpression(clusterbyClause.getDistanceVar());
+        LogicalVariable centroidVar = context.newVarFromExpression(clusterbyClause.getCentroidVar());
+        LogicalVariable radiusVar = context.newVarFromExpression(clusterbyClause.getRadiusVar());
+        LogicalVariable membersVar = context.newVarFromExpression(clusterbyClause.getClusterMembersVar());
         ClusterByOperator cop = new ClusterByOperator(new MutableObject<>(clustering.first), cidVar, BuiltinType.AINT64,
-                distVar, BuiltinType.ADOUBLE, clusterbyClause.getNumClusters());
+                centroidVar, BuiltinType.ANY, radiusVar, BuiltinType.ADOUBLE, membersVar, BuiltinType.ANY,
+                clusterbyClause.getNumClusters());
         cop.setAlgorithm(ALGORITHM_KMEANS);
         cop.setInitMode(clusterbyClause.getInitMode());
         cop.setMetric(clusterbyClause.getMetric());

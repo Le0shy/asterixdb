@@ -559,7 +559,9 @@ public class LogicalOperatorDeepCopyWithNewVariablesVisitor
         ClusterByOperator opCopy = new ClusterByOperator(
                 new MutableObject<>(new VariableReferenceExpression(deepCopyVariable(op.getVectorVariable()))),
                 deepCopyVariable(op.getClusterIdVariable()), op.getClusterIdVarType(),
-                deepCopyVariable(op.getDistanceVariable()), op.getDistanceVarType(), op.getNumClusters());
+                deepCopyVariable(op.getCentroidVariable()), op.getCentroidVarType(),
+                deepCopyVariable(op.getRadiusVariable()), op.getRadiusVarType(),
+                deepCopyVariable(op.getMembersVariable()), op.getMembersVarType(), op.getNumClusters());
         opCopy.setAlgorithm(op.getAlgorithm());
         opCopy.setInitMode(op.getInitMode());
         opCopy.setMetric(op.getMetric());

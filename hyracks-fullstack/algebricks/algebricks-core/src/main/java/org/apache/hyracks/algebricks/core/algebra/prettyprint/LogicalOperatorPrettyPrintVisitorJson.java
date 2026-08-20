@@ -890,7 +890,9 @@ public class LogicalOperatorPrettyPrintVisitorJson extends AbstractLogicalOperat
         try {
             jsonGenerator.writeStringField(OPERATOR_FIELD, "cluster-by");
             jsonGenerator.writeStringField("cluster-id-variable", String.valueOf(op.getClusterIdVariable()));
-            jsonGenerator.writeStringField("distance-variable", String.valueOf(op.getDistanceVariable()));
+            jsonGenerator.writeStringField("centroid-variable", String.valueOf(op.getCentroidVariable()));
+            jsonGenerator.writeStringField("radius-variable", String.valueOf(op.getRadiusVariable()));
+            jsonGenerator.writeStringField("members-variable", String.valueOf(op.getMembersVariable()));
             jsonGenerator.writeStringField("vector-variable", String.valueOf(op.getVectorVariable()));
             jsonGenerator.writeNumberField("num-clusters", op.getNumClusters());
             jsonGenerator.writeStringField("algorithm", op.getAlgorithm());

@@ -429,7 +429,9 @@ public class IsomorphismOperatorVisitor implements ILogicalOperatorVisitor<Boole
                 && java.util.Objects.equals(op.getMetric(), other.getMetric())
                 && op.getVectorVariable().equals(other.getVectorVariable())
                 && op.getClusterIdVariable().equals(other.getClusterIdVariable())
-                && op.getDistanceVariable().equals(other.getDistanceVariable());
+                && op.getCentroidVariable().equals(other.getCentroidVariable())
+                && op.getRadiusVariable().equals(other.getRadiusVariable())
+                && op.getMembersVariable().equals(other.getMembersVariable());
     }
 
     @Override

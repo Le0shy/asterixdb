@@ -239,7 +239,9 @@ public class ProducedVariableVisitor implements ILogicalOperatorVisitor<Void, Vo
     @Override
     public Void visitClusterByOperator(ClusterByOperator op, Void arg) throws AlgebricksException {
         producedVariables.add(op.getClusterIdVariable());
-        producedVariables.add(op.getDistanceVariable());
+        producedVariables.add(op.getCentroidVariable());
+        producedVariables.add(op.getRadiusVariable());
+        producedVariables.add(op.getMembersVariable());
         return null;
     }
 
