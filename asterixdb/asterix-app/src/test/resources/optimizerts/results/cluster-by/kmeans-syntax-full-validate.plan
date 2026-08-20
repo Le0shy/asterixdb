@@ -23,7 +23,7 @@ distribute result [$$214]
                 -- ASSIGN  |PARTITIONED|
                   select (and(is-array($$218), eq(len($$218), 2), not(is-unknown($$229)), lt($$m.getField(1), 2020))) project: [$$m, $$229]
                   -- STREAM_SELECT  |PARTITIONED|
-                    assign [$$229] <- [nearest-centroid($$218, $$194)] project: [$$m, $$218, $$229]
+                    assign [$$229] <- [nearest-centroid($$218, $$194, "euclidean_squared")] project: [$$m, $$218, $$229]
                     -- ASSIGN  |PARTITIONED|
                       assign [$$218] <- [$$m.getField(2)]
                       -- ASSIGN  |PARTITIONED|

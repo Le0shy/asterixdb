@@ -18,12 +18,14 @@
  */
 package org.apache.asterix.algebra.operators.physical;
 
+import org.apache.asterix.common.vector.VectorSimilarityMetric;
 import org.apache.asterix.metadata.declared.MetadataProvider;
 import org.apache.hyracks.algebricks.common.exceptions.AlgebricksException;
 import org.apache.hyracks.algebricks.core.algebra.base.ILogicalOperator;
 import org.apache.hyracks.algebricks.core.algebra.base.IOptimizationContext;
 import org.apache.hyracks.algebricks.core.algebra.base.LogicalVariable;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.IOperatorSchema;
+import org.apache.hyracks.algebricks.core.algebra.operators.logical.KMeansStageOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.physical.AbstractPhysicalOperator;
 import org.apache.hyracks.algebricks.core.algebra.properties.DefaultNodeGroupDomain;
 import org.apache.hyracks.algebricks.core.algebra.properties.INodeDomain;
@@ -123,5 +125,14 @@ public abstract class AbstractKMeansStagePOperator extends AbstractPhysicalOpera
         }
         throw AlgebricksException.create(ErrorCode.ILLEGAL_STATE, "kmeans-stage input schema",
                 String.valueOf(schema.getSize()));
+    }
+
+    /**
+     * The metric the stage measures with. The rewrite validates the alias and the translator always sets it,
+     * so the fallback is defensive only.
+     */
+    protected static VectorSimilarityMetric metricOf(KMeansStageOperator kop) {
+        VectorSimilarityMetric metric = VectorSimilarityMetric.fromAlias(kop.getMetric());
+        return metric == null ? VectorSimilarityMetric.EUCLIDEAN_SQUARED : metric;
     }
 }

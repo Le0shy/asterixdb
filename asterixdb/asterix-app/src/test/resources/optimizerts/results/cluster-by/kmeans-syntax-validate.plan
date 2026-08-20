@@ -26,7 +26,7 @@ distribute result [$$210]
               -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
                 select (and(is-array($$214), eq(len($$214), 2), not(is-unknown($$222))))
                 -- STREAM_SELECT  |PARTITIONED|
-                  assign [$$222] <- [nearest-centroid($$214, $$188)] project: [$$214, $$222]
+                  assign [$$222] <- [nearest-centroid($$214, $$188, "euclidean_squared")] project: [$$214, $$222]
                   -- ASSIGN  |PARTITIONED|
                     assign [$$214] <- [$$r.getField(1)] project: [$$188, $$214]
                     -- ASSIGN  |PARTITIONED|

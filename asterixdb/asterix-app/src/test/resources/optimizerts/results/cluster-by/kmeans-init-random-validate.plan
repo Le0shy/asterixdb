@@ -17,7 +17,7 @@ distribute result [$$172]
           -- HASH_PARTITION_EXCHANGE [$$180]  |PARTITIONED|
             select (and(is-array($$175), eq(len($$175), 2), not(is-unknown($$180)))) project: [$$180]
             -- STREAM_SELECT  |PARTITIONED|
-              assign [$$180] <- [nearest-centroid($$175, $$155)] project: [$$175, $$180]
+              assign [$$180] <- [nearest-centroid($$175, $$155, "euclidean_squared")] project: [$$175, $$180]
               -- ASSIGN  |PARTITIONED|
                 assign [$$175] <- [$$r.getField(1)] project: [$$155, $$175]
                 -- ASSIGN  |PARTITIONED|

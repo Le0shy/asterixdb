@@ -155,11 +155,12 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
     // Only K-Means is supported.
     private static final String ALGORITHM_KMEANS = "kmeans";
     private static final Set<String> KNOWN_ALGORITHMS = Set.of("k-means", ALGORITHM_KMEANS);
-    // Only the Euclidean family has a matching centroid update: the arithmetic-mean update minimizes
-    // squared-Euclidean distance. Cosine and dot would need a normalized-mean (spherical) update to converge,
-    // so they are rejected until that is implemented.
-    private static final Set<VectorSimilarityMetric> SUPPORTED_METRICS =
-            Set.of(VectorSimilarityMetric.EUCLIDEAN, VectorSimilarityMetric.EUCLIDEAN_SQUARED);
+    // A metric is usable only if some point minimizes total distance to a cluster, since that point is what
+    // the update step moves each centroid to: the arithmetic mean for the Euclidean family, that mean
+    // projected onto the unit sphere for cosine. Dot is refused -- a negated inner product is unbounded
+    // below, so no centroid minimizes it and the update step has nothing to reach.
+    private static final Set<VectorSimilarityMetric> SUPPORTED_METRICS = Set.of(VectorSimilarityMetric.EUCLIDEAN,
+            VectorSimilarityMetric.EUCLIDEAN_SQUARED, VectorSimilarityMetric.COSINE);
     // Listed back to the user on an unsupported value. Built from the enum so it cannot drift from the check,
     // and sorted so the message does not depend on Set iteration order.
     private static final String SUPPORTED_METRICS_DISPLAY = SUPPORTED_METRICS.stream()
@@ -263,8 +264,9 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
         // compute the vector stream into a variable nothing reads.
         SelectExpression vecsQuery = selectValueFromClause(fromCloneForVecs, vecExprForVecs, whereExprForVecs, loc);
 
+        String metric = getMetric(cbc);
         List<LetClause> centroidLets = new ArrayList<>();
-        VarIdentifier finalCentroids = bindCentroidLets(centroidLets, cbc, vecsQuery, k, getMetric(cbc), loc);
+        VarIdentifier finalCentroids = bindCentroidLets(centroidLets, cbc, vecsQuery, k, metric, loc);
 
         // Per-row distance to the assignment centroid, bound in the block before the GROUP BY so that the MAX
         // behind cluster_radius stays a two-step local/global aggregate: an aggregate over C, a variable
@@ -275,7 +277,7 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
         VariableExpr distVar = new VariableExpr(new VarIdentifier("$__cbdist"));
         distVar.setSourceLocation(loc);
         Expression distExpr = call(BuiltinFunctions.NEAREST_CENTROID_DISTANCE, loc, copy(clusteringExpr),
-                varRef(finalCentroids, loc));
+                varRef(finalCentroids, loc), strLit(metric, loc));
         LetClause distLet = new LetClause(distVar, distExpr);
         distLet.setSourceLocation(loc);
         List<AbstractClause> letWhere = selectBlock.getLetWhereList();
@@ -285,8 +287,8 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
 
         // Convert the block to: GROUP BY nearest_centroid(clusteringExpr, C) AS $cid [GROUP AS members]
         VariableExpr cidVar = newVar(loc);
-        Expression labelExpr =
-                call(BuiltinFunctions.NEAREST_CENTROID, loc, clusteringExpr, varRef(finalCentroids, loc));
+        Expression labelExpr = call(BuiltinFunctions.NEAREST_CENTROID, loc, clusteringExpr, varRef(finalCentroids, loc),
+                strLit(metric, loc));
         // Drop rows the labeling cannot place. nearest_centroid returns NULL (with a warning) for a vector it
         // cannot measure -- a non-numeric element, or a magnitude whose square overflows -- and without this
         // those rows would group under a NULL key, handing back num_clusters + 1 clusters. The training side
@@ -322,7 +324,7 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
         selectBlock.setClusterbyClause(null);
         selectBlock.setGroupbyClause(mainGby);
 
-        substituteDescriptorFields(selectExpression, cbc, clusteringExpr, labelExpr, distVar, usesRadius, loc);
+        substituteDescriptorFields(selectExpression, cbc, clusteringExpr, labelExpr, distVar, usesRadius, metric, loc);
     }
 
     /**
@@ -488,7 +490,7 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
      * post-group descriptor field on the group-aggregation path.
      */
     private void substituteDescriptorFields(SelectExpression selectExpression, ClusterbyClause cbc,
-            Expression clusteringExpr, Expression labelExpr, VariableExpr distVar, boolean usesRadius,
+            Expression clusteringExpr, Expression labelExpr, VariableExpr distVar, boolean usesRadius, String metric,
             SourceLocation loc) throws CompilationException {
         VariableExpr scVar = cbc.getClusterDescriptorVar();
         Map<Expression, Expression> scSubst = new HashMap<>();
@@ -496,13 +498,16 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
         scSubst.put(fieldAccess(scVar, SC_CENTROID, loc),
                 call(BuiltinFunctions.SCALAR_CENTROID, loc, copy(clusteringExpr)));
         if (usesRadius) {
-            // cluster_radius = sqrt(MAX(distance)); MAX is emitted name-based so the aggregation sugar resolves
-            // it over the group. Measured to the ASSIGNMENT centroid, which may differ from the reported one.
+            // cluster_radius = MAX(distance); MAX is emitted name-based so the aggregation sugar resolves it
+            // over the group. Measured to the ASSIGNMENT centroid, which may differ from the reported one.
             CallExpr radiusMax = new CallExpr(new FunctionSignature(null, null, "max", 1),
                     List.of(new VariableExpr(distVar.getVar())));
             radiusMax.setSourceLocation(loc);
-            scSubst.put(fieldAccess(scVar, SC_CLUSTER_RADIUS, loc),
-                    call(BuiltinFunctions.NUMERIC_SQRT, loc, radiusMax));
+            // A square root only undoes a squaring. Squared Euclidean returns d^2, so its radius is the root of
+            // the max; cosine returns 1 - cos, an angle-like quantity whose root would mean nothing.
+            Expression radius = VectorSimilarityMetric.EUCLIDEAN_SQUARED.canonical().equals(metric)
+                    ? call(BuiltinFunctions.NUMERIC_SQRT, loc, radiusMax) : radiusMax;
+            scSubst.put(fieldAccess(scVar, SC_CLUSTER_RADIUS, loc), radius);
         }
         SqlppRewriteUtil.substituteExpression(selectExpression, scSubst, context);
         // Substitution replaced every field the descriptor actually has. Anything still referring to it is

@@ -22,6 +22,7 @@ import java.nio.ByteBuffer;
 
 import org.apache.asterix.common.exceptions.ErrorCode;
 import org.apache.asterix.common.exceptions.RuntimeDataException;
+import org.apache.asterix.common.vector.VectorSimilarityMetric;
 import org.apache.hyracks.api.comm.IFrameWriter;
 import org.apache.hyracks.api.comm.VSizeFrame;
 import org.apache.hyracks.api.context.IHyracksTaskContext;
@@ -85,10 +86,15 @@ public class KMeansLloydControllerOperatorDescriptor extends AbstractOperatorDes
     private final int numClusters;
     private final int framesLimit; // budget for the scan block, the slot window and the centroid stream
 
+    // The metric every distance in this stage is measured with. Validation refuses the metrics with no usable
+    // centroid update, so only ones the algorithm can converge under reach here.
+    private final VectorSimilarityMetric metric;
+
     public KMeansLloydControllerOperatorDescriptor(IOperatorDescriptorRegistry spec, RecordDescriptor centroidRecDesc,
             RecordDescriptor partialRecDesc, String loopKey, int vectorColumn, int centroidColumn, int iterations,
-            int numClusters, int framesLimit) {
+            int numClusters, int framesLimit, VectorSimilarityMetric metric) {
         super(spec, 2, 2);
+        this.metric = metric;
         this.loopKey = loopKey;
         this.vectorColumn = vectorColumn;
         this.centroidColumn = centroidColumn;
@@ -363,7 +369,7 @@ public class KMeansLloydControllerOperatorDescriptor extends AbstractOperatorDes
                             final int[] dimension = { 0 };
                             KMeansLoopIO.streamScoredAgainstPool(KMeansLoopIO.source(vectorState, ctx),
                                     sink -> centroids.stream(ctx, sink), ctx, framesLimit,
-                                    (vecs, n, nearest, nearestIdx) -> {
+                                    KMeansLoopIO.distanceFunction(metric), (vecs, n, nearest, nearestIdx) -> {
                                         if (dimension[0] == 0 && n > 0) {
                                             dimension[0] = vecs[0].length;
                                         }

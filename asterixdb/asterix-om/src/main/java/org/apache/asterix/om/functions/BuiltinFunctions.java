@@ -1240,12 +1240,13 @@ public class BuiltinFunctions {
     // Vector search functions
     public static final FunctionIdentifier ANN_DISTANCE =
             FunctionConstants.newAsterix("ann-distance", FunctionIdentifier.VARARGS);
-    // CLUSTER BY: nearest_centroid(point, centroids) -> AINT32 index of the closest centroid.
-    public static final FunctionIdentifier NEAREST_CENTROID = FunctionConstants.newAsterix("nearest-centroid", 2);
-    // CLUSTER BY: nearest_centroid_distance(point, centroids) -> ADOUBLE squared distance to the closest centroid
-    // (the k-means|| sampling score d2(x, C)).
+    // CLUSTER BY: nearest_centroid(point, centroids[, metric]) -> AINT32 index of the closest centroid.
+    public static final FunctionIdentifier NEAREST_CENTROID =
+            FunctionConstants.newAsterix("nearest-centroid", FunctionIdentifier.VARARGS);
+    // CLUSTER BY: nearest_centroid_distance(point, centroids[, metric]) -> ADOUBLE distance to the closest
+    // centroid under the metric (the k-means|| sampling score d2(x, C) when squared Euclidean).
     public static final FunctionIdentifier NEAREST_CENTROID_DISTANCE =
-            FunctionConstants.newAsterix("nearest-centroid-distance", 2);
+            FunctionConstants.newAsterix("nearest-centroid-distance", FunctionIdentifier.VARARGS);
     // kmeans-recluster(partials, k, metric): single-input merge — reduce partials, then weighted k-means++
     // to k (C0).
     public static final FunctionIdentifier KMEANS_RECLUSTER = FunctionConstants.newAsterix("kmeans-recluster", 3);

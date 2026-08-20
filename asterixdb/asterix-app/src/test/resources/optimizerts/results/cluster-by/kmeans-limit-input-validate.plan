@@ -15,11 +15,11 @@ distribute result [$$264]
         -- SORT_GROUP_BY[$$265]  |LOCAL|
           exchange
           -- ONE_TO_ONE_EXCHANGE  |UNPARTITIONED|
-            assign [$$265] <- [nearest-centroid($$268, $$245)] project: [$$265]
+            assign [$$265] <- [nearest-centroid($$268, $$245, "euclidean_squared")] project: [$$265]
             -- ASSIGN  |UNPARTITIONED|
               exchange
               -- ONE_TO_ONE_EXCHANGE  |UNPARTITIONED|
-                join (not(is-unknown(nearest-centroid($$268, $$245))))
+                join (not(is-unknown(nearest-centroid($$268, $$245, "euclidean_squared"))))
                 -- NESTED_LOOP  |UNPARTITIONED|
                   exchange
                   -- ONE_TO_ONE_EXCHANGE  |UNPARTITIONED|

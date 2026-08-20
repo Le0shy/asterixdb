@@ -60,15 +60,15 @@ public class KMeansLloydLoopPOperator extends AbstractKMeansLoopPOperator {
         String loopKey = "kmeansLloydLoop#" + kop.getCandidateVariable();
         int participants = clusterLocations.length;
 
-        KMeansLloydControllerOperatorDescriptor op1 =
-                new KMeansLloydControllerOperatorDescriptor(spec, centroidRecDesc, KMeansLoopIO.PARTIAL_RD, loopKey,
-                        vectorColumn, centroidColumn, kop.getLoopRounds(), kop.getTopCount(), framesLimit());
+        KMeansLloydControllerOperatorDescriptor op1 = new KMeansLloydControllerOperatorDescriptor(spec, centroidRecDesc,
+                KMeansLoopIO.PARTIAL_RD, loopKey, vectorColumn, centroidColumn, kop.getLoopRounds(), kop.getTopCount(),
+                framesLimit(), metricOf(kop));
         contributeOpDesc(builder, op, op1);
         builder.contributeGraphEdge(src0, 0, op, 0);
         builder.contributeGraphEdge(src1, 0, op, 1);
 
-        KMeansCentroidMergeOperatorDescriptor op2 =
-                new KMeansCentroidMergeOperatorDescriptor(spec, KMeansLoopIO.DRAW_RD, participants, framesLimit());
+        KMeansCentroidMergeOperatorDescriptor op2 = new KMeansCentroidMergeOperatorDescriptor(spec,
+                KMeansLoopIO.DRAW_RD, participants, framesLimit(), metricOf(kop));
         KMeansLloydReleaseOperatorDescriptor op3 = new KMeansLloydReleaseOperatorDescriptor(spec, loopKey);
 
         AlgebricksAbsolutePartitionConstraint coLocated = new AlgebricksAbsolutePartitionConstraint(clusterLocations);

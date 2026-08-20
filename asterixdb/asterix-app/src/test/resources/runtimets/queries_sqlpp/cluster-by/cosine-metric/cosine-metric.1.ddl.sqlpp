@@ -17,10 +17,12 @@
  * under the License.
  */
 
-// dot is a recognized vector-distance metric, but dot-distance is a negated inner product: unbounded below,
-// so no centroid minimizes it and k-means has nothing to converge to. Cosine, which does have a matching
-// update (the mean renormalized to unit length), is supported.
-from [{"x": [1.0, 2.0]}] as r
-cluster by r.x as sc
-with { "dimension": [2], "num_clusters": 5, "similarity": "dot" }
-select sc.cluster_id;
+-- Two directions, each at two very different magnitudes. Cosine groups by direction, Euclidean by magnitude,
+-- so the two metrics must disagree and the assertion below can only pass under cosine.
+
+drop dataverse test if exists;
+create dataverse test;
+use test;
+
+create type PointType as closed { id : integer, vec : [double] };
+create dataset Points(PointType) primary key id;

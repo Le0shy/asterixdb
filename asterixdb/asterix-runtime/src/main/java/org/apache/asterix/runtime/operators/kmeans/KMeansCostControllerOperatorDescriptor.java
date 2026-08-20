@@ -22,6 +22,7 @@ import java.nio.ByteBuffer;
 
 import org.apache.asterix.common.exceptions.ErrorCode;
 import org.apache.asterix.common.exceptions.RuntimeDataException;
+import org.apache.asterix.common.vector.VectorSimilarityMetric;
 import org.apache.hyracks.api.comm.IFrameWriter;
 import org.apache.hyracks.api.comm.VSizeFrame;
 import org.apache.hyracks.api.context.IHyracksTaskContext;
@@ -90,16 +91,20 @@ public class KMeansCostControllerOperatorDescriptor extends AbstractOperatorDesc
     private final int seedColumn; // vector column in input 1 (the seed)
     private final int loopRounds; // N oversampling rounds
     private final int framesLimit; // block budget for the bounded scans
+    // The metric every distance in this stage is measured with. Validation refuses the metrics with no usable
+    // centroid update, so only ones the algorithm can converge under reach here.
+    private final VectorSimilarityMetric metric;
 
     public KMeansCostControllerOperatorDescriptor(IOperatorDescriptorRegistry spec,
             RecordDescriptor poolEnvelopeRecDesc, RecordDescriptor sigmaRecDesc, String loopKey, int vectorColumn,
-            int seedColumn, int loopRounds, int framesLimit) {
+            int seedColumn, int loopRounds, int framesLimit, VectorSimilarityMetric metric) {
         super(spec, 2, 2);
         this.loopKey = loopKey;
         this.vectorColumn = vectorColumn;
         this.seedColumn = seedColumn;
         this.loopRounds = loopRounds;
         this.framesLimit = framesLimit;
+        this.metric = metric;
         outRecDescs[OUT_POOL] = poolEnvelopeRecDesc;
         outRecDescs[OUT_SIGMA] = sigmaRecDesc;
     }
@@ -323,7 +328,7 @@ public class KMeansCostControllerOperatorDescriptor extends AbstractOperatorDesc
                             // resident form grew with the requested cluster count. Vectors still reach the sink in
                             // run-file order, so localSum adds its terms in the same order as before.
                             KMeansLoopIO.streamScoredAgainstPool(vectorState, poolState, ctx, framesLimit,
-                                    (vecs, n, nearest, nearestIdx) -> {
+                                    KMeansLoopIO.distanceFunction(metric), (vecs, n, nearest, nearestIdx) -> {
                                         for (int i = 0; i < n; i++) {
                                             double best = nearest[i];
                                             if (!Double.isNaN(best) && best != Double.POSITIVE_INFINITY) {
@@ -412,6 +417,7 @@ public class KMeansCostControllerOperatorDescriptor extends AbstractOperatorDesc
                         final KMeansLoopIO.ScoreColumnWriter column =
                                 new KMeansLoopIO.ScoreColumnWriter(weighColumn, ctx);
                         KMeansLoopIO.streamScoredAgainstPool(vectorState, poolState, ctx, framesLimit,
+                                KMeansLoopIO.distanceFunction(metric),
                                 (vecs, n, nearest, nearestIdx) -> column.append(nearest, nearestIdx, n));
                         column.finish();
 

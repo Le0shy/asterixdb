@@ -68,7 +68,7 @@ public class KMeansOversampleLoopPOperator extends AbstractKMeansLoopPOperator {
         // partials the downstream RECLUSTER reduces).
         KMeansCostControllerOperatorDescriptor op1 =
                 new KMeansCostControllerOperatorDescriptor(spec, poolEnvelopeRecDesc, KMeansLoopIO.SIGMA_RD, loopKey,
-                        vectorColumn, seedColumn, kop.getLoopRounds(), framesLimit());
+                        vectorColumn, seedColumn, kop.getLoopRounds(), framesLimit(), metricOf(kop));
         contributeOpDesc(builder, op, op1);
         builder.contributeGraphEdge(src0, 0, op, 0);
         builder.contributeGraphEdge(src1, 0, op, 1);

@@ -17,10 +17,14 @@
  * under the License.
  */
 
-// dot is a recognized vector-distance metric, but dot-distance is a negated inner product: unbounded below,
-// so no centroid minimizes it and k-means has nothing to converge to. Cosine, which does have a matching
-// update (the mean renormalized to unit length), is supported.
-from [{"x": [1.0, 2.0]}] as r
-cluster by r.x as sc
-with { "dimension": [2], "num_clusters": 5, "similarity": "dot" }
-select sc.cluster_id;
+-- 1 and 2 share a direction, as do 3 and 4. By Euclidean distance 1 and 3 are the near pair and 2 and 4 the
+-- far pair, so a Euclidean clustering would return {1,3} and {2,4} instead.
+
+use test;
+
+insert into Points ([
+  {"id": 1, "vec": [1.0, 0.0]},
+  {"id": 2, "vec": [100.0, 0.0]},
+  {"id": 3, "vec": [0.0, 1.0]},
+  {"id": 4, "vec": [0.0, 100.0]}
+]);
