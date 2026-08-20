@@ -59,6 +59,13 @@ import org.apache.hyracks.util.annotations.AiProvenance;
  */
 @AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.ASSISTED)
 public final class KMeansReclusterOperatorDescriptor extends AbstractOperatorDescriptor {
+
+    /** Receives each centroid the reduction picks, in the order it picks them. */
+    @FunctionalInterface
+    public interface CentroidSink {
+        void accept(double[] centroid) throws Exception;
+    }
+
     private static final long serialVersionUID = 1L;
 
     private static final int STORE_POOL_ACTIVITY_ID = 0;
@@ -110,8 +117,14 @@ public final class KMeansReclusterOperatorDescriptor extends AbstractOperatorDes
         builder.addBlockingEdge(storePool, score);
     }
 
-    private void emitRecluster(IHyracksTaskContext ctx, TaskId taskId, KMeansStageRuntime rt,
-            KMeansStageRuntime.Emitter emitter, int partition) throws Exception {
+    /**
+     * Reduces one stage's weigh partials to at most {@code count} centroids and hands each to {@code sink}.
+     * <p>
+     * Static and sink-based so the reduction is not tied to emitting into a frame writer: the Lloyd loop runs
+     * the same reduction to build its own C0, putting the result straight into its centroid store.
+     */
+    static void reduce(IHyracksTaskContext ctx, TaskId taskId, KMeansStageRuntime rt, int count, int framesLimit,
+            VectorSimilarityMetric metric, CentroidSink sink, int partition) throws Exception {
         if (partition != 0) {
             return; // the merged result is identical everywhere; one partition speaks
         }
@@ -144,7 +157,7 @@ public final class KMeansReclusterOperatorDescriptor extends AbstractOperatorDes
             }
             // A shortfall is not topped up from the candidate pool: a candidate that took no rows is by
             // construction a duplicate of one that did, so it stands for a position already covered.
-            weightedKMeansPlusPlus(means, memberWeights, meanCount[0], emitter);
+            weightedKMeansPlusPlus(means, memberWeights, meanCount[0], count, framesLimit, metric, sink);
         }
     }
 
@@ -162,8 +175,8 @@ public final class KMeansReclusterOperatorDescriptor extends AbstractOperatorDes
      *
      * @return how many centroids were emitted, at most {@code min(count, n)}.
      */
-    private int weightedKMeansPlusPlus(KMeansLoopIO.VectorList means, long[] memberWeights, int n,
-            KMeansStageRuntime.Emitter emitter) throws Exception {
+    private static int weightedKMeansPlusPlus(KMeansLoopIO.VectorList means, long[] memberWeights, int n, int count,
+            int framesLimit, VectorSimilarityMetric metric, CentroidSink sink) throws Exception {
         if (n == 0) {
             return 0;
         }
@@ -212,7 +225,7 @@ public final class KMeansReclusterOperatorDescriptor extends AbstractOperatorDes
             }
             taken[pick] = true;
             final double[] picked = means.get(pick);
-            emitter.plainVector(picked);
+            sink.accept(picked);
             chosen++;
             final int[] at = { 0 };
             means.stream(candidate -> {
@@ -289,7 +302,8 @@ public final class KMeansReclusterOperatorDescriptor extends AbstractOperatorDes
                                 new KMeansStageRuntime(ctx, writer, vecRecDesc, poolColumn, framesLimit);
                         rt.readInput(poolState);
                         KMeansStageRuntime.Emitter emitter = rt.newEmitter();
-                        emitRecluster(ctx, new TaskId(getActivityId(), partition), rt, emitter, partition);
+                        reduce(ctx, new TaskId(getActivityId(), partition), rt, count, framesLimit, metric,
+                                emitter::plainVector, partition);
                         emitter.flush();
                     } catch (Exception e) {
                         writer.fail();

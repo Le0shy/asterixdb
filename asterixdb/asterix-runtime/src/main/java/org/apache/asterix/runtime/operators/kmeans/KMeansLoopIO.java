@@ -125,7 +125,7 @@ public final class KMeansLoopIO {
      * RECLUSTER's internal weigh-partial layout: {@code {seq:int, part:int, count:double, sum:rawDoubles}}.
      * <p>
      * The partials cross the logical operator boundary packed into a single field, because
-     * {@code KMeansStageOperator} declares one output variable and the record descriptor for that edge is
+     * {@code ClusterByOperator} declares one output variable and the record descriptor for that edge is
      * therefore single-field. Hyracks' external sort keys on <em>tuple fields</em>, so it cannot sort that
      * packed form. RECLUSTER re-emits each partial in this flat shape into a sort it owns; the layout never
      * leaves the operator, so widening it costs nothing elsewhere.
