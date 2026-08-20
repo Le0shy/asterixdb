@@ -258,17 +258,17 @@ public class ExpandClusterByRule extends AbstractDecorrelationRule {
     }
 
     /**
-     * The oversampling stage and the refinement stage each read the vectors. They are given separate copies
-     * rather than a shared reference, because a plan is a tree here; ExtractCommonOperatorsRule merges them
-     * behind a REPLICATE later, which is the same path the two copies took before this rule existed.
-     */
-    /**
      * An independent copy of the vector pipeline, with fresh variables.
      * <p>
-     * Fresh rather than shared: two branches carrying the same variable for different streams leaves the
-     * stage operators unable to tell which input a column came from. The copies are merged behind a
-     * REPLICATE later by ExtractCommonOperatorsRule, which is the path the rewrite's own copies took before
-     * this rule existed.
+     * The stages that read the vectors get a copy each rather than branches off a shared REPLICATE, because
+     * emitting a straight-line plan and leaving sharing to be discovered is the order the framework is built
+     * around: replicates are introduced in prepareForJobGenRewrites, where ExtractCommonOperatorsRule merges
+     * equivalent subplans and names FixReplicateOperatorOutputsRule as its pre-condition. A replicate built
+     * here instead, in physicalRewritesAllLevels, has its outputs list invalidated a few rules later when
+     * EnforceStructuralPropertiesRule splices exchanges in, and nothing repairs it before job generation.
+     * <p>
+     * Fresh variables rather than shared ones: a stage reading two of its own inputs cannot tell which
+     * stream a column came from if both carry the same variable.
      *
      * @return the copied root, and the variable its vector column is now called
      */
