@@ -18,6 +18,8 @@
  */
 package org.apache.asterix.optimizer.rules;
 
+import java.util.Map;
+
 import org.apache.asterix.om.base.AInt64;
 import org.apache.asterix.om.constants.AsterixConstantValue;
 import org.apache.asterix.om.functions.BuiltinFunctions;
@@ -38,6 +40,7 @@ import org.apache.hyracks.algebricks.core.algebra.operators.logical.ClusterByOpe
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.KMeansStageOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.LimitOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.OrderOperator;
+import org.apache.hyracks.algebricks.core.algebra.util.OperatorManipulationUtil;
 import org.apache.hyracks.algebricks.rewriter.rules.AbstractDecorrelationRule;
 import org.apache.hyracks.api.exceptions.ErrorCode;
 import org.apache.hyracks.api.exceptions.SourceLocation;
@@ -122,22 +125,26 @@ public class ExpandClusterByRule extends AbstractDecorrelationRule {
         boolean forgy = INIT_MODE_RANDOM.equals(cop.getInitMode());
 
         // Forgy seeds with k centres and refines them directly; k-means|| grows a pool from one.
+        Pair<Mutable<ILogicalOperator>, LogicalVariable> seedInput = copyOf(vectors, vectorVar, context);
         Mutable<ILogicalOperator> centroidsIn =
-                seedOf(copyOf(vectors), vectorVar, forgy ? cop.getNumClusters() : 1, context, loc);
-        LogicalVariable centroidsVar = vectorVar;
+                seedOf(seedInput.first, seedInput.second, forgy ? cop.getNumClusters() : 1, context, loc);
+        LogicalVariable centroidsVar = seedInput.second;
 
         if (!forgy) {
+            Pair<Mutable<ILogicalOperator>, LogicalVariable> oversampleInput = copyOf(vectors, vectorVar, context);
             KMeansStageOperator oversample = stage(cop, KMeansStageOperator.Mode.OVERSAMPLE_LOOP, context,
-                    ref(vectorVar), ref(centroidsVar), oversamplingWidth(cop));
+                    ref(oversampleInput.second), ref(centroidsVar), oversamplingWidth(cop));
             oversample.setLoopRounds(OVERSAMPLING_ROUNDS);
             oversample.setSeed(SEED_BASE);
-            oversample.getInputs().add(copyOf(vectors));
+            oversample.getInputs().add(oversampleInput.first);
             oversample.getInputs().add(centroidsIn);
+            oversample.recomputeSchema();
             context.computeAndSetTypeEnvironmentForOperator(oversample);
 
             KMeansStageOperator recluster = stage(cop, KMeansStageOperator.Mode.RECLUSTER, context, null,
                     ref(oversample.getCandidateVariable()), cop.getNumClusters());
             recluster.getInputs().add(new MutableObject<>(oversample));
+            recluster.recomputeSchema();
             context.computeAndSetTypeEnvironmentForOperator(recluster);
 
             centroidsIn = new MutableObject<>(recluster);
@@ -151,6 +158,7 @@ public class ExpandClusterByRule extends AbstractDecorrelationRule {
         lloyd.setCandidateVariable(cop.getCandidateVariable());
         lloyd.getInputs().add(vectors);
         lloyd.getInputs().add(centroidsIn);
+        lloyd.recomputeSchema();
         context.computeAndSetTypeEnvironmentForOperator(lloyd);
         return lloyd;
     }
@@ -180,17 +188,20 @@ public class ExpandClusterByRule extends AbstractDecorrelationRule {
         AssignOperator assign = new AssignOperator(keyVar, new MutableObject<>(key));
         assign.setSourceLocation(loc);
         assign.getInputs().add(vectors);
+        assign.recomputeSchema();
         context.computeAndSetTypeEnvironmentForOperator(assign);
 
         OrderOperator order = new OrderOperator();
         order.setSourceLocation(loc);
         order.getOrderExpressions().add(new Pair<>(OrderOperator.ASC_ORDER, ref(keyVar)));
         order.getInputs().add(new MutableObject<>(assign));
+        order.recomputeSchema();
         context.computeAndSetTypeEnvironmentForOperator(order);
 
         LimitOperator limit = new LimitOperator(constant((long) n).getValue());
         limit.setSourceLocation(loc);
         limit.getInputs().add(new MutableObject<>(order));
+        limit.recomputeSchema();
         context.computeAndSetTypeEnvironmentForOperator(limit);
         return new MutableObject<>(limit);
     }
@@ -229,8 +240,21 @@ public class ExpandClusterByRule extends AbstractDecorrelationRule {
      * rather than a shared reference, because a plan is a tree here; ExtractCommonOperatorsRule merges them
      * behind a REPLICATE later, which is the same path the two copies took before this rule existed.
      */
-    private Mutable<ILogicalOperator> copyOf(Mutable<ILogicalOperator> src) throws AlgebricksException {
-        return new MutableObject<>(org.apache.hyracks.algebricks.core.algebra.util.OperatorManipulationUtil
-                .bottomUpCopyOperators(src.getValue()));
+    /**
+     * An independent copy of the vector pipeline, with fresh variables.
+     * <p>
+     * Fresh rather than shared: two branches carrying the same variable for different streams leaves the
+     * stage operators unable to tell which input a column came from. The copies are merged behind a
+     * REPLICATE later by ExtractCommonOperatorsRule, which is the path the rewrite's own copies took before
+     * this rule existed.
+     *
+     * @return the copied root, and the variable its vector column is now called
+     */
+    private Pair<Mutable<ILogicalOperator>, LogicalVariable> copyOf(Mutable<ILogicalOperator> src,
+            LogicalVariable vectorVar, IOptimizationContext context) throws AlgebricksException {
+        Pair<ILogicalOperator, Map<LogicalVariable, LogicalVariable>> copy =
+                OperatorManipulationUtil.deepCopyWithNewVars(src.getValue(), context);
+        LogicalVariable copiedVectorVar = copy.second.getOrDefault(vectorVar, vectorVar);
+        return new Pair<>(new MutableObject<>(copy.first), copiedVectorVar);
     }
 }

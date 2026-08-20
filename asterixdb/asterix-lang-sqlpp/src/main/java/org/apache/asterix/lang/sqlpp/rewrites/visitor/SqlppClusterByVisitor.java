@@ -1,24 +1,3 @@
-private VarIdentifier bindCentroidLets(List<LetClause> centroidLets, ClusterbyClause cbc,
-            SelectExpression vecsQuery, int k, String metric, SourceLocation loc) throws CompilationException {
-        // One call, whatever the algorithm. How it is carried out -- how many oversampling rounds, how wide,
-        // how many refinement iterations -- is decided by the rule that expands this, not here: those are
-        // properties of k-means||, and this is the language layer.
-        Expression centroidStream = call(BuiltinFunctions.CLUSTER_BY, loc, copy(vecsQuery), intLit(k, loc),
-                strLit(getInitMode(cbc), loc), strLit(metric, loc));
-        VarIdentifier cFinal = context.newVariable();
-        centroidLets.add(letClause(cFinal, centroidStream, loc));
-        context.markNoInlineLetVar(cFinal);
-
-        // Sorted by value before labeling. The partition was already deterministic, but the list arrives in
-        // merge order, which varies run to run -- so the cid labels, being indexes into it, would not be.
-        VariableExpr cSortVar = newVar(loc);
-        VarIdentifier finalCentroids = context.newVariable();
-        centroidLets.add(letClause(finalCentroids, selectValueFrom(varRef(cFinal, loc), cSortVar, cSortVar, null, null,
-                ascOrder(varRef(cSortVar.getVar(), loc)), null, null, loc), loc));
-        context.markNoInlineLetVar(finalCentroids);
-        return finalCentroids;
-    }
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
@@ -194,9 +173,9 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
     private static final String INIT_MODE_RANDOM = "random";
     private static final Set<String> KNOWN_INIT_MODES =
             Set.of(INIT_MODE_KMEANS_PARALLEL, INIT_MODE_KMEANSPP_DEPRECATED, INIT_MODE_RANDOM);
-    // How many clusters is the user's business and is validated here. Everything else about how the
-    // clustering is carried out -- oversampling width, round count, refinement iterations, the sampling seed
-    // -- belongs to the algorithm, and is decided by the rule that expands the ClusterByOperator.
+    // How many clusters is the user's business and is validated here. Everything about how the clustering
+    // is carried out -- oversampling width, round count, refinement iterations, the sampling seed, how many
+    // starting points -- belongs to the algorithm, and is decided by the rule that expands ClusterByOperator.
 
     private final LangRewritingContext context;
 
@@ -426,6 +405,29 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
     }
 
     /**
+     * Appends the query-level LETs that compute the centroids, and returns the variable holding the final,
+     * ordered list.
+     */
+    private VarIdentifier bindCentroidLets(List<LetClause> centroidLets, ClusterbyClause cbc,
+            SelectExpression vecsQuery, int k, String metric, SourceLocation loc) throws CompilationException {
+        // One call, whatever the algorithm. How it is carried out is decided by the rule that expands this.
+        Expression centroidStream = call(BuiltinFunctions.CLUSTER_BY, loc, copy(vecsQuery), intLit(k, loc),
+                strLit(getInitMode(cbc), loc), strLit(metric, loc));
+        VarIdentifier cFinal = context.newVariable();
+        centroidLets.add(letClause(cFinal, centroidStream, loc));
+        context.markNoInlineLetVar(cFinal);
+
+        // Sorted by value before labeling. The partition was already deterministic, but the list arrives in
+        // merge order, which varies run to run -- so the cid labels, being indexes into it, would not be.
+        VariableExpr cSortVar = newVar(loc);
+        VarIdentifier finalCentroids = context.newVariable();
+        centroidLets.add(letClause(finalCentroids, selectValueFrom(varRef(cFinal, loc), cSortVar, cSortVar, null, null,
+                ascOrder(varRef(cSortVar.getVar(), loc)), null, null, loc), loc));
+        context.markNoInlineLetVar(finalCentroids);
+        return finalCentroids;
+    }
+
+    /**
      * Replaces every {@code <descriptor>.<field>} read with the expression that computes it. The descriptor is
      * substituted field by field rather than bound to a record: an OpenRecordConstructor here breaks type
      * inference when the members variable is also referenced. For the same reason {@code sc.centroid} becomes
@@ -623,23 +625,6 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
         ref.setSourceLocation(loc);
         return ref;
     }
-
-
-    /**
-     * {@code random(<rowVar>[0])} -- an ORDER BY key that shuffles the vectors rather than ranking them, so
-     * that {@code ORDER BY <key> LIMIT n} draws n rows uniformly instead of returning n neighbours. Both init
-     * modes need that: seeding k-means from rows selected by their coordinates picks a corner of the data,
-     * which is exactly where centroids should not start.
-     * <p>
-     * {@code random(x)} reseeds its generator whenever its argument differs from the previous call's, so
-     * passing a per-row argument yields one draw per seed -- a hash of that row -- where a constant argument
-     * would instead walk a single sequence. Consecutive rows with an equal leading coordinate skip the reseed
-     * and continue that sequence, so their keys remain distinct but depend on arrival order rather than on the
-     * row alone; the sample stays uniform either way, and stays reproducible for a given input order.
-     * <p>
-     * The key costs nothing: {@code ORDER BY ... LIMIT n} still compiles to a streaming top-n that holds n
-     * rows, and ranking one double is cheaper than ranking a vector element by element.
-     */
 
     /** {@code <left> <op> <right>} as an OperatorExpr. */
     private Expression binaryOp(OperatorType op, Expression left, Expression right, SourceLocation loc) {
