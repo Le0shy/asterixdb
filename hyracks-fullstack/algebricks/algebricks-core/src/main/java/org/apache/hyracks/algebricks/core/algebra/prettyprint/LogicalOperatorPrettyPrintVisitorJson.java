@@ -50,6 +50,7 @@ import org.apache.hyracks.algebricks.core.algebra.operators.logical.AbstractUnne
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.AbstractUnnestNonMapOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.AggregateOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.AssignOperator;
+import org.apache.hyracks.algebricks.core.algebra.operators.logical.ClusterByOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.DataSourceScanOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.DelegateOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.DistinctOperator;
@@ -877,6 +878,22 @@ public class LogicalOperatorPrettyPrintVisitorJson extends AbstractLogicalOperat
             jsonGenerator.writeStringField("pool-variable", String.valueOf(op.getPoolVariable()));
             jsonGenerator.writeNumberField("top-count", op.getTopCount());
             jsonGenerator.writeStringField("mode", op.getMode().getLabel());
+            jsonGenerator.writeStringField("metric", op.getMetric());
+            return null;
+        } catch (IOException e) {
+            throw AlgebricksException.create(ErrorCode.ERROR_PRINTING_PLAN, e, String.valueOf(e));
+        }
+    }
+
+    @Override
+    public Void visitClusterByOperator(ClusterByOperator op, Void indent) throws AlgebricksException {
+        try {
+            jsonGenerator.writeStringField(OPERATOR_FIELD, "cluster-by");
+            jsonGenerator.writeStringField("candidate-variable", String.valueOf(op.getCandidateVariable()));
+            jsonGenerator.writeStringField("vector-variable", String.valueOf(op.getVectorVariable()));
+            jsonGenerator.writeNumberField("num-clusters", op.getNumClusters());
+            jsonGenerator.writeStringField("algorithm", op.getAlgorithm());
+            jsonGenerator.writeStringField("init-mode", op.getInitMode());
             jsonGenerator.writeStringField("metric", op.getMetric());
             return null;
         } catch (IOException e) {

@@ -36,6 +36,7 @@ import org.apache.hyracks.algebricks.core.algebra.operators.logical.AbstractLogi
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.AbstractUnnestMapOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.AggregateOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.AssignOperator;
+import org.apache.hyracks.algebricks.core.algebra.operators.logical.ClusterByOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.DataSourceScanOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.DelegateOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.DistinctOperator;
@@ -366,6 +367,18 @@ public class LogicalOperatorDotVisitor implements ILogicalOperatorVisitor<String
                 break;
         }
         stringBuilder.append(" by ").append(op.getMetric());
+        appendSchema(op, showDetails);
+        appendAnnotations(op, showDetails);
+        appendPhysicalOperatorInfo(op, showDetails);
+        return stringBuilder.toString();
+    }
+
+    @Override
+    public String visitClusterByOperator(ClusterByOperator op, Boolean showDetails) throws AlgebricksException {
+        stringBuilder.setLength(0);
+        stringBuilder.append("cluster-by ").append(str(op.getCandidateVariable())).append(" <- ")
+                .append(op.getNumClusters()).append(" clusters of ").append(str(op.getVectorVariable())).append(" by ")
+                .append(op.getAlgorithm()).append('/').append(op.getInitMode()).append('/').append(op.getMetric());
         appendSchema(op, showDetails);
         appendAnnotations(op, showDetails);
         appendPhysicalOperatorInfo(op, showDetails);

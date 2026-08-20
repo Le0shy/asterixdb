@@ -37,6 +37,7 @@ import org.apache.hyracks.algebricks.core.algebra.operators.logical.AbstractOper
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.AbstractUnnestMapOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.AggregateOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.AssignOperator;
+import org.apache.hyracks.algebricks.core.algebra.operators.logical.ClusterByOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.DataSourceScanOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.DelegateOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.DistinctOperator;
@@ -326,6 +327,12 @@ public class UsedVariableVisitor implements ILogicalOperatorVisitor<Void, Void> 
             usedVariables.add(op.getVectorVariable());
         }
         usedVariables.add(op.getPoolVariable());
+        return null;
+    }
+
+    @Override
+    public Void visitClusterByOperator(ClusterByOperator op, Void arg) throws AlgebricksException {
+        usedVariables.add(op.getVectorVariable());
         return null;
     }
 

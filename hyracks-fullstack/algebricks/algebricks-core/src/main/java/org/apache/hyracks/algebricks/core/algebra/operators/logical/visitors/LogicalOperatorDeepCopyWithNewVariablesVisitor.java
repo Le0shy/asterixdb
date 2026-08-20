@@ -43,6 +43,7 @@ import org.apache.hyracks.algebricks.core.algebra.metadata.IProjectionFiltration
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.AbstractLogicalOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.AggregateOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.AssignOperator;
+import org.apache.hyracks.algebricks.core.algebra.operators.logical.ClusterByOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.DataSourceScanOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.DelegateOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.DistinctOperator;
@@ -547,6 +548,19 @@ public class LogicalOperatorDeepCopyWithNewVariablesVisitor
         opCopy.setMode(op.getMode());
         opCopy.setSeed(op.getSeed());
         opCopy.setLoopRounds(op.getLoopRounds());
+        opCopy.setMetric(op.getMetric());
+        deepCopyInputsAnnotationsAndExecutionMode(op, arg, opCopy);
+        return opCopy;
+    }
+
+    @Override
+    public ILogicalOperator visitClusterByOperator(ClusterByOperator op, ILogicalOperator arg)
+            throws AlgebricksException {
+        ClusterByOperator opCopy = new ClusterByOperator(
+                new MutableObject<>(new VariableReferenceExpression(deepCopyVariable(op.getVectorVariable()))),
+                deepCopyVariable(op.getCandidateVariable()), op.getCandidateVarType(), op.getNumClusters());
+        opCopy.setAlgorithm(op.getAlgorithm());
+        opCopy.setInitMode(op.getInitMode());
         opCopy.setMetric(op.getMetric());
         deepCopyInputsAnnotationsAndExecutionMode(op, arg, opCopy);
         return opCopy;
