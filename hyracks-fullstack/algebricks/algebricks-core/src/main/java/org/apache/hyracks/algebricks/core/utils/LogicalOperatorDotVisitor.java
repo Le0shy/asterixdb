@@ -376,9 +376,10 @@ public class LogicalOperatorDotVisitor implements ILogicalOperatorVisitor<String
     @Override
     public String visitClusterByOperator(ClusterByOperator op, Boolean showDetails) throws AlgebricksException {
         stringBuilder.setLength(0);
-        stringBuilder.append("cluster-by ").append(str(op.getCandidateVariable())).append(" <- ")
-                .append(op.getNumClusters()).append(" clusters of ").append(str(op.getVectorVariable())).append(" by ")
-                .append(op.getAlgorithm()).append('/').append(op.getInitMode()).append('/').append(op.getMetric());
+        stringBuilder.append("cluster-by ").append(str(op.getClusterIdVariable())).append(", ")
+                .append(str(op.getDistanceVariable())).append(" <- ").append(op.getNumClusters())
+                .append(" clusters of ").append(str(op.getVectorVariable())).append(" by ").append(op.getAlgorithm())
+                .append('/').append(op.getInitMode()).append('/').append(op.getMetric());
         appendSchema(op, showDetails);
         appendAnnotations(op, showDetails);
         appendPhysicalOperatorInfo(op, showDetails);

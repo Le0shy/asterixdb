@@ -49,6 +49,19 @@ public class ClusterbyClause extends AbstractClause {
     // Raw WITH options (algorithm, k, distance, ...); validated/extracted later by the rewrite pass.
     private RecordConstructor withOptions;
 
+    // Filled in by SqlppClusterByVisitor once the WITH options have been validated, and read by the
+    // translator. The clause reaches the translator carrying its own settings rather than the translator
+    // re-deriving them, so validation stays in the language layer where its error messages belong.
+    private int numClusters;
+    private String initMode;
+    private String metric;
+    // The variables the CLUSTER BY operator adds to each row: which cluster it landed in, and how far its
+    // clustering expression is from that cluster's centre. Declared here so the rewrite can build the
+    // GROUP BY and the descriptor around them before the translator binds them to logical variables --
+    // the same hand-off GroupbyClause makes for its grouping variables.
+    private VariableExpr clusterIdVar;
+    private VariableExpr distanceVar;
+
     public ClusterbyClause(Expression clusteringExpr, VariableExpr clusterDescriptorVar, VariableExpr clusterMembersVar,
             List<Pair<Expression, Identifier>> clusterFieldList, RecordConstructor withOptions) {
         this.clusteringExpr = clusteringExpr;
@@ -110,6 +123,41 @@ public class ClusterbyClause extends AbstractClause {
 
     public void setWithOptions(RecordConstructor withOptions) {
         this.withOptions = withOptions;
+    }
+
+    public int getNumClusters() {
+        return numClusters;
+    }
+
+    public String getInitMode() {
+        return initMode;
+    }
+
+    public String getMetric() {
+        return metric;
+    }
+
+    /** Records the validated WITH settings for the translator. */
+    public void setResolvedOptions(int numClusters, String initMode, String metric) {
+        this.numClusters = numClusters;
+        this.initMode = initMode;
+        this.metric = metric;
+    }
+
+    public VariableExpr getClusterIdVar() {
+        return clusterIdVar;
+    }
+
+    public void setClusterIdVar(VariableExpr clusterIdVar) {
+        this.clusterIdVar = clusterIdVar;
+    }
+
+    public VariableExpr getDistanceVar() {
+        return distanceVar;
+    }
+
+    public void setDistanceVar(VariableExpr distanceVar) {
+        this.distanceVar = distanceVar;
     }
 
     public boolean hasClusterMembersVar() {

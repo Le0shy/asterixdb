@@ -29,7 +29,7 @@ import org.apache.hyracks.algebricks.core.algebra.expressions.IVariableTypeEnvir
 import org.apache.hyracks.algebricks.core.algebra.expressions.VariableReferenceExpression;
 import org.apache.hyracks.algebricks.core.algebra.properties.VariablePropagationPolicy;
 import org.apache.hyracks.algebricks.core.algebra.typing.ITypingContext;
-import org.apache.hyracks.algebricks.core.algebra.typing.NonPropagatingTypeEnvironment;
+import org.apache.hyracks.algebricks.core.algebra.typing.PropagatingTypeEnvironment;
 import org.apache.hyracks.algebricks.core.algebra.visitors.ILogicalExpressionReferenceTransform;
 import org.apache.hyracks.algebricks.core.algebra.visitors.ILogicalOperatorVisitor;
 import org.apache.hyracks.util.annotations.AiProvenance;
@@ -61,9 +61,14 @@ public class ClusterByOperator extends AbstractLogicalOperator {
     // acceptExpressionTransform) so variable-substitution and pruning rules see it; a plain LogicalVariable
     // field silently drifts through renames.
     private final Mutable<ILogicalExpression> vectorRef;
-    // The single produced variable: a candidate vector, same type as vectorVar (opaque; from translator).
-    private LogicalVariable candidateVar;
-    private final Object candidateVarType;
+    // What the operator adds to each input tuple: which cluster the tuple was assigned to, and how far its
+    // clustering expression sits from that cluster's centre. Both fall out of the assignment the algorithm
+    // already performs, so neither costs an extra pass. Types are opaque Objects, supplied by the translator,
+    // because the type system lives above Algebricks.
+    private LogicalVariable clusterIdVar;
+    private final Object clusterIdVarType;
+    private LogicalVariable distanceVar;
+    private final Object distanceVarType;
     // How many clusters the query asked for. Always non-negative.
     private final int numClusters;
     // Which clustering algorithm to run, and how it should seed itself. Both are validated in the rewrite;
@@ -74,11 +79,13 @@ public class ClusterByOperator extends AbstractLogicalOperator {
     // Which distance the algorithm measures with, as the metric's canonical name.
     private String metric;
 
-    public ClusterByOperator(Mutable<ILogicalExpression> vectorRef, LogicalVariable candidateVar,
-            Object candidateVarType, int numClusters) {
+    public ClusterByOperator(Mutable<ILogicalExpression> vectorRef, LogicalVariable clusterIdVar,
+            Object clusterIdVarType, LogicalVariable distanceVar, Object distanceVarType, int numClusters) {
         this.vectorRef = vectorRef;
-        this.candidateVar = candidateVar;
-        this.candidateVarType = candidateVarType;
+        this.clusterIdVar = clusterIdVar;
+        this.clusterIdVarType = clusterIdVarType;
+        this.distanceVar = distanceVar;
+        this.distanceVarType = distanceVarType;
         this.numClusters = numClusters;
     }
 
@@ -100,9 +107,12 @@ public class ClusterByOperator extends AbstractLogicalOperator {
 
     @Override
     public void recomputeSchema() throws AlgebricksException {
-        // Only the candidate variable is live downstream; input tuples are consumed, not propagated.
-        schema = new ArrayList<>();
-        schema.add(candidateVar);
+        // Every input tuple comes back out, carrying its assignment. Clustering decides which group a tuple
+        // belongs to, exactly as grouping does -- it does not replace the tuple with a summary of it. Keeping
+        // the tuples means whatever produced them, a scan or a join or another group-by, is consumed once.
+        schema = new ArrayList<>(inputs.get(0).getValue().getSchema());
+        schema.add(clusterIdVar);
+        schema.add(distanceVar);
     }
 
     @Override
@@ -111,7 +121,9 @@ public class ClusterByOperator extends AbstractLogicalOperator {
             @Override
             public void propagateVariables(IOperatorSchema target, IOperatorSchema... sources)
                     throws AlgebricksException {
-                target.addVariable(candidateVar);
+                target.addAllVariables(sources[0]);
+                target.addVariable(clusterIdVar);
+                target.addVariable(distanceVar);
             }
         };
     }
@@ -125,12 +137,11 @@ public class ClusterByOperator extends AbstractLogicalOperator {
 
     @Override
     public IVariableTypeEnvironment computeOutputTypeEnvironment(ITypingContext ctx) throws AlgebricksException {
-        // Non-propagating, to agree with recomputeSchema and the propagation policy: the input tuples are
-        // consumed, and the candidate variable is the only thing live downstream. Propagating the inputs here
-        // would advertise types for variables the schema says are gone. Same shape as AggregateOperator.
-        IVariableTypeEnvironment env =
-                new NonPropagatingTypeEnvironment(ctx.getExpressionTypeComputer(), ctx.getMetadataProvider());
-        env.setVarType(candidateVar, candidateVarType);
+        // Propagating, to agree with recomputeSchema and the propagation policy: the input variables stay
+        // live and the assignment is added alongside them. Same shape as AssignOperator.
+        PropagatingTypeEnvironment env = createPropagatingAllInputsTypeEnvironment(ctx);
+        env.setVarType(clusterIdVar, clusterIdVarType);
+        env.setVarType(distanceVar, distanceVarType);
         return env;
     }
 
@@ -143,16 +154,28 @@ public class ClusterByOperator extends AbstractLogicalOperator {
         return vectorRef;
     }
 
-    public LogicalVariable getCandidateVariable() {
-        return candidateVar;
+    public LogicalVariable getClusterIdVariable() {
+        return clusterIdVar;
     }
 
-    public Object getCandidateVarType() {
-        return candidateVarType;
+    public LogicalVariable getDistanceVariable() {
+        return distanceVar;
     }
 
-    public void setCandidateVariable(LogicalVariable v) {
-        this.candidateVar = v;
+    public Object getClusterIdVarType() {
+        return clusterIdVarType;
+    }
+
+    public Object getDistanceVarType() {
+        return distanceVarType;
+    }
+
+    public void setClusterIdVariable(LogicalVariable v) {
+        this.clusterIdVar = v;
+    }
+
+    public void setDistanceVariable(LogicalVariable v) {
+        this.distanceVar = v;
     }
 
     public int getNumClusters() {

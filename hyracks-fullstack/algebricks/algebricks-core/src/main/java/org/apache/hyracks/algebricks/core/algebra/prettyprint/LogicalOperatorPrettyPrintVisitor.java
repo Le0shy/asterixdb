@@ -386,10 +386,10 @@ public class LogicalOperatorPrettyPrintVisitor extends AbstractLogicalOperatorPr
 
     @Override
     public Void visitClusterByOperator(ClusterByOperator op, Integer indent) throws AlgebricksException {
-        addIndent(indent).append("cluster-by ").append(str(op.getCandidateVariable())).append(" <- ")
-                .append(String.valueOf(op.getNumClusters())).append(" clusters of ").append(str(op.getVectorVariable()))
-                .append(" by ").append(op.getAlgorithm()).append('/').append(op.getInitMode()).append('/')
-                .append(op.getMetric());
+        addIndent(indent).append("cluster-by ").append(str(op.getClusterIdVariable())).append(", ")
+                .append(str(op.getDistanceVariable())).append(" <- ").append(String.valueOf(op.getNumClusters()))
+                .append(" clusters of ").append(str(op.getVectorVariable())).append(" by ").append(op.getAlgorithm())
+                .append('/').append(op.getInitMode()).append('/').append(op.getMetric());
         return null;
     }
 

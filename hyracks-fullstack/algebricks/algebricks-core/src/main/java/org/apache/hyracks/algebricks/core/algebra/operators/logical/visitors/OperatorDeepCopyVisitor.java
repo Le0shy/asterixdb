@@ -259,9 +259,9 @@ public class OperatorDeepCopyVisitor implements ILogicalOperatorVisitor<ILogical
 
     @Override
     public ILogicalOperator visitClusterByOperator(ClusterByOperator op, Void arg) throws AlgebricksException {
-        ClusterByOperator opCopy =
-                new ClusterByOperator(new MutableObject<>(new VariableReferenceExpression(op.getVectorVariable())),
-                        op.getCandidateVariable(), op.getCandidateVarType(), op.getNumClusters());
+        ClusterByOperator opCopy = new ClusterByOperator(
+                new MutableObject<>(new VariableReferenceExpression(op.getVectorVariable())), op.getClusterIdVariable(),
+                op.getClusterIdVarType(), op.getDistanceVariable(), op.getDistanceVarType(), op.getNumClusters());
         opCopy.setAlgorithm(op.getAlgorithm());
         opCopy.setInitMode(op.getInitMode());
         opCopy.setMetric(op.getMetric());

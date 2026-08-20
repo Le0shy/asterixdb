@@ -157,8 +157,14 @@ public class ExpandClusterByRule extends AbstractDecorrelationRule {
         KMeansStageOperator lloyd = stage(cop, KMeansStageOperator.Mode.LLOYD_LOOP, context, ref(vectorVar),
                 ref(centroidsVar), cop.getNumClusters());
         lloyd.setLoopRounds(LLOYD_ITERATIONS);
-        // The expansion produces this operator's output, so it keeps the variable downstream already reads.
-        lloyd.setCandidateVariable(cop.getCandidateVariable());
+        // The operator now passes its input rows through, adding a cluster id and a distance to each. The
+        // stage chain still ends by emitting centroids, so it cannot yet produce that: the rows are resident
+        // inside the loop but carry no payload, and there is no stage that emits them labelled. Raise rather
+        // than wire the cluster-id variable to a stream of centroids, which would type-check and be wrong.
+        if (cop.getClusterIdVariable() != null) {
+            throw new AlgebricksException("CLUSTER BY expansion pending: the stage chain emits centroids, not "
+                    + "labelled rows. Needs a payload column through the loop and a labelling emission.");
+        }
         lloyd.getInputs().add(vectors);
         lloyd.getInputs().add(centroidsIn);
         lloyd.recomputeSchema();
@@ -222,7 +228,7 @@ public class ExpandClusterByRule extends AbstractDecorrelationRule {
             IOptimizationContext context, Mutable<ILogicalExpression> vectorRef, Mutable<ILogicalExpression> poolRef,
             int topCount) {
         KMeansStageOperator stage =
-                new KMeansStageOperator(vectorRef, poolRef, context.newVar(), cop.getCandidateVarType(), topCount);
+                new KMeansStageOperator(vectorRef, poolRef, context.newVar(), cop.getClusterIdVarType(), topCount);
         stage.setMode(mode);
         stage.setMetric(cop.getMetric());
         stage.setSourceLocation(cop.getSourceLocation());

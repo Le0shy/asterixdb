@@ -889,7 +889,8 @@ public class LogicalOperatorPrettyPrintVisitorJson extends AbstractLogicalOperat
     public Void visitClusterByOperator(ClusterByOperator op, Void indent) throws AlgebricksException {
         try {
             jsonGenerator.writeStringField(OPERATOR_FIELD, "cluster-by");
-            jsonGenerator.writeStringField("candidate-variable", String.valueOf(op.getCandidateVariable()));
+            jsonGenerator.writeStringField("cluster-id-variable", String.valueOf(op.getClusterIdVariable()));
+            jsonGenerator.writeStringField("distance-variable", String.valueOf(op.getDistanceVariable()));
             jsonGenerator.writeStringField("vector-variable", String.valueOf(op.getVectorVariable()));
             jsonGenerator.writeNumberField("num-clusters", op.getNumClusters());
             jsonGenerator.writeStringField("algorithm", op.getAlgorithm());

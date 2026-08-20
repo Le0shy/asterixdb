@@ -558,7 +558,8 @@ public class LogicalOperatorDeepCopyWithNewVariablesVisitor
             throws AlgebricksException {
         ClusterByOperator opCopy = new ClusterByOperator(
                 new MutableObject<>(new VariableReferenceExpression(deepCopyVariable(op.getVectorVariable()))),
-                deepCopyVariable(op.getCandidateVariable()), op.getCandidateVarType(), op.getNumClusters());
+                deepCopyVariable(op.getClusterIdVariable()), op.getClusterIdVarType(),
+                deepCopyVariable(op.getDistanceVariable()), op.getDistanceVarType(), op.getNumClusters());
         opCopy.setAlgorithm(op.getAlgorithm());
         opCopy.setInitMode(op.getInitMode());
         opCopy.setMetric(op.getMetric());

@@ -157,6 +157,9 @@ public class SqlppExpressionToPlanTranslator extends LangExpressionToPlanTransla
         implements ILangExpressionToPlanTranslator,
         ISqlppVisitor<Pair<ILogicalOperator, LogicalVariable>, Mutable<ILogicalOperator>> {
 
+    /** The only clustering algorithm with a runtime; the operator carries it for the expansion rule. */
+    private static final String ALGORITHM_KMEANS = "kmeans";
+
     private static final String ERR_MSG = "Translator should never enter this method!";
 
     public static final String REWRITE_IN_AS_OR_OPTION = "rewrite_in_as_or";
@@ -197,62 +200,14 @@ public class SqlppExpressionToPlanTranslator extends LangExpressionToPlanTransla
     }
 
     /**
-     * Realizes a CLUSTER BY: builds the operator over its vector branch and listifies the emitted centroids
-     * back into a value for the enclosing LET.
+     * Superseded: the clause itself now reaches {@link #visit(ClusterbyClause, Mutable)}, which builds the
+     * operator over the block's own pipeline. Nothing emits this node any more.
      */
     @Override
     public Pair<ILogicalOperator, LogicalVariable> visit(ClusterByExpr clusterByExpr,
             Mutable<ILogicalOperator> tupSource) throws CompilationException {
-        SourceLocation loc = clusterByExpr.getSourceLocation();
-        Pair<ILogicalOperator, LogicalVariable> constructed = translateClusterBy(clusterByExpr, loc);
-        Pair<ILogicalOperator, LogicalVariable> listified =
-                aggListifyForSubquery(constructed.second, new MutableObject<>(constructed.first), false);
-        // The construct rides a SUBPLAN over the enclosing chain, so upstream LET variables keep flowing;
-        // the nested plan (branches -> operator -> listify) is self-contained and uncorrelated.
-        SubplanOperator subplanOp = new SubplanOperator();
-        subplanOp.getInputs().add(tupSource);
-        subplanOp.getNestedPlans().add(new ALogicalPlanImpl(new MutableObject<>(listified.first)));
-        subplanOp.setSourceLocation(loc);
-        // Callers (e.g. the LET translation) expect an ASSIGN as the root of an expression translation.
-        LogicalVariable resVar = context.newVar();
-        VariableReferenceExpression listRef = new VariableReferenceExpression(listified.second);
-        listRef.setSourceLocation(loc);
-        AssignOperator assignOp = new AssignOperator(resVar, new MutableObject<>(listRef));
-        assignOp.setSourceLocation(loc);
-        assignOp.getInputs().add(new MutableObject<>(subplanOp));
-        return new Pair<>(assignOp, resVar);
-    }
-
-    /**
-     * Builds the CLUSTER BY operator. The node says only what the query asked for; the rule that expands it
-     * decides the rest, including how the algorithm seeds itself.
-     */
-    private Pair<ILogicalOperator, LogicalVariable> translateClusterBy(ClusterByExpr clusterByExpr, SourceLocation loc)
-            throws CompilationException {
-        Pair<ILogicalOperator, LogicalVariable> vecBranch =
-                translateStreamBranch((SelectExpression) clusterByExpr.getVectors());
-        VariableReferenceExpression vecRef = new VariableReferenceExpression(vecBranch.second);
-        vecRef.setSourceLocation(loc);
-        LogicalVariable candVar = context.newVar();
-        ClusterByOperator cop = new ClusterByOperator(new MutableObject<>(vecRef), candVar,
-                org.apache.asterix.om.types.BuiltinType.ANY, clusterByExpr.getNumClusters());
-        cop.setAlgorithm("kmeans");
-        cop.setInitMode(clusterByExpr.getInitMode());
-        cop.setMetric(clusterByExpr.getMetric());
-        cop.setSourceLocation(loc);
-        cop.getInputs().add(new MutableObject<>(vecBranch.first));
-        // The same anchor-ASSIGN discipline the stage markers use: the consumer holds the anchor's reference
-        // as an expression, keeping the column alive and rename-visible.
-        LogicalVariable anchorVar = context.newVar();
-        VariableReferenceExpression candRef = new VariableReferenceExpression(candVar);
-        candRef.setSourceLocation(loc);
-        AssignOperator anchorOp = new AssignOperator(anchorVar, new MutableObject<>(candRef));
-        anchorOp.setSourceLocation(loc);
-        anchorOp.getInputs().add(new MutableObject<>(cop));
-        ProjectOperator pr = new ProjectOperator(anchorVar);
-        pr.getInputs().add(new MutableObject<>(anchorOp));
-        pr.setSourceLocation(loc);
-        return new Pair<>(pr, anchorVar);
+        throw new CompilationException(ErrorCode.COMPILATION_ILLEGAL_STATE, clusterByExpr.getSourceLocation(),
+                "CLUSTER BY is translated from its clause, not as an expression");
     }
 
     /** Translates a self-contained subquery as a stream branch: its pipeline WITHOUT the subquery listify. */
@@ -349,18 +304,30 @@ public class SqlppExpressionToPlanTranslator extends LangExpressionToPlanTransla
         return translateUnionAllFromInputExprs(inputExprs, tupSource, selectSetOperation.getSourceLocation());
     }
 
+    /**
+     * CLUSTER BY over the block's own pipeline, the way GROUP BY consumes it.
+     * <p>
+     * The operator adds two variables to every input row -- which cluster it landed in, and how far its
+     * clustering expression sits from that cluster's centre -- and passes the row itself through. Nothing is
+     * re-read: whatever produced the rows, a scan or a join or an UNNEST, is consumed exactly once. The
+     * rewrite has already validated the WITH options and built the GROUP BY and the cluster descriptor
+     * around the two variables named on the clause.
+     */
     @Override
     public Pair<ILogicalOperator, LogicalVariable> visit(ClusterbyClause clusterbyClause,
             Mutable<ILogicalOperator> tupSource) throws CompilationException {
-        // CLUSTER BY is desugared into a distributed k-means query (query-level LET centroids + GROUP BY
-        // nearest_centroid) by SqlppClusterByVisitor during query rewriting, so a ClusterbyClause must never
-        // reach the plan translator. This method exists only to satisfy the ISqlppVisitor interface.
-        //
-        // Deliberately a CompilationException rather than a raw unchecked throw: if the rewrite is ever
-        // skipped, the user gets a query error carrying this clause's location instead of an internal
-        // server error with no context.
-        throw new CompilationException(ErrorCode.COMPILATION_ILLEGAL_STATE, clusterbyClause.getSourceLocation(),
-                "CLUSTER BY should have been rewritten to a k-means query before translation");
+        Pair<ILogicalExpression, Mutable<ILogicalOperator>> clustering =
+                langExprToAlgExpression(clusterbyClause.getClusteringExpression(), tupSource);
+        LogicalVariable cidVar = context.newVarFromExpression(clusterbyClause.getClusterIdVar());
+        LogicalVariable distVar = context.newVarFromExpression(clusterbyClause.getDistanceVar());
+        ClusterByOperator cop = new ClusterByOperator(new MutableObject<>(clustering.first), cidVar, BuiltinType.AINT64,
+                distVar, BuiltinType.ADOUBLE, clusterbyClause.getNumClusters());
+        cop.setAlgorithm(ALGORITHM_KMEANS);
+        cop.setInitMode(clusterbyClause.getInitMode());
+        cop.setMetric(clusterbyClause.getMetric());
+        cop.setSourceLocation(clusterbyClause.getSourceLocation());
+        cop.getInputs().add(clustering.second);
+        return new Pair<>(cop, cidVar);
     }
 
     @Override

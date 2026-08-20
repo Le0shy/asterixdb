@@ -334,8 +334,11 @@ public class SubstituteVariableVisitor
         if (op.getVectorVariable().equals(pair.first)) {
             op.getVectorRef().setValue(new VariableReferenceExpression(pair.second));
         }
-        if (op.getCandidateVariable().equals(pair.first)) {
-            op.setCandidateVariable(pair.second);
+        if (op.getClusterIdVariable().equals(pair.first)) {
+            op.setClusterIdVariable(pair.second);
+        }
+        if (op.getDistanceVariable().equals(pair.first)) {
+            op.setDistanceVariable(pair.second);
         }
         return null;
     }
