@@ -18,11 +18,14 @@
  */
 package org.apache.asterix.runtime.operators.kmeans;
 
+import java.io.DataOutput;
+import java.io.IOException;
 import java.nio.ByteBuffer;
 
 import org.apache.asterix.common.exceptions.ErrorCode;
 import org.apache.asterix.common.exceptions.RuntimeDataException;
 import org.apache.asterix.common.vector.VectorSimilarityMetric;
+import org.apache.asterix.om.types.ATypeTag;
 import org.apache.hyracks.api.comm.IFrameWriter;
 import org.apache.hyracks.api.comm.VSizeFrame;
 import org.apache.hyracks.api.context.IHyracksTaskContext;
@@ -31,6 +34,7 @@ import org.apache.hyracks.api.dataflow.IActivityGraphBuilder;
 import org.apache.hyracks.api.dataflow.IOperatorNodePushable;
 import org.apache.hyracks.api.dataflow.TaskId;
 import org.apache.hyracks.api.dataflow.value.IRecordDescriptorProvider;
+import org.apache.hyracks.api.dataflow.value.ISerializerDeserializer;
 import org.apache.hyracks.api.dataflow.value.RecordDescriptor;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
 import org.apache.hyracks.api.exceptions.Warning;
@@ -334,7 +338,7 @@ public class KMeansLloydControllerOperatorDescriptor extends AbstractOperatorDes
                         MaterializerTaskState vectorState = (MaterializerTaskState) LoopControlState.required(ctx,
                                 LoopControlState.vectorsStateId(loopKey, partition));
                         runLoop(control, vectorState, partialWriter);
-                        emitFinalCentroids(control, centroidWriter, partition);
+                        emitLabelledRows(control, centroidWriter, partition, vectorState);
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
                         centroidWriter.fail();
@@ -433,11 +437,24 @@ public class KMeansLloydControllerOperatorDescriptor extends AbstractOperatorDes
                  * The loop's result. Every partition holds the same set (it was broadcast), so one partition
                  * speaks — matching the single-node reduce this replaces, whose output likewise had one origin.
                  */
-                private void emitFinalCentroids(LoopControlState control, IFrameWriter centroidWriter, int partition)
-                        throws HyracksDataException {
-                    if (partition != 0) {
-                        return;
-                    }
+                /**
+                 * The loop's result: every row it held, carrying the cluster it landed in and its distance to
+                 * that cluster's centre.
+                 * <p>
+                 * Emitting the centroids instead is what used to force the rows to be fetched a second time --
+                 * from an arbitrary upstream, since CLUSTER BY's input is whatever the query block produces.
+                 * The rows are right here, so they leave with their assignment and nothing is read twice.
+                 * <p>
+                 * Every partition emits: the centroid set was global and one partition could speak for it, but
+                 * the rows are this partition's own. The centre and the radius are derived downstream from the
+                 * members, which is where they have always come from.
+                 * <p>
+                 * Two passes, and for the reason the score column exists at all: scoring streams vectors as
+                 * bare {@code double[]} and cannot carry the tuple, so pass A records the assignment and pass B
+                 * replays the rows beside it. Alignment needs no key -- entry i is vector i.
+                 */
+                private void emitLabelledRows(LoopControlState control, IFrameWriter rowWriter, int partition,
+                        MaterializerTaskState vectorState) throws HyracksDataException {
                     CentroidStore finalCentroids = control.getCentroids();
                     // A backstop, not the primary report. When the input has fewer distinct vectors than k,
                     // RECLUSTER says so and names that count -- it is the only stage that knows it. What
@@ -445,8 +462,9 @@ public class KMeansLloydControllerOperatorDescriptor extends AbstractOperatorDes
                     // RECLUSTER to warn for it, and a cluster can also lose every row during refinement.
                     // Neither is a statement about how many distinct vectors the input holds, so this does
                     // not claim one -- and like RECLUSTER it warns rather than failing, so the clusters that
-                    // do exist are returned.
-                    if (finalCentroids.size() < numClusters && ctx.getWarningCollector().shouldWarn()) {
+                    // do exist are returned. One partition warns, or every partition repeats it.
+                    if (partition == 0 && finalCentroids.size() < numClusters
+                            && ctx.getWarningCollector().shouldWarn()) {
                         int remaining = finalCentroids.size();
                         ctx.getWarningCollector().warn(Warning.of(null, ErrorCode.CLUSTER_BY_INVALID_INPUT,
                                 "NumClusters is " + numClusters + " but only " + remaining + " cluster(s) remain"
@@ -454,10 +472,84 @@ public class KMeansLloydControllerOperatorDescriptor extends AbstractOperatorDes
                                                 : ": the input yielded fewer starting centroids, or a cluster"
                                                         + " lost every row during refinement")));
                     }
-                    KMeansVectorCodec.PoolEnvelopeWriter out =
-                            new KMeansVectorCodec.PoolEnvelopeWriter(ctx, centroidWriter);
-                    finalCentroids.stream(ctx, out::plainVector);
-                    out.flush();
+                    // The output is the row's own fields plus the cluster id and the distance, so what the row
+                    // contributed is whatever is left when those two are taken off.
+                    final int payloadFields = outRecDescs[OUT_CENTROIDS].getFieldCount() - 2;
+                    MaterializerTaskState column = new MaterializerTaskState(ctx.getJobletContext().getJobId(),
+                            new TaskId(getActivityId(), partition));
+                    column.open(ctx);
+                    try {
+                        final KMeansLoopIO.ScoreColumnWriter scores = new KMeansLoopIO.ScoreColumnWriter(column, ctx);
+                        KMeansLoopIO.streamScoredAgainstPool(KMeansLoopIO.source(vectorState, ctx),
+                                sink -> finalCentroids.stream(ctx, sink), ctx, framesLimit,
+                                KMeansLoopIO.distanceFunction(metric),
+                                (vecs, n, nearest, nearestIdx) -> scores.append(nearest, nearestIdx, n));
+                        scores.finish();
+                        replayLabelled(vectorState, column, rowWriter, payloadFields);
+                    } finally {
+                        column.close();
+                        column.deleteFile();
+                    }
+                }
+
+                /** Pass B: the stored rows and the assignment column, walked together. */
+                private void replayLabelled(MaterializerTaskState vectorState, MaterializerTaskState column,
+                        IFrameWriter rowWriter, int payloadFields) throws HyracksDataException {
+                    // Field 0 is the raw vector the loop worked on; the row's own fields follow it. Only the
+                    // field count matters here -- the payload is copied as bytes, never deserialized.
+                    final FrameTupleAccessor stored = new FrameTupleAccessor(
+                            new RecordDescriptor(new ISerializerDeserializer[1 + payloadFields]));
+                    final ArrayTupleBuilder out = new ArrayTupleBuilder(payloadFields + 2);
+                    final FrameTupleAppender rowAppender = new FrameTupleAppender(new VSizeFrame(ctx));
+                    try (KMeansLoopIO.ScoreColumnReader scores = new KMeansLoopIO.ScoreColumnReader(column, ctx)) {
+                        vectorState.writeOut(new IFrameWriter() {
+                            @Override
+                            public void open() {
+                            }
+
+                            @Override
+                            public void nextFrame(ByteBuffer buffer) throws HyracksDataException {
+                                stored.reset(buffer);
+                                int tupleCount = stored.getTupleCount();
+                                for (int i = 0; i < tupleCount; i++) {
+                                    scores.advance();
+                                    out.reset();
+                                    for (int f = 0; f < payloadFields; f++) {
+                                        out.addField(stored, i, 1 + f);
+                                    }
+                                    writeTagged(out, ATypeTag.SERIALIZED_INT64_TYPE_TAG, scores.index());
+                                    writeTagged(out, ATypeTag.SERIALIZED_DOUBLE_TYPE_TAG, scores.nearest());
+                                    FrameUtils.appendToWriter(rowWriter, rowAppender, out.getFieldEndOffsets(),
+                                            out.getByteArray(), 0, out.getSize());
+                                }
+                            }
+
+                            @Override
+                            public void fail() {
+                            }
+
+                            @Override
+                            public void close() {
+                            }
+                        }, new VSizeFrame(ctx), false);
+                    }
+                    rowAppender.write(rowWriter, true);
+                }
+
+                /** One Asterix-tagged scalar. The payload arrives already tagged, so only these two need it. */
+                private void writeTagged(ArrayTupleBuilder tb, byte tag, Number value) throws HyracksDataException {
+                    try {
+                        DataOutput dos = tb.getDataOutput();
+                        dos.writeByte(tag);
+                        if (tag == ATypeTag.SERIALIZED_INT64_TYPE_TAG) {
+                            dos.writeLong(value.longValue());
+                        } else {
+                            dos.writeDouble(value.doubleValue());
+                        }
+                        tb.addFieldEndOffset();
+                    } catch (IOException e) {
+                        throw HyracksDataException.create(e);
+                    }
                 }
 
                 @Override
