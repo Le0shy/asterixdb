@@ -1247,6 +1247,10 @@ public class BuiltinFunctions {
     // centroid under the metric (the k-means|| sampling score d2(x, C) when squared Euclidean).
     public static final FunctionIdentifier NEAREST_CENTROID_DISTANCE =
             FunctionConstants.newAsterix("nearest-centroid-distance", FunctionIdentifier.VARARGS);
+    // CLUSTER BY: cluster-by(vectors, seed, k, initMode, metric) -- the whole clustering, as the query asked
+    // for it. The translator turns this into a ClusterByOperator; a rewrite rule expands that into whichever
+    // stages the algorithm needs. The three kmeans-* markers below are what that rule produces today.
+    public static final FunctionIdentifier CLUSTER_BY = FunctionConstants.newAsterix("cluster-by", 5);
     // kmeans-recluster(partials, k, metric): single-input merge — reduce partials, then weighted k-means++
     // to k (C0).
     public static final FunctionIdentifier KMEANS_RECLUSTER = FunctionConstants.newAsterix("kmeans-recluster", 3);

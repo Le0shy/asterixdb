@@ -1,3 +1,25 @@
+private VarIdentifier bindCentroidLets(List<LetClause> centroidLets, ClusterbyClause cbc,
+            SelectExpression vecsQuery, int k, String metric, SourceLocation loc) throws CompilationException {
+        // One call, whatever the algorithm. How it is carried out -- how many oversampling rounds, how wide,
+        // how many refinement iterations -- is decided by the rule that expands this, not here: those are
+        // properties of k-means||, and this is the language layer.
+        Expression centroidStream = call(BuiltinFunctions.CLUSTER_BY, loc, copy(vecsQuery),
+                seedStream(cbc, vecsQuery, k, loc), intLit(k, loc), strLit(getInitMode(cbc), loc),
+                strLit(metric, loc));
+        VarIdentifier cFinal = context.newVariable();
+        centroidLets.add(letClause(cFinal, centroidStream, loc));
+        context.markNoInlineLetVar(cFinal);
+
+        // Sorted by value before labeling. The partition was already deterministic, but the list arrives in
+        // merge order, which varies run to run -- so the cid labels, being indexes into it, would not be.
+        VariableExpr cSortVar = newVar(loc);
+        VarIdentifier finalCentroids = context.newVariable();
+        centroidLets.add(letClause(finalCentroids, selectValueFrom(varRef(cFinal, loc), cSortVar, cSortVar, null, null,
+                ascOrder(varRef(cSortVar.getVar(), loc)), null, null, loc), loc));
+        context.markNoInlineLetVar(finalCentroids);
+        return finalCentroids;
+    }
+
 /*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
@@ -174,27 +196,9 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
     private static final String INIT_MODE_RANDOM = "random";
     private static final Set<String> KNOWN_INIT_MODES =
             Set.of(INIT_MODE_KMEANS_PARALLEL, INIT_MODE_KMEANSPP_DEPRECATED, INIT_MODE_RANDOM);
-    // Base for the per-round sampling seed (seed_r = EXACT_SEED_BASE + r). Holding it fixed makes a run
-    // reproducible on a fixed topology; the descriptor mixes in the partition id.
-    //
-    // The value is the smallest prime above one million, chosen for the same reason the descriptor multiplies
-    // by it: a prime stride keeps (base + round) * prime + partition from colliding across neighbouring
-    // (round, partition) pairs, so adjacent partitions do not start from correlated generator states. Nothing
-    // depends on the magnitude -- any prime of this size would do.
-    private static final int EXACT_SEED_BASE = 1_000_003;
-
-    // Lloyd iterations, passed to the loop operator as an argument.
-    private static final int LLOYD_ITERATIONS = 3;
-
-    // Oversampling factor l = OVERSAMPLING_FACTOR_PER_K * k, drawn over INIT_OVERSAMPLING_ROUNDS rounds, so
-    // RECLUSTER reduces a pool of roughly l * rounds candidates. Lowering it narrows the margin by which
-    // oversampling samples a small cluster: with too few draws per round, a small well-separated group can go
-    // unsampled, and the resulting seeding is a stable k-means fixed point that refinement cannot escape.
-    private static final int OVERSAMPLING_FACTOR_PER_K = 2;
-
-    // Safe only because every centroid-list LET here is marked no-inline: under per-reference inlining,
-    // chained rounds grow the plan exponentially.
-    private static final int INIT_OVERSAMPLING_ROUNDS = 5;
+    // How many clusters is the user's business and is validated here. Everything else about how the
+    // clustering is carried out -- oversampling width, round count, refinement iterations, the sampling seed
+    // -- belongs to the algorithm, and is decided by the rule that expands the ClusterByOperator.
 
     private final LangRewritingContext context;
 
@@ -423,63 +427,22 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
         return whereForVecs;
     }
 
-    /** C0: the initial centroid set Lloyd refines, either drawn uniformly or produced by k-means|| init. */
-    private Expression initialCentroidStream(ClusterbyClause cbc, SelectExpression vecsQuery, int k, String metric,
-            SourceLocation loc) throws CompilationException {
-        if (INIT_MODE_RANDOM.equals(getInitMode(cbc))) {
-            // C0 = k vectors drawn uniformly (Forgy). The k smallest shuffle keys (uniformRowKey) are a uniform
-            // sample without replacement; ordering by the vector VALUE would instead return the k most similar
-            // points, seating every centroid in one corner where Lloyd cannot recover them.
-            VariableExpr rv0 = newVar(loc);
-            LimitClause limitKInit = new LimitClause(intLit(k, loc), null);
-            limitKInit.setSourceLocation(loc);
-            return selectValueFrom(copy(vecsQuery), rv0, rv0, null, null, ascOrder(uniformRowKey(rv0, loc)), null,
-                    limitKInit, loc);
-        }
-        // The oversampling loop runs INIT_OVERSAMPLING_ROUNDS rounds internally, then weighs the vectors
-        // against the final pool into the (count, sum) partials RECLUSTER reduces. The innermost pool is the
-        // single initial centre, drawn uniformly -- hence the smallest shuffle key, not the smallest vector,
-        // which would be a geometric extreme and bias every round measured from it.
-        VariableExpr pv = newVar(loc);
-        LimitClause seedLimit = new LimitClause(intLit(1, loc), null);
-        seedLimit.setSourceLocation(loc);
-        Expression poolStream = selectValueFrom(copy(vecsQuery), pv, pv, null, null, ascOrder(uniformRowKey(pv, loc)),
-                null, seedLimit, loc);
-        Expression weighed = call(BuiltinFunctions.KMEANS_OVERSAMPLE_LOOP, loc, copy(vecsQuery), poolStream,
-                intLit(oversamplingFactor(k, loc), loc), intLit(INIT_OVERSAMPLING_ROUNDS, loc),
-                intLit(EXACT_SEED_BASE, loc), strLit(metric, loc));
-        // RECLUSTER: single-input merge of the (broadcast) partials -- reduces the weighted candidates to at
-        // most k initial centres with weighted k-means++.
-        return call(BuiltinFunctions.KMEANS_RECLUSTER, loc, weighed, intLit(k, loc), strLit(metric, loc));
-    }
-
     /**
-     * Appends the query-level LETs that compute the centroids, and returns the variable holding the final,
-     * ordered list. Init then Lloyd, chained by nesting each call inside the next: RECLUSTER consumes the
-     * oversample loop, and the Lloyd loop consumes RECLUSTER. Rounds are an argument to each loop, not unrolled
-     * here. The subquery arguments become the operators' stream inputs, so they must be self-contained
-     * pipelines -- an input branch cannot reference the chain's LET vars. The repeated scans this implies are
-     * collapsed by the optimizer's common-subtree REPLICATE sharing.
+     * The starting points the algorithm is seeded from, drawn uniformly. {@code random} wants k of them and
+     * uses them as C0 directly; k-means|| wants one and grows a pool from it. Which of those happens is the
+     * expansion rule's business -- this only supplies the draw, because a draw is expressible in the query
+     * language and a rule building one would be rebuilding what SQL++ already says.
+     * <p>
+     * Ordered on the shuffle key rather than on the vector: ordering by VALUE would return the most similar
+     * points, seating every centroid in one corner of the data where refinement cannot recover them.
      */
-    private VarIdentifier bindCentroidLets(List<LetClause> centroidLets, ClusterbyClause cbc,
-            SelectExpression vecsQuery, int k, String metric, SourceLocation loc) throws CompilationException {
-        // Lloyd refinement loops LLOYD_ITERATIONS times inside one stage, all-reducing the per-centroid
-        // (count, sum) partials each iteration. A centroid that attracts nothing is dropped, so k can shrink.
-        Expression centroidStream = call(BuiltinFunctions.KMEANS_LLOYD_LOOP, loc, copy(vecsQuery),
-                initialCentroidStream(cbc, vecsQuery, k, metric, loc), intLit(k, loc), intLit(LLOYD_ITERATIONS, loc),
-                strLit(metric, loc));
-        VarIdentifier cFinal = context.newVariable();
-        centroidLets.add(letClause(cFinal, centroidStream, loc));
-        context.markNoInlineLetVar(cFinal);
-
-        // Sorted by value before labeling. The partition was already deterministic, but the list arrives in
-        // merge order, which varies run to run -- so the cid labels, being indexes into it, would not be.
-        VariableExpr cSortVar = newVar(loc);
-        VarIdentifier finalCentroids = context.newVariable();
-        centroidLets.add(letClause(finalCentroids, selectValueFrom(varRef(cFinal, loc), cSortVar, cSortVar, null, null,
-                ascOrder(varRef(cSortVar.getVar(), loc)), null, null, loc), loc));
-        context.markNoInlineLetVar(finalCentroids);
-        return finalCentroids;
+    private Expression seedStream(ClusterbyClause cbc, SelectExpression vecsQuery, int k, SourceLocation loc)
+            throws CompilationException {
+        int n = INIT_MODE_RANDOM.equals(getInitMode(cbc)) ? k : 1;
+        VariableExpr v = newVar(loc);
+        LimitClause limit = new LimitClause(intLit(n, loc), null);
+        limit.setSourceLocation(loc);
+        return selectValueFrom(copy(vecsQuery), v, v, null, null, ascOrder(uniformRowKey(v, loc)), null, limit, loc);
     }
 
     /**
@@ -892,25 +855,6 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
                     "CLUSTER BY 'dimension' must be a positive integer, but was: " + dim + ".");
         }
         return (int) dim;
-    }
-
-    /**
-     * The oversampling factor l = {@link #OVERSAMPLING_FACTOR_PER_K} * k, checked for overflow.
-     * <p>
-     * Unchecked, {@code k = 2147483647} wraps to -294967296 and is passed to the operator as {@code topCount},
-     * which is documented "always non-negative" -- and the query then <em>succeeds</em>, returning 2 clusters
-     * for a request of two billion. A silent wrong answer, so this fails instead. The bound itself belongs with
-     * the memory budget (a k this large cannot fit whatever budget is declared); this only ensures the
-     * arithmetic never lies.
-     */
-    private int oversamplingFactor(int k, SourceLocation loc) throws CompilationException {
-        try {
-            return Math.multiplyExact(OVERSAMPLING_FACTOR_PER_K, k);
-        } catch (ArithmeticException e) {
-            throw new CompilationException(ErrorCode.COMPILATION_ERROR, loc,
-                    "CLUSTER BY 'num_clusters' is too large: the oversampling factor " + OVERSAMPLING_FACTOR_PER_K
-                            + " * " + k + " overflows a 32-bit integer.");
-        }
     }
 
     /** The validated init_mode, canonicalised ({@link #INIT_MODE_KMEANS_PARALLEL} default). */

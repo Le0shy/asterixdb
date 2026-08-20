@@ -97,6 +97,7 @@ import org.apache.asterix.optimizer.rules.RewriteCountDistinctToHashRule;
 import org.apache.asterix.optimizer.rules.RewriteDistinctAggregateRule;
 import org.apache.asterix.optimizer.rules.STTransformResolveCRSRule;
 import org.apache.asterix.optimizer.rules.SetAsterixMemoryRequirementsRule;
+import org.apache.asterix.optimizer.rules.ExpandClusterByRule;
 import org.apache.asterix.optimizer.rules.SetAsterixPhysicalOperatorsRule;
 import org.apache.asterix.optimizer.rules.SetClosedRecordConstructorsRule;
 import org.apache.asterix.optimizer.rules.SetupCommitExtensionOpRule;
@@ -412,6 +413,10 @@ public final class RuleCollections {
         physicalRewritesAllLevels.add(new ExtractBatchableExternalFunctionCallsRule());
         //Turned off the following rule for now not to change OptimizerTest results.
         physicalRewritesAllLevels.add(new SetupCommitExtensionOpRule());
+        // Before physical-operator assignment and property enforcement, which need the stages; after every
+        // logical rule, which do not. Until here the plan carries one opaque cluster-by node over an ordinary
+        // input, so the logical phases optimize the upstream and nothing else.
+        physicalRewritesAllLevels.add(new ExpandClusterByRule());
         physicalRewritesAllLevels.add(new SetAsterixPhysicalOperatorsRule(cmf));
         physicalRewritesAllLevels.add(new SetAsterixMemoryRequirementsRule());
         // must run after SetMemoryRequirementsRule

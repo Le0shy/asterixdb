@@ -334,6 +334,9 @@ public class SubstituteVariableVisitor
         if (op.getVectorVariable().equals(pair.first)) {
             op.getVectorRef().setValue(new VariableReferenceExpression(pair.second));
         }
+        if (op.getPoolVariable().equals(pair.first)) {
+            op.getPoolRef().setValue(new VariableReferenceExpression(pair.second));
+        }
         if (op.getCandidateVariable().equals(pair.first)) {
             op.setCandidateVariable(pair.second);
         }

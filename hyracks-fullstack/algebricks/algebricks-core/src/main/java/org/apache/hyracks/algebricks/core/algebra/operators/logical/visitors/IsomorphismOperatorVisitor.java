@@ -428,6 +428,7 @@ public class IsomorphismOperatorVisitor implements ILogicalOperatorVisitor<Boole
                 && java.util.Objects.equals(op.getInitMode(), other.getInitMode())
                 && java.util.Objects.equals(op.getMetric(), other.getMetric())
                 && op.getVectorVariable().equals(other.getVectorVariable())
+                && op.getPoolVariable().equals(other.getPoolVariable())
                 && op.getCandidateVariable().equals(other.getCandidateVariable());
     }
 
