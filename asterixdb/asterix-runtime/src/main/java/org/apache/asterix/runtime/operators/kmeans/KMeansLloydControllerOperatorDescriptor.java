@@ -21,6 +21,8 @@ package org.apache.asterix.runtime.operators.kmeans;
 import java.io.DataOutput;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.List;
 
 import org.apache.asterix.common.exceptions.ErrorCode;
 import org.apache.asterix.common.exceptions.RuntimeDataException;
@@ -78,6 +80,18 @@ public class KMeansLloydControllerOperatorDescriptor extends AbstractOperatorDes
     private static final int STORE_VECTORS_ACTIVITY_ID = 0;
     private static final int STORE_CENTROIDS_ACTIVITY_ID = 1;
     private static final int LLOYD_LOOP_ACTIVITY_ID = 2;
+
+    /** Lexicographic order on vectors: total, so the sort is stable whatever the merge order was. */
+    private static int compareVectors(double[] a, double[] b) {
+        int n = Math.min(a.length, b.length);
+        for (int i = 0; i < n; i++) {
+            int c = Double.compare(a[i], b[i]);
+            if (c != 0) {
+                return c;
+            }
+        }
+        return Integer.compare(a.length, b.length);
+    }
 
     private static final int OUT_CENTROIDS = 0; // the final centroid set (plain vectors), downstream
     private static final int OUT_PARTIALS = 1; // per-iteration (count, sum) partials -> CentroidMerge
@@ -483,9 +497,19 @@ public class KMeansLloydControllerOperatorDescriptor extends AbstractOperatorDes
                     column.open(ctx);
                     try {
                         final KMeansLoopIO.ScoreColumnWriter scores = new KMeansLoopIO.ScoreColumnWriter(column, ctx);
+                        // Score against the centroids in value order, so a cluster id -- which is only the
+                        // position of the centroid a row was nearest to -- means the same thing on every run.
+                        // The set arrives in merge order, which varies; the rewrite this replaces sorted the
+                        // list for exactly this reason before it labelled anything.
+                        final List<double[]> ordered = new ArrayList<>();
+                        finalCentroids.stream(ctx, v -> ordered.add(v.clone()));
+                        ordered.sort(KMeansLloydControllerOperatorDescriptor::compareVectors);
                         KMeansLoopIO.streamScoredAgainstPool(KMeansLoopIO.source(vectorState, ctx, payloadFields + 1),
-                                sink -> finalCentroids.stream(ctx, sink), ctx, framesLimit,
-                                KMeansLoopIO.distanceFunction(metric),
+                                sink -> {
+                                    for (double[] c : ordered) {
+                                        sink.accept(c);
+                                    }
+                                }, ctx, framesLimit, KMeansLoopIO.distanceFunction(metric),
                                 (vecs, n, nearest, nearestIdx) -> scores.append(nearest, nearestIdx, n));
                         scores.finish();
                         replayLabelled(vectorState, column, rowWriter, payloadFields);
