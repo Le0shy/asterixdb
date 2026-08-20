@@ -206,7 +206,7 @@ public class SqlppExpressionToPlanTranslator extends LangExpressionToPlanTransla
 
     // The internal CLUSTER BY marker. Matching on the whole FunctionSignature -- database, dataverse, name
     // and arity -- keeps a user function that happens to share the name from being mistaken for it.
-    // cluster-by(vectors, seed, k, initMode, metric).
+    // cluster-by(vectors, k, initMode, metric).
     private static final FunctionSignature CLUSTER_BY_SIG = new FunctionSignature(BuiltinFunctions.CLUSTER_BY);
 
     /** The internal CLUSTER BY marker the rewrite leaves behind. */
@@ -272,29 +272,23 @@ public class SqlppExpressionToPlanTranslator extends LangExpressionToPlanTransla
     }
 
     /**
-     * Builds the CLUSTER BY operator from {@code cluster-by(vectors, seed, k, initMode, metric)}. Both stream
-     * arguments are translated as independent branches, exactly as a stage marker's are; what is different is
-     * that this node says only what the query asked for. The rule that expands it decides the rest.
+     * Builds the CLUSTER BY operator from {@code cluster-by(vectors, k, initMode, metric)}. The node says only what the
+     * query asked for; the rule that expands it decides the rest, including how the algorithm seeds itself.
      */
     private Pair<ILogicalOperator, LogicalVariable> translateClusterBy(CallExpr fcall, SourceLocation loc)
             throws CompilationException {
         Pair<ILogicalOperator, LogicalVariable> vecBranch =
                 translateStreamBranch((SelectExpression) fcall.getExprList().get(0));
-        Pair<ILogicalOperator, LogicalVariable> seedBranch =
-                translateStreamBranch((SelectExpression) fcall.getExprList().get(1));
         VariableReferenceExpression vecRef = new VariableReferenceExpression(vecBranch.second);
         vecRef.setSourceLocation(loc);
-        VariableReferenceExpression seedRef = new VariableReferenceExpression(seedBranch.second);
-        seedRef.setSourceLocation(loc);
         LogicalVariable candVar = context.newVar();
-        ClusterByOperator cop = new ClusterByOperator(new MutableObject<>(vecRef), new MutableObject<>(seedRef),
-                candVar, org.apache.asterix.om.types.BuiltinType.ANY, (int) longArg(fcall, 2));
+        ClusterByOperator cop = new ClusterByOperator(new MutableObject<>(vecRef), candVar,
+                org.apache.asterix.om.types.BuiltinType.ANY, (int) longArg(fcall, 1));
         cop.setAlgorithm("kmeans");
-        cop.setInitMode(stringArg(fcall, 3));
-        cop.setMetric(stringArg(fcall, 4));
+        cop.setInitMode(stringArg(fcall, 2));
+        cop.setMetric(stringArg(fcall, 3));
         cop.setSourceLocation(loc);
         cop.getInputs().add(new MutableObject<>(vecBranch.first));
-        cop.getInputs().add(new MutableObject<>(seedBranch.first));
         // The same anchor-ASSIGN discipline the stage markers use: the consumer holds the anchor's reference
         // as an expression, keeping the column alive and rename-visible.
         LogicalVariable anchorVar = context.newVar();

@@ -333,7 +333,6 @@ public class UsedVariableVisitor implements ILogicalOperatorVisitor<Void, Void> 
     @Override
     public Void visitClusterByOperator(ClusterByOperator op, Void arg) throws AlgebricksException {
         usedVariables.add(op.getVectorVariable());
-        usedVariables.add(op.getPoolVariable());
         return null;
     }
 

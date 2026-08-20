@@ -3,9 +3,8 @@ private VarIdentifier bindCentroidLets(List<LetClause> centroidLets, ClusterbyCl
         // One call, whatever the algorithm. How it is carried out -- how many oversampling rounds, how wide,
         // how many refinement iterations -- is decided by the rule that expands this, not here: those are
         // properties of k-means||, and this is the language layer.
-        Expression centroidStream = call(BuiltinFunctions.CLUSTER_BY, loc, copy(vecsQuery),
-                seedStream(cbc, vecsQuery, k, loc), intLit(k, loc), strLit(getInitMode(cbc), loc),
-                strLit(metric, loc));
+        Expression centroidStream = call(BuiltinFunctions.CLUSTER_BY, loc, copy(vecsQuery), intLit(k, loc),
+                strLit(getInitMode(cbc), loc), strLit(metric, loc));
         VarIdentifier cFinal = context.newVariable();
         centroidLets.add(letClause(cFinal, centroidStream, loc));
         context.markNoInlineLetVar(cFinal);
@@ -65,7 +64,6 @@ import org.apache.asterix.lang.common.clause.WhereClause;
 import org.apache.asterix.lang.common.expression.CallExpr;
 import org.apache.asterix.lang.common.expression.FieldAccessor;
 import org.apache.asterix.lang.common.expression.GbyVariableExpressionPair;
-import org.apache.asterix.lang.common.expression.IndexAccessor;
 import org.apache.asterix.lang.common.expression.LiteralExpr;
 import org.apache.asterix.lang.common.expression.OperatorExpr;
 import org.apache.asterix.lang.common.expression.VariableExpr;
@@ -428,24 +426,6 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
     }
 
     /**
-     * The starting points the algorithm is seeded from, drawn uniformly. {@code random} wants k of them and
-     * uses them as C0 directly; k-means|| wants one and grows a pool from it. Which of those happens is the
-     * expansion rule's business -- this only supplies the draw, because a draw is expressible in the query
-     * language and a rule building one would be rebuilding what SQL++ already says.
-     * <p>
-     * Ordered on the shuffle key rather than on the vector: ordering by VALUE would return the most similar
-     * points, seating every centroid in one corner of the data where refinement cannot recover them.
-     */
-    private Expression seedStream(ClusterbyClause cbc, SelectExpression vecsQuery, int k, SourceLocation loc)
-            throws CompilationException {
-        int n = INIT_MODE_RANDOM.equals(getInitMode(cbc)) ? k : 1;
-        VariableExpr v = newVar(loc);
-        LimitClause limit = new LimitClause(intLit(n, loc), null);
-        limit.setSourceLocation(loc);
-        return selectValueFrom(copy(vecsQuery), v, v, null, null, ascOrder(uniformRowKey(v, loc)), null, limit, loc);
-    }
-
-    /**
      * Replaces every {@code <descriptor>.<field>} read with the expression that computes it. The descriptor is
      * substituted field by field rather than bound to a record: an OpenRecordConstructor here breaks type
      * inference when the members variable is also referenced. For the same reason {@code sc.centroid} becomes
@@ -644,12 +624,6 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
         return ref;
     }
 
-    /** {@code <listExpr>[<idx>]} (constant element index). */
-    private Expression elementAt(Expression listExpr, int idx, SourceLocation loc) {
-        IndexAccessor ia = new IndexAccessor(listExpr, IndexAccessor.IndexKind.ELEMENT, intLit(idx, loc));
-        ia.setSourceLocation(loc);
-        return ia;
-    }
 
     /**
      * {@code random(<rowVar>[0])} -- an ORDER BY key that shuffles the vectors rather than ranking them, so
@@ -666,9 +640,6 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
      * The key costs nothing: {@code ORDER BY ... LIMIT n} still compiles to a streaming top-n that holds n
      * rows, and ranking one double is cheaper than ranking a vector element by element.
      */
-    private Expression uniformRowKey(VariableExpr rowVar, SourceLocation loc) {
-        return call(BuiltinFunctions.RANDOM_WITH_SEED, loc, elementAt(varRef(rowVar.getVar(), loc), 0, loc));
-    }
 
     /** {@code <left> <op> <right>} as an OperatorExpr. */
     private Expression binaryOp(OperatorType op, Expression left, Expression right, SourceLocation loc) {

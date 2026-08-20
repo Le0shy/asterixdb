@@ -18,19 +18,29 @@
  */
 package org.apache.asterix.optimizer.rules;
 
+import org.apache.asterix.om.base.AInt64;
+import org.apache.asterix.om.constants.AsterixConstantValue;
+import org.apache.asterix.om.functions.BuiltinFunctions;
 import org.apache.commons.lang3.mutable.Mutable;
 import org.apache.commons.lang3.mutable.MutableObject;
 import org.apache.hyracks.algebricks.common.exceptions.AlgebricksException;
+import org.apache.hyracks.algebricks.common.utils.Pair;
 import org.apache.hyracks.algebricks.core.algebra.base.ILogicalExpression;
 import org.apache.hyracks.algebricks.core.algebra.base.ILogicalOperator;
 import org.apache.hyracks.algebricks.core.algebra.base.IOptimizationContext;
 import org.apache.hyracks.algebricks.core.algebra.base.LogicalOperatorTag;
 import org.apache.hyracks.algebricks.core.algebra.base.LogicalVariable;
+import org.apache.hyracks.algebricks.core.algebra.expressions.ConstantExpression;
+import org.apache.hyracks.algebricks.core.algebra.expressions.ScalarFunctionCallExpression;
 import org.apache.hyracks.algebricks.core.algebra.expressions.VariableReferenceExpression;
+import org.apache.hyracks.algebricks.core.algebra.operators.logical.AssignOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.ClusterByOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.KMeansStageOperator;
+import org.apache.hyracks.algebricks.core.algebra.operators.logical.LimitOperator;
+import org.apache.hyracks.algebricks.core.algebra.operators.logical.OrderOperator;
 import org.apache.hyracks.algebricks.rewriter.rules.AbstractDecorrelationRule;
 import org.apache.hyracks.api.exceptions.ErrorCode;
+import org.apache.hyracks.api.exceptions.SourceLocation;
 import org.apache.hyracks.util.annotations.AiProvenance;
 
 /**
@@ -84,20 +94,23 @@ public class ExpandClusterByRule extends AbstractDecorrelationRule {
      * {@code random} skips the first two: its seed already <em>is</em> k centres, so refinement starts there.
      */
     private ILogicalOperator expand(ClusterByOperator cop, IOptimizationContext context) throws AlgebricksException {
+        SourceLocation loc = cop.getSourceLocation();
         Mutable<ILogicalOperator> vectors = cop.getInputs().get(0);
-        Mutable<ILogicalOperator> seed = cop.getInputs().get(1);
         LogicalVariable vectorVar = cop.getVectorVariable();
-        LogicalVariable seedVar = cop.getPoolVariable();
+        boolean forgy = INIT_MODE_RANDOM.equals(cop.getInitMode());
 
-        Mutable<ILogicalOperator> centroidsIn = seed;
-        LogicalVariable centroidsVar = seedVar;
-        if (!INIT_MODE_RANDOM.equals(cop.getInitMode())) {
+        // Forgy seeds with k centres and refines them directly; k-means|| grows a pool from one.
+        Mutable<ILogicalOperator> centroidsIn =
+                seedOf(copyOf(vectors), vectorVar, forgy ? cop.getNumClusters() : 1, context, loc);
+        LogicalVariable centroidsVar = vectorVar;
+
+        if (!forgy) {
             KMeansStageOperator oversample = stage(cop, KMeansStageOperator.Mode.OVERSAMPLE_LOOP, context,
-                    ref(vectorVar), ref(seedVar), oversamplingWidth(cop));
+                    ref(vectorVar), ref(centroidsVar), oversamplingWidth(cop));
             oversample.setLoopRounds(OVERSAMPLING_ROUNDS);
             oversample.setSeed(SEED_BASE);
-            oversample.getInputs().add(copyOf(vectors, context));
-            oversample.getInputs().add(seed);
+            oversample.getInputs().add(copyOf(vectors));
+            oversample.getInputs().add(centroidsIn);
             context.computeAndSetTypeEnvironmentForOperator(oversample);
 
             KMeansStageOperator recluster = stage(cop, KMeansStageOperator.Mode.RECLUSTER, context, null,
@@ -118,6 +131,50 @@ public class ExpandClusterByRule extends AbstractDecorrelationRule {
         lloyd.getInputs().add(centroidsIn);
         context.computeAndSetTypeEnvironmentForOperator(lloyd);
         return lloyd;
+    }
+
+    /**
+     * The {@code n} starting points, drawn uniformly from the vectors: order on a shuffle key and take the
+     * first n.
+     * <p>
+     * The key is {@code random(vec[0])} rather than the vector itself. Ordering by VALUE would return the n
+     * most similar points, seating every centre in one corner of the data, which is a stable fixed point that
+     * no amount of refinement escapes.
+     * <p>
+     * Built here rather than by the rewrite because how many starting points an algorithm wants is a fact
+     * about the algorithm: k-means|| grows a pool from one, Forgy uses k as its answer outright.
+     */
+    private Mutable<ILogicalOperator> seedOf(Mutable<ILogicalOperator> vectors, LogicalVariable vectorVar, int n,
+            IOptimizationContext context, SourceLocation loc) throws AlgebricksException {
+        ScalarFunctionCallExpression firstComponent = new ScalarFunctionCallExpression(
+                BuiltinFunctions.getBuiltinFunctionInfo(BuiltinFunctions.GET_ITEM), ref(vectorVar), constant(0L));
+        firstComponent.setSourceLocation(loc);
+        ScalarFunctionCallExpression key = new ScalarFunctionCallExpression(
+                BuiltinFunctions.getBuiltinFunctionInfo(BuiltinFunctions.RANDOM_WITH_SEED),
+                new MutableObject<>(firstComponent));
+        key.setSourceLocation(loc);
+
+        LogicalVariable keyVar = context.newVar();
+        AssignOperator assign = new AssignOperator(keyVar, new MutableObject<>(key));
+        assign.setSourceLocation(loc);
+        assign.getInputs().add(vectors);
+        context.computeAndSetTypeEnvironmentForOperator(assign);
+
+        OrderOperator order = new OrderOperator();
+        order.setSourceLocation(loc);
+        order.getOrderExpressions().add(new Pair<>(OrderOperator.ASC_ORDER, ref(keyVar)));
+        order.getInputs().add(new MutableObject<>(assign));
+        context.computeAndSetTypeEnvironmentForOperator(order);
+
+        LimitOperator limit = new LimitOperator(constant((long) n).getValue());
+        limit.setSourceLocation(loc);
+        limit.getInputs().add(new MutableObject<>(order));
+        context.computeAndSetTypeEnvironmentForOperator(limit);
+        return new MutableObject<>(limit);
+    }
+
+    private static Mutable<ILogicalExpression> constant(long v) {
+        return new MutableObject<>(new ConstantExpression(new AsterixConstantValue(new AInt64(v))));
     }
 
     private KMeansStageOperator stage(ClusterByOperator cop, KMeansStageOperator.Mode mode,
@@ -150,8 +207,7 @@ public class ExpandClusterByRule extends AbstractDecorrelationRule {
      * rather than a shared reference, because a plan is a tree here; ExtractCommonOperatorsRule merges them
      * behind a REPLICATE later, which is the same path the two copies took before this rule existed.
      */
-    private Mutable<ILogicalOperator> copyOf(Mutable<ILogicalOperator> src, IOptimizationContext context)
-            throws AlgebricksException {
+    private Mutable<ILogicalOperator> copyOf(Mutable<ILogicalOperator> src) throws AlgebricksException {
         return new MutableObject<>(org.apache.hyracks.algebricks.core.algebra.util.OperatorManipulationUtil
                 .bottomUpCopyOperators(src.getValue()));
     }

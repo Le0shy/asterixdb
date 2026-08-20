@@ -1247,10 +1247,11 @@ public class BuiltinFunctions {
     // centroid under the metric (the k-means|| sampling score d2(x, C) when squared Euclidean).
     public static final FunctionIdentifier NEAREST_CENTROID_DISTANCE =
             FunctionConstants.newAsterix("nearest-centroid-distance", FunctionIdentifier.VARARGS);
-    // CLUSTER BY: cluster-by(vectors, seed, k, initMode, metric) -- the whole clustering, as the query asked
-    // for it. The translator turns this into a ClusterByOperator; a rewrite rule expands that into whichever
+    // CLUSTER BY: cluster-by(vectors, k, initMode, metric) -- the whole clustering, as the query asked
+    // for it. Seeding is not here: how many starting points an algorithm wants is the algorithm's business,
+    // so the rule that expands this derives them from the vectors. The translator turns this into a ClusterByOperator; a rewrite rule expands that into whichever
     // stages the algorithm needs. The three kmeans-* markers below are what that rule produces today.
-    public static final FunctionIdentifier CLUSTER_BY = FunctionConstants.newAsterix("cluster-by", 5);
+    public static final FunctionIdentifier CLUSTER_BY = FunctionConstants.newAsterix("cluster-by", 4);
     // Temporal functions
     public static final FunctionIdentifier UNIX_TIME_FROM_DATE_IN_DAYS =
             FunctionConstants.newAsterix("unix-time-from-date-in-days", 1);

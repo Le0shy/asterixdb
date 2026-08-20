@@ -50,9 +50,9 @@ import org.apache.hyracks.util.annotations.AiProvenance;
  * SELECT/ORDER BY/LIMIT/GROUP BY algebra regressed with optimizer context (lost topK pushdown, nested-plan
  * in-memory sorts).
  * <p>
- * Input 0 is the vectors to cluster; input 1 is the initial centroids. Seeding stays expressible in the
- * query language because a future algorithm may seed differently, and because the expansion rule is free to
- * ignore input 1 when its algorithm seeds itself.
+ * One input: the vectors to cluster. Seeding is part of an algorithm -- how many starting points, drawn
+ * how -- so the rule that knows the algorithm derives them from this input rather than the language
+ * supplying them.
  */
 @AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.ASSISTED)
 public class ClusterByOperator extends AbstractLogicalOperator {
@@ -61,7 +61,6 @@ public class ClusterByOperator extends AbstractLogicalOperator {
     // acceptExpressionTransform) so variable-substitution and pruning rules see it; a plain LogicalVariable
     // field silently drifts through renames.
     private final Mutable<ILogicalExpression> vectorRef;
-    private final Mutable<ILogicalExpression> poolRef;
     // The single produced variable: a candidate vector, same type as vectorVar (opaque; from translator).
     private LogicalVariable candidateVar;
     private final Object candidateVarType;
@@ -75,10 +74,9 @@ public class ClusterByOperator extends AbstractLogicalOperator {
     // Which distance the algorithm measures with, as the metric's canonical name.
     private String metric;
 
-    public ClusterByOperator(Mutable<ILogicalExpression> vectorRef, Mutable<ILogicalExpression> poolRef,
-            LogicalVariable candidateVar, Object candidateVarType, int numClusters) {
+    public ClusterByOperator(Mutable<ILogicalExpression> vectorRef, LogicalVariable candidateVar,
+            Object candidateVarType, int numClusters) {
         this.vectorRef = vectorRef;
-        this.poolRef = poolRef;
         this.candidateVar = candidateVar;
         this.candidateVarType = candidateVarType;
         this.numClusters = numClusters;
@@ -143,14 +141,6 @@ public class ClusterByOperator extends AbstractLogicalOperator {
 
     public Mutable<ILogicalExpression> getVectorRef() {
         return vectorRef;
-    }
-
-    public LogicalVariable getPoolVariable() {
-        return ((VariableReferenceExpression) poolRef.getValue()).getVariableReference();
-    }
-
-    public Mutable<ILogicalExpression> getPoolRef() {
-        return poolRef;
     }
 
     public LogicalVariable getCandidateVariable() {
