@@ -48,8 +48,8 @@ import org.apache.hyracks.util.annotations.AiProvenance;
  * combiner rules expand one group-by into a local and a global one.
  * <p>
  * Everything the query said is on the operator; everything about how the algorithm is carried out is decided
- * here. That split is the point: a second algorithm is another branch in {@link #expand}, not another path
- * through the language layer.
+ * here. That split is the point: a second algorithm is another {@link Expansion}, not another path through
+ * the language layer.
  * <p>
  * Runs at the head of the physical phase -- after every logical rule, so they all see one opaque node with one
  * ordinary input, and before physical-operator assignment and property enforcement, which need the stages.
@@ -80,12 +80,28 @@ public class ExpandClusterByRule extends AbstractDecorrelationRule {
             return false;
         }
         ClusterByOperator cop = (ClusterByOperator) op;
-        if (!ALGORITHM_KMEANS.equals(cop.getAlgorithm())) {
-            throw AlgebricksException.create(ErrorCode.ILLEGAL_STATE,
-                    "no expansion for CLUSTER BY algorithm " + cop.getAlgorithm());
-        }
-        opRef.setValue(expand(cop, context));
+        opRef.setValue(expansionFor(cop).expand(cop, context));
         return true;
+    }
+
+    /**
+     * The extension point. An algorithm is a method that turns this node into the stages implementing it;
+     * adding one is adding a case here and accepting its name in the rewrite's option validation. Nothing
+     * above this rule -- grammar, rewrite, translator, logical plan -- learns that the algorithm exists.
+     */
+    private Expansion expansionFor(ClusterByOperator cop) throws AlgebricksException {
+        if (ALGORITHM_KMEANS.equals(cop.getAlgorithm())) {
+            return this::expandKMeans;
+        }
+        // Unreachable: the rewrite rejects an unknown algorithm with a source location the user can act on.
+        // Reached only if a name passes validation with no expansion behind it, which is our bug, not theirs.
+        throw AlgebricksException.create(ErrorCode.ILLEGAL_STATE,
+                "no expansion for CLUSTER BY algorithm " + cop.getAlgorithm());
+    }
+
+    @FunctionalInterface
+    private interface Expansion {
+        ILogicalOperator expand(ClusterByOperator cop, IOptimizationContext context) throws AlgebricksException;
     }
 
     /**
@@ -93,7 +109,13 @@ public class ExpandClusterByRule extends AbstractDecorrelationRule {
      * <p>
      * {@code random} skips the first two: its seed already <em>is</em> k centres, so refinement starts there.
      */
-    private ILogicalOperator expand(ClusterByOperator cop, IOptimizationContext context) throws AlgebricksException {
+    /**
+     * k-means: seed, then refine. {@code kmeanspp} grows an oversampled pool from a single centre and reduces
+     * it to k before refining; {@code random} (Forgy) takes k starting points as its answer and refines them
+     * directly.
+     */
+    private ILogicalOperator expandKMeans(ClusterByOperator cop, IOptimizationContext context)
+            throws AlgebricksException {
         SourceLocation loc = cop.getSourceLocation();
         Mutable<ILogicalOperator> vectors = cop.getInputs().get(0);
         LogicalVariable vectorVar = cop.getVectorVariable();
