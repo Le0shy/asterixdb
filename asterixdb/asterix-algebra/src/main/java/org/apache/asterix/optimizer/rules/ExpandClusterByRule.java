@@ -18,6 +18,7 @@
  */
 package org.apache.asterix.optimizer.rules;
 
+import java.util.ArrayList;
 import java.util.Map;
 
 import org.apache.asterix.om.base.AInt64;
@@ -29,12 +30,14 @@ import org.apache.hyracks.algebricks.common.exceptions.AlgebricksException;
 import org.apache.hyracks.algebricks.common.utils.Pair;
 import org.apache.hyracks.algebricks.core.algebra.base.ILogicalExpression;
 import org.apache.hyracks.algebricks.core.algebra.base.ILogicalOperator;
+import org.apache.hyracks.algebricks.core.algebra.base.ILogicalPlan;
 import org.apache.hyracks.algebricks.core.algebra.base.IOptimizationContext;
 import org.apache.hyracks.algebricks.core.algebra.base.LogicalOperatorTag;
 import org.apache.hyracks.algebricks.core.algebra.base.LogicalVariable;
 import org.apache.hyracks.algebricks.core.algebra.expressions.ConstantExpression;
 import org.apache.hyracks.algebricks.core.algebra.expressions.ScalarFunctionCallExpression;
 import org.apache.hyracks.algebricks.core.algebra.expressions.VariableReferenceExpression;
+import org.apache.hyracks.algebricks.core.algebra.operators.logical.AbstractOperatorWithNestedPlans;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.AssignOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.ClusterByOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.KMeansStageOperator;
@@ -191,13 +194,18 @@ public class ExpandClusterByRule extends AbstractDecorrelationRule {
         assign.recomputeSchema();
         context.computeAndSetTypeEnvironmentForOperator(assign);
 
-        OrderOperator order = new OrderOperator();
+        // Built as a top-n rather than a sort plus a limit. PushLimitIntoOrderByRule fuses those two in the
+        // logical phase, which has already run by the time this rule fires, so an ordinary sort here would
+        // stay a full sort of the whole input to take n rows from it.
+        OrderOperator order = new OrderOperator(new ArrayList<>(), n);
         order.setSourceLocation(loc);
         order.getOrderExpressions().add(new Pair<>(OrderOperator.ASC_ORDER, ref(keyVar)));
         order.getInputs().add(new MutableObject<>(assign));
         order.recomputeSchema();
         context.computeAndSetTypeEnvironmentForOperator(order);
 
+        // Both, deliberately: the top-n keeps the sort from ranking the whole input, and the limit is what
+        // actually bounds the stream. That pair is the shape the plan had before this rule existed.
         LimitOperator limit = new LimitOperator(constant((long) n).getValue());
         limit.setSourceLocation(loc);
         limit.getInputs().add(new MutableObject<>(order));
@@ -231,6 +239,20 @@ public class ExpandClusterByRule extends AbstractDecorrelationRule {
         }
     }
 
+    private static void recomputeSchemaBottomUp(ILogicalOperator op) throws AlgebricksException {
+        for (Mutable<ILogicalOperator> child : op.getInputs()) {
+            recomputeSchemaBottomUp(child.getValue());
+        }
+        if (op instanceof AbstractOperatorWithNestedPlans) {
+            for (ILogicalPlan nested : ((AbstractOperatorWithNestedPlans) op).getNestedPlans()) {
+                for (Mutable<ILogicalOperator> root : nested.getRoots()) {
+                    recomputeSchemaBottomUp(root.getValue());
+                }
+            }
+        }
+        op.recomputeSchema();
+    }
+
     private static Mutable<ILogicalExpression> ref(LogicalVariable v) {
         return new MutableObject<>(new VariableReferenceExpression(v));
     }
@@ -254,6 +276,10 @@ public class ExpandClusterByRule extends AbstractDecorrelationRule {
             LogicalVariable vectorVar, IOptimizationContext context) throws AlgebricksException {
         Pair<ILogicalOperator, Map<LogicalVariable, LogicalVariable>> copy =
                 OperatorManipulationUtil.deepCopyWithNewVars(src.getValue(), context);
+        // deepCopyWithNewVars gives the copy type environments but not schemas, and an operator built on top
+        // of it computes its own schema from its input's. Algebricks has no bottom-up schema pass, so the
+        // copy gets one here.
+        recomputeSchemaBottomUp(copy.first);
         LogicalVariable copiedVectorVar = copy.second.getOrDefault(vectorVar, vectorVar);
         return new Pair<>(new MutableObject<>(copy.first), copiedVectorVar);
     }
