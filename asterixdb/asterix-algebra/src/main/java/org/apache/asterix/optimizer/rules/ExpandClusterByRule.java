@@ -41,6 +41,7 @@ import org.apache.hyracks.algebricks.core.algebra.expressions.ConstantExpression
 import org.apache.hyracks.algebricks.core.algebra.expressions.ScalarFunctionCallExpression;
 import org.apache.hyracks.algebricks.core.algebra.expressions.VariableReferenceExpression;
 import org.apache.hyracks.algebricks.core.algebra.functions.FunctionIdentifier;
+import org.apache.hyracks.algebricks.core.algebra.operators.logical.AbstractLogicalOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.AbstractOperatorWithNestedPlans;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.AggregateOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.AssignOperator;
@@ -174,11 +175,12 @@ public class ExpandClusterByRule extends AbstractDecorrelationRule {
         lloyd.setDistanceVariable(rowDist, cop.getRadiusVarType());
         lloyd.getInputs().add(vectors);
         lloyd.getInputs().add(centroidsIn);
-        // Every partition emits its own rows now, where only partition 0 spoke when the output was the
-        // global centroid set. Left unset, the stage still reads as unpartitioned and the group-by below it
-        // inherits that, so the enforcer never repartitions on the cluster id and each partition groups only
-        // what it holds.
-        OperatorManipulationUtil.setOperatorMode(lloyd);
+        // Partitioned by construction, not derived from the input: the stage runs one instance per compute
+        // partition and its physical operator repartitions whatever it is given into that domain, so an
+        // unpartitioned input -- a global LIMIT, a constant array -- still yields partitioned output. Derived
+        // from such an input the stage read as unpartitioned, the group-by above it inherited that, the
+        // enforcer never repartitioned on the cluster id, and each partition grouped only what it held.
+        lloyd.setExecutionMode(AbstractLogicalOperator.ExecutionMode.PARTITIONED);
         lloyd.recomputeSchema();
         context.computeAndSetTypeEnvironmentForOperator(lloyd);
         return clustersOf(cop, lloyd, rowCid, rowDist, context, loc);

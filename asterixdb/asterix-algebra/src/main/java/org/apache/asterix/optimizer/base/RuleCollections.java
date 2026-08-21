@@ -169,6 +169,7 @@ import org.apache.hyracks.algebricks.rewriter.rules.subplan.EliminateSubplanRule
 import org.apache.hyracks.algebricks.rewriter.rules.subplan.EliminateSubplanWithInputCardinalityOneRule;
 import org.apache.hyracks.algebricks.rewriter.rules.subplan.NestedSubplanToJoinRule;
 import org.apache.hyracks.algebricks.rewriter.rules.subplan.PushSubplanIntoGroupByRule;
+import org.apache.hyracks.util.annotations.AiProvenance;
 
 public final class RuleCollections {
 
@@ -406,6 +407,7 @@ public final class RuleCollections {
         return cbo;
     }
 
+    @AiProvenance(agent = AiProvenance.Agent.CLAUDE_FABLE_5, tool = AiProvenance.Tool.CLAUDE_CODE_CLI, contributionKind = AiProvenance.ContributionKind.ASSISTED, notes = "Re-derive execution modes after the CLUSTER BY expansion")
     public static List<IAlgebraicRewriteRule> buildPhysicalRewritesAllLevelsRuleCollection(
             SetAsterixPhysicalOperatorsRule.CostMethodsFactory cmf) {
         List<IAlgebraicRewriteRule> physicalRewritesAllLevels = new LinkedList<>();
@@ -417,6 +419,10 @@ public final class RuleCollections {
         // logical rule, which do not. Until here the plan carries one opaque cluster-by node over an ordinary
         // input, so the logical phases optimize the upstream and nothing else.
         physicalRewritesAllLevels.add(new ExpandClusterByRule());
+        // The stages the expansion adds run partitioned whatever their input was, so the operators above
+        // the clause -- an ORDER BY, the result -- may have been marked unpartitioned from an unpartitioned
+        // input and must be re-derived, or the enforcer takes a partition's local order for a global one.
+        physicalRewritesAllLevels.add(new SetExecutionModeRule());
         physicalRewritesAllLevels.add(new SetAsterixPhysicalOperatorsRule(cmf));
         physicalRewritesAllLevels.add(new SetAsterixMemoryRequirementsRule());
         // must run after SetMemoryRequirementsRule
