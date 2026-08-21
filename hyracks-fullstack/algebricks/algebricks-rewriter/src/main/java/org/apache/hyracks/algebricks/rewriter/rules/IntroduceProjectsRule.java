@@ -39,6 +39,7 @@ import org.apache.hyracks.algebricks.core.algebra.operators.logical.AbstractOper
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.ProjectOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.visitors.VariableUtilities;
 import org.apache.hyracks.algebricks.core.rewriter.base.IAlgebraicRewriteRule;
+import org.apache.hyracks.util.annotations.AiProvenance;
 
 /**
  * Projects away unused variables at the earliest possible point.
@@ -105,6 +106,7 @@ public class IntroduceProjectsRule implements IAlgebraicRewriteRule {
 
     }
 
+    @AiProvenance(agent = AiProvenance.Agent.CLAUDE_FABLE_5, tool = AiProvenance.Tool.CLAUDE_CODE_CLI, contributionKind = AiProvenance.ContributionKind.ASSISTED, notes = "Keep what the operator reads from an input it does not propagate")
     protected boolean introduceProjects(AbstractLogicalOperator parentOp, int parentInputIndex,
             Mutable<ILogicalOperator> opRef, Set<LogicalVariable> parentUsedVars, IOptimizationContext context)
             throws AlgebricksException {
@@ -164,6 +166,11 @@ public class IntroduceProjectsRule implements IAlgebraicRewriteRule {
 
         // Some of the variables that are live at this op are not used above.
         if (projectVars.size() != liveVars.size()) {
+            // What op itself reads. projectVars holds only what op propagates, so for an input op consumes
+            // without propagating -- a lookup side, a pool -- a project built from projectVars alone would
+            // drop the very column op reads from it.
+            Set<LogicalVariable> opUsedVars = new LinkedHashSet<>();
+            VariableUtilities.getUsedVariables(op, opUsedVars);
             // Add a project operator under each of op's qualifying input branches.
             for (int i = 0; i < op.getInputs().size(); i++) {
                 ILogicalOperator childOp = op.getInputs().get(i).getValue();
@@ -171,6 +178,11 @@ public class IntroduceProjectsRule implements IAlgebraicRewriteRule {
                 VariableUtilities.getLiveVariables(childOp, liveVars);
                 List<LogicalVariable> vars = new ArrayList<>();
                 vars.addAll(projectVars);
+                for (LogicalVariable v : opUsedVars) {
+                    if (!vars.contains(v)) {
+                        vars.add(v);
+                    }
+                }
                 // Only retain those variables that are live in the i-th input branch.
                 vars.retainAll(liveVars);
                 if (vars.size() != liveVars.size()) {

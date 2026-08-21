@@ -70,6 +70,7 @@ import org.apache.hyracks.algebricks.core.algebra.operators.logical.UnnestOperat
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.WindowOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.WriteOperator;
 import org.apache.hyracks.algebricks.core.algebra.visitors.ILogicalOperatorVisitor;
+import org.apache.hyracks.util.annotations.AiProvenance;
 
 public class SchemaVariableVisitor implements ILogicalOperatorVisitor<Void, Void> {
 
@@ -233,10 +234,16 @@ public class SchemaVariableVisitor implements ILogicalOperatorVisitor<Void, Void
     }
 
     @Override
+    @AiProvenance(agent = AiProvenance.Agent.CLAUDE_FABLE_5, tool = AiProvenance.Tool.CLAUDE_CODE_CLI, contributionKind = AiProvenance.ContributionKind.REFACTORED, notes = "Input 0 stays live through the refinement stage, which returns its rows")
     public Void visitKMeansStageOperator(KMeansStageOperator op, Void arg) throws AlgebricksException {
-        // Produced variables only: the operator consumes its input tuples and emits one new column, which is
-        // what recomputeSchema and the propagation policy both say. standardLayout would additionally report
-        // the inputs' live variables, which are gone by then. Same shape as visitAggregateOperator.
+        // Mirrors recomputeSchema and the propagation policy. The sampling stages consume their input and
+        // emit one new column, so only the produced variables are live after them. The refinement stage
+        // returns the rows it held, so input 0's variables stay live through it -- and a projection rule that
+        // is told otherwise prunes, below the stage, a column the group-by above it still reads. Input 1 is
+        // the pool and is never propagated.
+        if (op.emitsRows()) {
+            VariableUtilities.getLiveVariables(op.getInputs().get(0).getValue(), schemaVariables);
+        }
         VariableUtilities.getProducedVariables(op, schemaVariables);
         return null;
     }

@@ -72,6 +72,7 @@ import org.apache.hyracks.algebricks.core.algebra.operators.logical.UnnestOperat
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.WindowOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.WriteOperator;
 import org.apache.hyracks.algebricks.core.algebra.visitors.ILogicalOperatorVisitor;
+import org.apache.hyracks.util.annotations.AiProvenance;
 
 public class ProducedVariableVisitor implements ILogicalOperatorVisitor<Void, Void> {
 
@@ -231,8 +232,12 @@ public class ProducedVariableVisitor implements ILogicalOperatorVisitor<Void, Vo
     }
 
     @Override
+    @AiProvenance(agent = AiProvenance.Agent.CLAUDE_FABLE_5, tool = AiProvenance.Tool.CLAUDE_CODE_CLI, contributionKind = AiProvenance.ContributionKind.REFACTORED, notes = "The distance column is produced too")
     public Void visitKMeansStageOperator(KMeansStageOperator op, Void arg) throws AlgebricksException {
         producedVariables.add(op.getCandidateVariable());
+        if (op.emitsRows()) {
+            producedVariables.add(op.getDistanceVariable());
+        }
         return null;
     }
 
