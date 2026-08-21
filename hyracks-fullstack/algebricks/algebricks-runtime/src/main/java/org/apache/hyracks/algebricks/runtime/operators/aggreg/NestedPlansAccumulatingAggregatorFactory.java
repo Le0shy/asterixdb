@@ -45,6 +45,7 @@ import org.apache.hyracks.dataflow.std.group.AbstractAccumulatingAggregatorDescr
 import org.apache.hyracks.dataflow.std.group.AggregateState;
 import org.apache.hyracks.dataflow.std.group.IAggregatorDescriptor;
 import org.apache.hyracks.dataflow.std.group.IProfiledAggregatorDescriptor;
+import org.apache.hyracks.util.annotations.AiProvenance;
 
 public class NestedPlansAccumulatingAggregatorFactory extends AbstractAccumulatingAggregatorDescriptorFactory {
 
@@ -143,12 +144,16 @@ public class NestedPlansAccumulatingAggregatorFactory extends AbstractAccumulati
         }
 
         // Checks the memory usage.
+        @AiProvenance(agent = AiProvenance.Agent.CLAUDE_FABLE_5, tool = AiProvenance.Tool.CLAUDE_CODE_CLI, contributionKind = AiProvenance.ContributionKind.REFACTORED, notes = "Compare the group bytes, not the backing array length")
         private void memoryUsageCheck() throws HyracksDataException {
             if (memoryBudget > 0) {
+                // The group's bytes, not the backing array's length: that array grows by half and is kept
+                // across groups, so a group well inside the budget could be refused for arriving after one
+                // that grew the array -- and whether it did depended on the order the groups came in.
                 ArrayTupleBuilder tb = outputWriter.getTupleBuilder();
-                byte[] data = tb.getByteArray();
-                if (data.length > memoryBudget) {
-                    throw HyracksDataException.create(ErrorCode.GROUP_BY_MEMORY_BUDGET_EXCEEDS, sourceLoc, data.length,
+                int size = tb.getSize();
+                if (size > memoryBudget) {
+                    throw HyracksDataException.create(ErrorCode.GROUP_BY_MEMORY_BUDGET_EXCEEDS, sourceLoc, size,
                             memoryBudget);
                 }
             }
