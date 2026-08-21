@@ -85,6 +85,20 @@ public class ClusterByOperator extends AbstractLogicalOperator {
     private String initMode;
     // Which distance the algorithm measures with, as the metric's canonical name.
     private String metric;
+    // Computes the members list's type from the member record's, once the input is typed. The record's type
+    // is only known after type inference, and a list type is an Asterix notion, so the translator supplies
+    // the computation and the operator applies it. Without it members is typed as whatever the translator
+    // passed -- ANY -- while the expansion types the same variable as a list of the record: a consumer
+    // compiled against ANY then reads a closed record's bytes by field name, finds none, and sees MISSING.
+    private IMembersTypeComputer membersTypeComputer;
+
+    /** How the members list is typed from one member's record type; implemented above Algebricks. */
+    @FunctionalInterface
+    @AiProvenance(agent = AiProvenance.Agent.CLAUDE_FABLE_5, tool = AiProvenance.Tool.CLAUDE_CODE_CLI, contributionKind = AiProvenance.ContributionKind.GENERATED, notes = "Seam for the list type, which lives above Algebricks")
+    public interface IMembersTypeComputer {
+        Object membersType(ILogicalExpression memberRecord, IVariableTypeEnvironment inputEnv, ITypingContext ctx)
+                throws AlgebricksException;
+    }
 
     public ClusterByOperator(Mutable<ILogicalExpression> vectorRef, LogicalVariable clusterIdVar,
             Object clusterIdVarType, LogicalVariable centroidVar, Object centroidVarType, LogicalVariable radiusVar,
@@ -152,6 +166,7 @@ public class ClusterByOperator extends AbstractLogicalOperator {
     }
 
     @Override
+    @AiProvenance(agent = AiProvenance.Agent.CLAUDE_FABLE_5, tool = AiProvenance.Tool.CLAUDE_CODE_CLI, contributionKind = AiProvenance.ContributionKind.ASSISTED, notes = "members typed through the translator-supplied computer")
     public IVariableTypeEnvironment computeOutputTypeEnvironment(ITypingContext ctx) throws AlgebricksException {
         // Non-propagating, to agree with recomputeSchema and the propagation policy: the input tuples are
         // consumed and only the four cluster variables are live downstream. Same shape as GroupByOperator,
@@ -161,8 +176,18 @@ public class ClusterByOperator extends AbstractLogicalOperator {
         env.setVarType(clusterIdVar, clusterIdVarType);
         env.setVarType(centroidVar, centroidVarType);
         env.setVarType(radiusVar, radiusVarType);
-        env.setVarType(membersVar, membersVarType);
+        env.setVarType(membersVar, membersType(ctx));
         return env;
+    }
+
+    @AiProvenance(agent = AiProvenance.Agent.CLAUDE_FABLE_5, tool = AiProvenance.Tool.CLAUDE_CODE_CLI, contributionKind = AiProvenance.ContributionKind.GENERATED, notes = "Precise members type from the member record, once the input is typed")
+    private Object membersType(ITypingContext ctx) throws AlgebricksException {
+        if (membersTypeComputer == null || memberRecordRef == null || inputs.isEmpty()) {
+            return membersVarType;
+        }
+        IVariableTypeEnvironment inputEnv = ctx.getOutputTypeEnvironment(inputs.get(0).getValue());
+        return inputEnv == null ? membersVarType
+                : membersTypeComputer.membersType(memberRecordRef.getValue(), inputEnv, ctx);
     }
 
     /** The vector input variable, or null for RECLUSTER, the only mode without a vector input. */
@@ -180,6 +205,14 @@ public class ClusterByOperator extends AbstractLogicalOperator {
 
     public void setMemberRecordRef(Mutable<ILogicalExpression> memberRecordRef) {
         this.memberRecordRef = memberRecordRef;
+    }
+
+    public IMembersTypeComputer getMembersTypeComputer() {
+        return membersTypeComputer;
+    }
+
+    public void setMembersTypeComputer(IMembersTypeComputer membersTypeComputer) {
+        this.membersTypeComputer = membersTypeComputer;
     }
 
     /** The member-record variable, or null before the translator has set it. */

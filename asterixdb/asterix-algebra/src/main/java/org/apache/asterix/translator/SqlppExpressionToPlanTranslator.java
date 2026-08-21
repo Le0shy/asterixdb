@@ -144,6 +144,7 @@ import org.apache.hyracks.algebricks.core.algebra.plan.ALogicalPlanImpl;
 import org.apache.hyracks.algebricks.core.algebra.util.OperatorManipulationUtil;
 import org.apache.hyracks.api.exceptions.SourceLocation;
 import org.apache.hyracks.util.LogRedactionUtil;
+import org.apache.hyracks.util.annotations.AiProvenance;
 
 /**
  * Each visit returns a pair of an operator and a variable. The variable
@@ -313,6 +314,7 @@ public class SqlppExpressionToPlanTranslator extends LangExpressionToPlanTransla
      * once. The rewrite has already validated the WITH options and named the four variables on the clause.
      */
     @Override
+    @AiProvenance(agent = AiProvenance.Agent.CLAUDE_FABLE_5, tool = AiProvenance.Tool.CLAUDE_CODE_CLI, contributionKind = AiProvenance.ContributionKind.ASSISTED, notes = "members type computer")
     public Pair<ILogicalOperator, LogicalVariable> visit(ClusterbyClause clusterbyClause,
             Mutable<ILogicalOperator> tupSource) throws CompilationException {
         Pair<ILogicalExpression, Mutable<ILogicalOperator>> clustering =
@@ -349,6 +351,16 @@ public class SqlppExpressionToPlanTranslator extends LangExpressionToPlanTransla
         cop.setMetric(clusterbyClause.getMetric());
         cop.setSourceLocation(clusterbyClause.getSourceLocation());
         cop.setMemberRecordRef(new MutableObject<>(memberRef));
+        // members is typed as the listify the expansion will build over the same record, so the block's own
+        // reads of it -- a subquery over CLUSTER AS -- are compiled against the type the bytes will have.
+        cop.setMembersTypeComputer(
+                (record, inputEnv,
+                        ctx) -> ctx.getExpressionTypeComputer()
+                                .getType(
+                                        BuiltinFunctions.makeAggregateFunctionExpression(BuiltinFunctions.LISTIFY,
+                                                new ArrayList<>(
+                                                        List.of(new MutableObject<>(record.cloneExpression())))),
+                                        ctx.getMetadataProvider(), inputEnv));
         cop.getInputs().add(new MutableObject<>(memberAssign));
         return new Pair<>(cop, cidVar);
     }
