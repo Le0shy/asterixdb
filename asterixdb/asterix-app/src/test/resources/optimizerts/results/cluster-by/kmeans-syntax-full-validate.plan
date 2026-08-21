@@ -109,8 +109,8 @@ distribute result [$$89]
                                       -- STREAM_LIMIT  |PARTITIONED|
                                         exchange
                                         -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
-                                          order (ASC, $$98)
-                                          -- STABLE_SORT [$$98(ASC)]  |PARTITIONED|
+                                          order (topK: 1) (ASC, $$98)
+                                          -- STABLE_SORT [topK: 1] [$$98(ASC)]  |PARTITIONED|
                                             exchange
                                             -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|
                                               assign [$$98] <- [random(get-item($$93, 0))]
