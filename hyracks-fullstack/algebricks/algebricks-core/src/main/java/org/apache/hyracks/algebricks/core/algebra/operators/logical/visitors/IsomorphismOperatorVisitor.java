@@ -40,6 +40,7 @@ import org.apache.hyracks.algebricks.core.algebra.metadata.IDataSource;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.AbstractLogicalOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.AggregateOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.AssignOperator;
+import org.apache.hyracks.algebricks.core.algebra.operators.logical.ClusterByOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.DataSourceScanOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.DelegateOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.DistinctOperator;
@@ -403,11 +404,35 @@ public class IsomorphismOperatorVisitor implements ILogicalOperatorVisitor<Boole
             return Boolean.FALSE;
         }
         KMeansStageOperator other = (KMeansStageOperator) aop;
-        // vectorVariable is null for the single-input merge modes (RECLUSTER/LLOYD).
+        // Everything that decides what the stage computes, so two stages differing only in metric, seed or
+        // round count are not shared with each other. vectorVariable is null for RECLUSTER, the single-input
+        // mode.
         return op.getTopCount() == other.getTopCount() && op.getMode() == other.getMode()
+                && op.getSeed() == other.getSeed() && op.getLoopRounds() == other.getLoopRounds()
+                && java.util.Objects.equals(op.getMetric(), other.getMetric())
                 && java.util.Objects.equals(op.getVectorVariable(), other.getVectorVariable())
                 && op.getPoolVariable().equals(other.getPoolVariable())
                 && op.getCandidateVariable().equals(other.getCandidateVariable());
+    }
+
+    @Override
+    public Boolean visitClusterByOperator(ClusterByOperator op, ILogicalOperator arg) throws AlgebricksException {
+        AbstractLogicalOperator aop = (AbstractLogicalOperator) copyAndSubstituteVar(op, arg);
+        if (aop.getOperatorTag() != LogicalOperatorTag.CLUSTER_BY) {
+            return Boolean.FALSE;
+        }
+        ClusterByOperator other = (ClusterByOperator) aop;
+        // Everything the query said. Two clusterings differing in any of it are different computations.
+        return op.getNumClusters() == other.getNumClusters()
+                && java.util.Objects.equals(op.getAlgorithm(), other.getAlgorithm())
+                && java.util.Objects.equals(op.getInitMode(), other.getInitMode())
+                && java.util.Objects.equals(op.getMetric(), other.getMetric())
+                && op.getDimension() == other.getDimension() && op.getVectorVariable().equals(other.getVectorVariable())
+                && op.getClusterIdVariable().equals(other.getClusterIdVariable())
+                && op.getCentroidVariable().equals(other.getCentroidVariable())
+                && java.util.Objects.equals(op.getRadiusVariable(), other.getRadiusVariable())
+                && op.getMembersVariable().equals(other.getMembersVariable())
+                && VariableUtilities.varListEqualUnordered(op.getDecorVariables(), other.getDecorVariables());
     }
 
     @Override

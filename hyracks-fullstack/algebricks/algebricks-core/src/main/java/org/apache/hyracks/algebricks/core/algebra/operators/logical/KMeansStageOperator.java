@@ -47,7 +47,7 @@ import org.apache.hyracks.util.annotations.AiProvenance;
  * input) for the RECLUSTER merge, so {@link #getVectorVariable()} is null in that mode.
  */
 @AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.ASSISTED)
-@AiProvenance(agent = AiProvenance.Agent.CLAUDE_FABLE_5, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.REFACTORED, notes = "Carries the declared vector dimension for the loop stages")
+@AiProvenance(agent = AiProvenance.Agent.CLAUDE_FABLE_5, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.ASSISTED)
 public class KMeansStageOperator extends AbstractLogicalOperator {
 
     /**
@@ -88,12 +88,12 @@ public class KMeansStageOperator extends AbstractLogicalOperator {
     // is no vector input and the pool is the operator's sole (index-0) input.
     private final Mutable<ILogicalExpression> vectorRef;
     private final Mutable<ILogicalExpression> poolRef;
-    // The single produced variable: a candidate vector, same type as vectorVar (opaque; from translator).
+    // The single produced variable: a candidate vector, typed open by the expansion rule that builds the stage.
     private LogicalVariable candidateVar;
     private final Object candidateVarType;
     // RECLUSTER: k, the number of initial centroids to keep. Always non-negative.
     private final int topCount;
-    // Always assigned by the translator, and carried across by both deep-copy visitors; the initializer only
+    // Always assigned by the expansion rule, and carried across by both deep-copy visitors; the initializer only
     // satisfies the compiler.
     private Mode mode = Mode.RECLUSTER;
     // OVERSAMPLE_LOOP only: base seed for the per-round, per-partition Bernoulli RNG (per-round seed =
@@ -104,6 +104,9 @@ public class KMeansStageOperator extends AbstractLogicalOperator {
     // Loop stages only: the declared vector width, enforced by the operators' decoder (a predicate could be
     // pushed into the columnar reader and evaluated per array element). Unused by RECLUSTER.
     private int dimension;
+    // Which distance every stage measures with, as the metric's canonical name. A String rather than the
+    // metric enum because that enum lives above Algebricks; the physical operators resolve it.
+    private String metric;
 
     public KMeansStageOperator(Mutable<ILogicalExpression> vectorRef, Mutable<ILogicalExpression> poolRef,
             LogicalVariable candidateVar, Object candidateVarType, int topCount) {
@@ -233,5 +236,13 @@ public class KMeansStageOperator extends AbstractLogicalOperator {
 
     public void setDimension(int dimension) {
         this.dimension = dimension;
+    }
+
+    public String getMetric() {
+        return metric;
+    }
+
+    public void setMetric(String metric) {
+        this.metric = metric;
     }
 }

@@ -293,14 +293,32 @@ public class AbstractSqlppExpressionScopingVisitor extends AbstractSqlppSimpleEx
                 memberField.first = visit(memberField.first, cc);
             }
         }
-        // After CLUSTER BY, the pre-cluster bindings are replaced by the descriptor (sc) and members (rvc) variables;
-        // variables defined before the current SELECT BLOCK (e.g., a WITH clause or outer scope) remain visible.
+        // The decorations read the pre-cluster scope too.
+        visitDecorations(cc, cc);
+        // After the clause the block's own bindings are gone, as after a GROUP BY: the new scope descends from
+        // the scope preceding the SELECT block (the query's WITH, an enclosing query), so a FROM or LET variable
+        // read after the clause fails name resolution exactly as it does after GROUP BY, and a SQL-92 aggregate's
+        // arguments, which resolution skips, are mapped through the cluster field list by the aggregation sugar.
         Scope newScope = new Scope(scopeChecker, scopeChecker.getPrecedingScope());
         VariableExpr descriptorVar = cc.getClusterDescriptorVar();
         addNewVarSymbolToScope(newScope, descriptorVar.getVar(), descriptorVar.getSourceLocation());
         if (cc.hasClusterMembersVar()) {
             VariableExpr membersVar = cc.getClusterMembersVar();
             addNewVarSymbolToScope(newScope, membersVar.getVar(), membersVar.getSourceLocation());
+        }
+        // The operator's variables, null before the rewrite has named them.
+        for (VariableExpr produced : new VariableExpr[] { cc.getClusterIdVar(), cc.getCentroidVar(),
+                cc.getRadiusVar() }) {
+            if (produced != null) {
+                addNewVarSymbolToScope(newScope, produced.getVar(), produced.getSourceLocation());
+            }
+        }
+        // A decoration binds its variable again after the clause.
+        if (cc.hasDecorList()) {
+            for (GbyVariableExpressionPair decorPair : cc.getDecorPairList()) {
+                VariableExpr decorVar = decorPair.getVar();
+                addNewVarSymbolToScope(newScope, decorVar.getVar(), decorVar.getSourceLocation());
+            }
         }
         scopeChecker.replaceCurrentScope(newScope);
         return null;

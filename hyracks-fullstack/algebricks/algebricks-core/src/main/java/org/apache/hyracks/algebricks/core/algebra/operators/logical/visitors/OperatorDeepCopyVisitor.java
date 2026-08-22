@@ -39,6 +39,7 @@ import org.apache.hyracks.algebricks.core.algebra.metadata.IProjectionFiltration
 import org.apache.hyracks.algebricks.core.algebra.metadata.IWriteDataSink;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.AggregateOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.AssignOperator;
+import org.apache.hyracks.algebricks.core.algebra.operators.logical.ClusterByOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.DataSourceScanOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.DelegateOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.DistinctOperator;
@@ -77,6 +78,7 @@ import org.apache.hyracks.algebricks.core.algebra.operators.logical.WindowOperat
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.WriteOperator;
 import org.apache.hyracks.algebricks.core.algebra.util.OperatorManipulationUtil;
 import org.apache.hyracks.algebricks.core.algebra.visitors.ILogicalOperatorVisitor;
+import org.apache.hyracks.util.annotations.AiProvenance;
 
 public class OperatorDeepCopyVisitor implements ILogicalOperatorVisitor<ILogicalOperator, Void> {
 
@@ -243,7 +245,7 @@ public class OperatorDeepCopyVisitor implements ILogicalOperatorVisitor<ILogical
 
     @Override
     public ILogicalOperator visitKMeansStageOperator(KMeansStageOperator op, Void arg) throws AlgebricksException {
-        // vectorRef is null for the single-input merge modes (RECLUSTER/LLOYD).
+        // vectorRef is null for RECLUSTER, the single-input mode.
         Mutable<ILogicalExpression> vectorRefCopy = op.getVectorVariable() == null ? null
                 : new MutableObject<>(new VariableReferenceExpression(op.getVectorVariable()));
         KMeansStageOperator opCopy = new KMeansStageOperator(vectorRefCopy,
@@ -253,6 +255,28 @@ public class OperatorDeepCopyVisitor implements ILogicalOperatorVisitor<ILogical
         opCopy.setSeed(op.getSeed());
         opCopy.setLoopRounds(op.getLoopRounds());
         opCopy.setDimension(op.getDimension());
+        opCopy.setMetric(op.getMetric());
+        return opCopy;
+    }
+
+    @Override
+    @AiProvenance(agent = AiProvenance.Agent.CLAUDE_FABLE_5, tool = AiProvenance.Tool.CLAUDE_CODE_CLI, contributionKind = AiProvenance.ContributionKind.ASSISTED)
+    public ILogicalOperator visitClusterByOperator(ClusterByOperator op, Void arg) throws AlgebricksException {
+        ClusterByOperator opCopy = new ClusterByOperator(
+                new MutableObject<>(new VariableReferenceExpression(op.getVectorVariable())), op.getClusterIdVariable(),
+                op.getClusterIdVarType(), op.getCentroidVariable(), op.getCentroidVarType(), op.getRadiusVariable(),
+                op.getRadiusVarType(), op.getMembersVariable(), op.getMembersVarType(), op.getNumClusters());
+        opCopy.setAlgorithm(op.getAlgorithm());
+        opCopy.setInitMode(op.getInitMode());
+        opCopy.setMetric(op.getMetric());
+        opCopy.setDimension(op.getDimension());
+        if (op.getMemberRecordRef() != null) {
+            opCopy.setMemberRecordRef(deepCopyExpressionRef(op.getMemberRecordRef()));
+        }
+        opCopy.setMembersTypeComputer(op.getMembersTypeComputer());
+        for (Pair<LogicalVariable, Mutable<ILogicalExpression>> p : op.getDecorList()) {
+            opCopy.addDecorExpression(p.first, deepCopyExpressionRef(p.second).getValue());
+        }
         return opCopy;
     }
 

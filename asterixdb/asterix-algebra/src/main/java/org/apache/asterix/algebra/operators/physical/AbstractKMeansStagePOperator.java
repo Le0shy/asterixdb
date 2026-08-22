@@ -18,15 +18,19 @@
  */
 package org.apache.asterix.algebra.operators.physical;
 
+import org.apache.asterix.common.vector.VectorSimilarityMetric;
 import org.apache.asterix.metadata.declared.MetadataProvider;
 import org.apache.hyracks.algebricks.common.exceptions.AlgebricksException;
 import org.apache.hyracks.algebricks.core.algebra.base.ILogicalOperator;
 import org.apache.hyracks.algebricks.core.algebra.base.IOptimizationContext;
 import org.apache.hyracks.algebricks.core.algebra.base.LogicalVariable;
+import org.apache.hyracks.algebricks.core.algebra.operators.logical.AbstractLogicalOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.IOperatorSchema;
+import org.apache.hyracks.algebricks.core.algebra.operators.logical.KMeansStageOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.physical.AbstractPhysicalOperator;
 import org.apache.hyracks.algebricks.core.algebra.properties.DefaultNodeGroupDomain;
 import org.apache.hyracks.algebricks.core.algebra.properties.INodeDomain;
+import org.apache.hyracks.algebricks.core.algebra.properties.IPartitioningProperty;
 import org.apache.hyracks.algebricks.core.algebra.properties.LocalMemoryRequirements;
 import org.apache.hyracks.algebricks.core.algebra.properties.RandomPartitioningProperty;
 import org.apache.hyracks.algebricks.core.algebra.properties.StructuralPropertiesVector;
@@ -62,8 +66,20 @@ public abstract class AbstractKMeansStagePOperator extends AbstractPhysicalOpera
         // The output is partitioned like input 0 but carries ONLY the candidate variable: claiming the
         // child's delivered properties would advertise partitioning on variables this operator drops,
         // forcing the enforcer to insert bogus re-partitioning (e.g. hashing the candidate array).
+        // An unpartitioned stage delivers UNPARTITIONED, as GROUP BY over an unpartitioned input would.
         deliveredProperties =
-                new StructuralPropertiesVector(new RandomPartitioningProperty(stageDomain(context)), null);
+                unpartitioned(op) ? new StructuralPropertiesVector(IPartitioningProperty.UNPARTITIONED, null)
+                        : new StructuralPropertiesVector(new RandomPartitioningProperty(stageDomain(context)), null);
+    }
+
+    /**
+     * Whether this stage runs on a single partition. The expansion derives a stage's execution mode from its
+     * input, so an unpartitioned input -- a global LIMIT, a constant array -- makes an unpartitioned stage,
+     * which runs one loop instance where its rows are rather than repartitioning them into the compute
+     * domain, as GROUP BY follows the partitioning it is given.
+     */
+    protected static boolean unpartitioned(ILogicalOperator op) {
+        return ((AbstractLogicalOperator) op).getExecutionMode() == AbstractLogicalOperator.ExecutionMode.UNPARTITIONED;
     }
 
     /**
@@ -104,24 +120,25 @@ public abstract class AbstractKMeansStagePOperator extends AbstractPhysicalOpera
     }
 
     /**
-     * Resolves the single column an input branch delivers. Each branch delivers exactly ONE by construction:
-     * the translator anchors and projects a single variable.
-     * <p>
-     * The variable is looked up first and the lone column is the fallback, not the other way round. The
-     * variables recorded on the logical operator are plain fields, invisible to variable-substitution rules,
-     * so a rename can leave them stale and the lookup can miss on a schema that is nonetheless correct --
-     * hence the fallback. A schema with any other number of columns at that point is a broken invariant
-     * rather than a rename, so it raises.
+     * Resolves the column an input branch delivers the stage's variable in. The branch is an ASSIGN the
+     * expansion rule builds over the shared input, so the schema may carry the row's other columns as well;
+     * only the variable identifies the column. A schema without it is a broken plan, so it raises.
      */
     protected static int resolveSingleColumn(IOperatorSchema schema, LogicalVariable var) throws AlgebricksException {
         int col = schema.findVariable(var);
         if (col >= 0) {
             return col;
         }
-        if (schema.getSize() == 1) {
-            return 0;
-        }
         throw AlgebricksException.create(ErrorCode.ILLEGAL_STATE, "kmeans-stage input schema",
                 String.valueOf(schema.getSize()));
+    }
+
+    /**
+     * The metric the stage measures with. The rewrite validates the alias and the expansion rule always sets
+     * it, so the fallback is defensive only.
+     */
+    protected static VectorSimilarityMetric metricOf(KMeansStageOperator kop) {
+        VectorSimilarityMetric metric = VectorSimilarityMetric.fromAlias(kop.getMetric());
+        return metric == null ? VectorSimilarityMetric.EUCLIDEAN_SQUARED : metric;
     }
 }

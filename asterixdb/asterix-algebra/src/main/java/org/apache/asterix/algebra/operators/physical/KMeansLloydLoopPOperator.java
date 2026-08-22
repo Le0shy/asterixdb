@@ -24,6 +24,7 @@ import org.apache.asterix.runtime.operators.kmeans.KMeansLloydReleaseOperatorDes
 import org.apache.asterix.runtime.operators.kmeans.KMeansLoopIO;
 import org.apache.hyracks.algebricks.common.constraints.AlgebricksAbsolutePartitionConstraint;
 import org.apache.hyracks.algebricks.common.constraints.AlgebricksCountPartitionConstraint;
+import org.apache.hyracks.algebricks.common.constraints.AlgebricksPartitionConstraint;
 import org.apache.hyracks.algebricks.common.exceptions.AlgebricksException;
 import org.apache.hyracks.algebricks.core.algebra.base.IHyracksJobBuilder;
 import org.apache.hyracks.algebricks.core.algebra.base.ILogicalOperator;
@@ -62,19 +63,26 @@ public class KMeansLloydLoopPOperator extends AbstractKMeansLoopPOperator {
 
         KMeansLloydControllerOperatorDescriptor op1 = new KMeansLloydControllerOperatorDescriptor(spec, centroidRecDesc,
                 KMeansLoopIO.PARTIAL_RD, loopKey, vectorColumn, centroidColumn, kop.getLoopRounds(), kop.getTopCount(),
-                framesLimit(), kop.getDimension());
+                framesLimit(), kop.getDimension(), metricOf(kop));
         contributeOpDesc(builder, op, op1);
         builder.contributeGraphEdge(src0, 0, op, 0);
         builder.contributeGraphEdge(src1, 0, op, 1);
 
-        KMeansCentroidMergeOperatorDescriptor op2 =
-                new KMeansCentroidMergeOperatorDescriptor(spec, KMeansLoopIO.DRAW_RD, participants, framesLimit());
+        KMeansCentroidMergeOperatorDescriptor op2 = new KMeansCentroidMergeOperatorDescriptor(spec,
+                KMeansLoopIO.DRAW_RD, participants, framesLimit(), metricOf(kop));
         KMeansLloydReleaseOperatorDescriptor op3 = new KMeansLloydReleaseOperatorDescriptor(spec, loopKey);
 
-        AlgebricksAbsolutePartitionConstraint coLocated = new AlgebricksAbsolutePartitionConstraint(clusterLocations);
+        // A single-instance loop (an unpartitioned stage) names no node: every operator of it takes a count-1
+        // constraint, which the job builder resolves to the one node it uses for all one-partition operators
+        // of the job, so the stages are co-located with each other -- their shared joblet state requires it --
+        // and with the input that feeds them.
+        boolean singleInstance = clusterLocations.length == 1;
+        AlgebricksPartitionConstraint coLocated = singleInstance ? new AlgebricksCountPartitionConstraint(1)
+                : new AlgebricksAbsolutePartitionConstraint(clusterLocations);
+        AlgebricksPartitionConstraint singleNode = new AlgebricksCountPartitionConstraint(1);
         builder.contributeAlgebricksPartitionConstraint(op1, coLocated);
         builder.contributeAlgebricksPartitionConstraint(op3, coLocated);
-        builder.contributeAlgebricksPartitionConstraint(op2, new AlgebricksCountPartitionConstraint(1));
+        builder.contributeAlgebricksPartitionConstraint(op2, singleNode);
 
         // Internal pipelined broadcast edges: Op1.partials -> CentroidMerge -> Release.
         // (Broadcast into a single-partition merge is a CONCURRENT M-to-1; never the sequential merging

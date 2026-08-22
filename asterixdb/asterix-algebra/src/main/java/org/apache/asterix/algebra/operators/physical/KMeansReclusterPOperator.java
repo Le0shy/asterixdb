@@ -28,6 +28,7 @@ import org.apache.hyracks.algebricks.core.algebra.operators.logical.AbstractLogi
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.IOperatorSchema;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.KMeansStageOperator;
 import org.apache.hyracks.algebricks.core.algebra.properties.BroadcastPartitioningProperty;
+import org.apache.hyracks.algebricks.core.algebra.properties.IPartitioningProperty;
 import org.apache.hyracks.algebricks.core.algebra.properties.IPartitioningRequirementsCoordinator;
 import org.apache.hyracks.algebricks.core.algebra.properties.IPhysicalPropertiesVector;
 import org.apache.hyracks.algebricks.core.algebra.properties.PhysicalRequirements;
@@ -54,8 +55,13 @@ public class KMeansReclusterPOperator extends AbstractKMeansStagePOperator {
     @Override
     public PhysicalRequirements getRequiredPropertiesForChildren(ILogicalOperator op,
             IPhysicalPropertiesVector reqdByParent, IOptimizationContext context) {
-        StructuralPropertiesVector[] pv = new StructuralPropertiesVector[] { new StructuralPropertiesVector(
-                new BroadcastPartitioningProperty(context.getComputationNodeDomain()), null) };
+        // Unpartitioned: the partials already sit on the one partition the merge runs on.
+        StructuralPropertiesVector[] pv =
+                new StructuralPropertiesVector[] {
+                        new StructuralPropertiesVector(
+                                unpartitioned(op) ? IPartitioningProperty.UNPARTITIONED
+                                        : new BroadcastPartitioningProperty(context.getComputationNodeDomain()),
+                                null) };
         return new PhysicalRequirements(pv, IPartitioningRequirementsCoordinator.NO_COORDINATION);
     }
 
@@ -68,7 +74,7 @@ public class KMeansReclusterPOperator extends AbstractKMeansStagePOperator {
                 JobGenHelper.mkRecordDescriptor(context.getTypeEnvironment(op), propagatedSchema, context);
         int poolColumn = resolveSingleColumn(inputSchemas[0], kop.getPoolVariable());
         KMeansReclusterOperatorDescriptor mergeDesc = new KMeansReclusterOperatorDescriptor(builder.getJobSpec(),
-                recDesc, kop.getTopCount(), poolColumn, framesLimit());
+                recDesc, kop.getTopCount(), poolColumn, framesLimit(), metricOf(kop));
         contributeOpDesc(builder, (AbstractLogicalOperator) op, mergeDesc);
         builder.contributeGraphEdge(op.getInputs().get(0).getValue(), 0, op, 0);
     }

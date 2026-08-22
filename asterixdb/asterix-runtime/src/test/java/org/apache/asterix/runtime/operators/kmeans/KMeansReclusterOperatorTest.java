@@ -25,6 +25,7 @@ import java.util.Arrays;
 import java.util.List;
 
 import org.apache.asterix.builders.OrderedListBuilder;
+import org.apache.asterix.common.vector.VectorSimilarityMetric;
 import org.apache.asterix.om.types.AOrderedListType;
 import org.apache.asterix.om.types.ATypeTag;
 import org.apache.asterix.om.types.BuiltinType;
@@ -108,8 +109,8 @@ public class KMeansReclusterOperatorTest {
     private static List<double[]> runRecluster(int k) throws Exception {
         IHyracksTaskContext ctx = TestUtils.create(32768);
         JobSpecification spec = new JobSpecification();
-        KMeansReclusterOperatorDescriptor op =
-                new KMeansReclusterOperatorDescriptor(spec, VEC_REC_DESC, k, 0, TEST_FRAMES_LIMIT);
+        KMeansReclusterOperatorDescriptor op = new KMeansReclusterOperatorDescriptor(spec, VEC_REC_DESC, k, 0,
+                TEST_FRAMES_LIMIT, VectorSimilarityMetric.EUCLIDEAN_SQUARED);
 
         // Single-input merge — activities: StorePool (0), Score (1). No vector input.
         List<IActivity> activities = collectActivities(op);
@@ -285,8 +286,8 @@ public class KMeansReclusterOperatorTest {
     private static List<double[]> runRecluster(double[][] rows, int framesLimit) throws Exception {
         IHyracksTaskContext ctx = TestUtils.create(32768);
         JobSpecification spec = new JobSpecification();
-        KMeansReclusterOperatorDescriptor op =
-                new KMeansReclusterOperatorDescriptor(spec, VEC_REC_DESC, 8, 0, framesLimit);
+        KMeansReclusterOperatorDescriptor op = new KMeansReclusterOperatorDescriptor(spec, VEC_REC_DESC, 8, 0,
+                framesLimit, VectorSimilarityMetric.EUCLIDEAN_SQUARED);
         List<IActivity> activities = collectActivities(op);
         IRecordDescriptorProvider rdp = recordDescProvider();
         IOperatorNodePushable poolStore = activities.get(0).createPushRuntime(ctx, rdp, 0, 1);

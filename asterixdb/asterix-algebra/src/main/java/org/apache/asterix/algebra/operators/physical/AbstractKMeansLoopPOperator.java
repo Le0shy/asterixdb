@@ -28,6 +28,7 @@ import org.apache.hyracks.algebricks.core.algebra.operators.logical.IOperatorSch
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.KMeansStageOperator;
 import org.apache.hyracks.algebricks.core.algebra.properties.BroadcastPartitioningProperty;
 import org.apache.hyracks.algebricks.core.algebra.properties.INodeDomain;
+import org.apache.hyracks.algebricks.core.algebra.properties.IPartitioningProperty;
 import org.apache.hyracks.algebricks.core.algebra.properties.IPartitioningRequirementsCoordinator;
 import org.apache.hyracks.algebricks.core.algebra.properties.IPhysicalPropertiesVector;
 import org.apache.hyracks.algebricks.core.algebra.properties.PhysicalRequirements;
@@ -63,6 +64,13 @@ public abstract class AbstractKMeansLoopPOperator extends AbstractKMeansStagePOp
         // requirement that still settles the width: k-means does not care which vector lands in which
         // partition, only that each one lands somewhere. The domain is the storage domain the chain is pinned
         // to. A scan already delivers it so a dataset input is never repartitioned.
+        // An unpartitioned stage requires nothing: its single loop instance reads both inputs where they are.
+        if (unpartitioned(op)) {
+            StructuralPropertiesVector[] pv = new StructuralPropertiesVector[] {
+                    new StructuralPropertiesVector(IPartitioningProperty.UNPARTITIONED, null),
+                    new StructuralPropertiesVector(IPartitioningProperty.UNPARTITIONED, null) };
+            return new PhysicalRequirements(pv, IPartitioningRequirementsCoordinator.NO_COORDINATION);
+        }
         INodeDomain domain = stageDomain(context);
         StructuralPropertiesVector[] pv = new StructuralPropertiesVector[] {
                 new StructuralPropertiesVector(new RandomPartitioningProperty(domain), null),
@@ -81,6 +89,11 @@ public abstract class AbstractKMeansLoopPOperator extends AbstractKMeansStagePOp
         int poolColumn = resolveSingleColumn(inputSchemas[1], kop.getPoolVariable());
         String[] clusterLocations =
                 ((MetadataProvider) context.getMetadataProvider()).getClusterLocations().getLocations();
+        // A single-instance loop has one participant; the entry only sizes the loop, placement is by count-1
+        // constraints (see contributeLoop).
+        if (unpartitioned(op)) {
+            clusterLocations = new String[] { clusterLocations[0] };
+        }
         contributeLoop(builder, kop, (AbstractLogicalOperator) op, recDesc, vectorColumn, poolColumn, clusterLocations,
                 op.getInputs().get(0).getValue(), op.getInputs().get(1).getValue());
     }

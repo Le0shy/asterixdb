@@ -25,6 +25,7 @@ import java.util.Objects;
 import org.apache.asterix.common.exceptions.CompilationException;
 import org.apache.asterix.lang.common.base.AbstractClause;
 import org.apache.asterix.lang.common.base.Expression;
+import org.apache.asterix.lang.common.expression.GbyVariableExpressionPair;
 import org.apache.asterix.lang.common.expression.RecordConstructor;
 import org.apache.asterix.lang.common.expression.VariableExpr;
 import org.apache.asterix.lang.common.struct.Identifier;
@@ -48,6 +49,27 @@ public class ClusterbyClause extends AbstractClause {
     private List<Pair<Expression, Identifier>> clusterFieldList = new ArrayList<>();
     // Raw WITH options (algorithm, k, distance, ...); validated/extracted later by the rewrite pass.
     private RecordConstructor withOptions;
+
+    // Filled in by SqlppClusterByVisitor once the WITH options have been validated, and read by the
+    // translator. The clause reaches the translator carrying its own settings rather than the translator
+    // re-deriving them, so validation stays in the language layer where its error messages belong.
+    private int numClusters;
+    private String initMode;
+    private String metric;
+    // The declared vector width, enforced by the stages' decoders on the assembled value rather than as a
+    // predicate on the block (the columnar filter pushdown would evaluate it per array element).
+    private int dimension;
+    // Whether the query reads sc.cluster_radius; the expansion builds the distance and its aggregate only then.
+    private boolean radiusRead;
+    // The variables the CLUSTER BY operator produces, one tuple per cluster: id, centroid, radius, members.
+    // Named by the rewrite so the descriptor's fields can be pointed at them before the translator binds them
+    // -- the hand-off GroupbyClause makes for its grouping variables.
+    // Variables live before the clause that the query reads after it, carried through the operator unchanged,
+    // as GROUP BY decorations are. Filled by the aggregation sugar visitor, after name resolution.
+    private List<GbyVariableExpressionPair> decorPairList;
+    private VariableExpr clusterIdVar;
+    private VariableExpr centroidVar;
+    private VariableExpr radiusVar;
 
     public ClusterbyClause(Expression clusteringExpr, VariableExpr clusterDescriptorVar, VariableExpr clusterMembersVar,
             List<Pair<Expression, Identifier>> clusterFieldList, RecordConstructor withOptions) {
@@ -82,10 +104,6 @@ public class ClusterbyClause extends AbstractClause {
         return clusterDescriptorVar;
     }
 
-    public void setClusterDescriptorVar(VariableExpr clusterDescriptorVar) {
-        this.clusterDescriptorVar = clusterDescriptorVar;
-    }
-
     public VariableExpr getClusterMembersVar() {
         return clusterMembersVar;
     }
@@ -110,6 +128,74 @@ public class ClusterbyClause extends AbstractClause {
 
     public void setWithOptions(RecordConstructor withOptions) {
         this.withOptions = withOptions;
+    }
+
+    public int getNumClusters() {
+        return numClusters;
+    }
+
+    public String getInitMode() {
+        return initMode;
+    }
+
+    public String getMetric() {
+        return metric;
+    }
+
+    public int getDimension() {
+        return dimension;
+    }
+
+    public boolean isRadiusRead() {
+        return radiusRead;
+    }
+
+    public void setRadiusRead(boolean radiusRead) {
+        this.radiusRead = radiusRead;
+    }
+
+    /** Records the validated WITH settings for the translator. */
+    public void setResolvedOptions(int numClusters, String initMode, String metric, int dimension) {
+        this.numClusters = numClusters;
+        this.initMode = initMode;
+        this.metric = metric;
+        this.dimension = dimension;
+    }
+
+    public VariableExpr getClusterIdVar() {
+        return clusterIdVar;
+    }
+
+    public void setClusterIdVar(VariableExpr clusterIdVar) {
+        this.clusterIdVar = clusterIdVar;
+    }
+
+    public VariableExpr getCentroidVar() {
+        return centroidVar;
+    }
+
+    public void setCentroidVar(VariableExpr centroidVar) {
+        this.centroidVar = centroidVar;
+    }
+
+    public VariableExpr getRadiusVar() {
+        return radiusVar;
+    }
+
+    public void setRadiusVar(VariableExpr radiusVar) {
+        this.radiusVar = radiusVar;
+    }
+
+    public List<GbyVariableExpressionPair> getDecorPairList() {
+        return decorPairList;
+    }
+
+    public void setDecorPairList(List<GbyVariableExpressionPair> decorPairList) {
+        this.decorPairList = decorPairList;
+    }
+
+    public boolean hasDecorList() {
+        return decorPairList != null && !decorPairList.isEmpty();
     }
 
     public boolean hasClusterMembersVar() {

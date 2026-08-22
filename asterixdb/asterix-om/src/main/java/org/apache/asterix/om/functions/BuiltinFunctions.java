@@ -450,14 +450,6 @@ public class BuiltinFunctions {
     public static final FunctionIdentifier INTERMEDIATE_CENTROID =
             FunctionConstants.newAsterix("agg-intermediate-centroid", 1);
     public static final FunctionIdentifier LOCAL_CENTROID = FunctionConstants.newAsterix("agg-local-centroid", 1);
-    // SQL-semantics variant of CENTROID (what the SQL++ group-by sugar resolves `centroid(x)` to via array_centroid).
-    public static final FunctionIdentifier SQL_CENTROID = FunctionConstants.newAsterix("agg-sql-centroid", 1);
-    public static final FunctionIdentifier GLOBAL_SQL_CENTROID =
-            FunctionConstants.newAsterix("agg-global-sql-centroid", 1);
-    public static final FunctionIdentifier INTERMEDIATE_SQL_CENTROID =
-            FunctionConstants.newAsterix("agg-intermediate-sql-centroid", 1);
-    public static final FunctionIdentifier LOCAL_SQL_CENTROID =
-            FunctionConstants.newAsterix("agg-local-sql-centroid", 1);
     public static final FunctionIdentifier MEDIAN = FunctionConstants.newAsterix("agg-median", 1);
     public static final FunctionIdentifier FIRST_ELEMENT = FunctionConstants.newAsterix("agg-first-element", 1);
     public static final FunctionIdentifier LOCAL_FIRST_ELEMENT =
@@ -707,8 +699,6 @@ public class BuiltinFunctions {
             FunctionConstants.newAsterix("agg-global-sql-union_mbr", 1);
 
     public static final FunctionIdentifier SCALAR_SQL_AVG = FunctionConstants.newAsterix("sql-avg", 1);
-    // Scalar/collection form of the SQL CENTROID aggregate; centroid(x) in SQL++ resolves here (array_centroid -> sql-centroid).
-    public static final FunctionIdentifier SCALAR_SQL_CENTROID = FunctionConstants.newAsterix("sql-centroid", 1);
     public static final FunctionIdentifier SCALAR_SQL_COUNT = FunctionConstants.newAsterix("sql-count", 1);
     public static final FunctionIdentifier SCALAR_SQL_COUNTN = FunctionConstants.newAsterix("sql-countn", 1);
     public static final FunctionIdentifier SCALAR_SQL_SUM = FunctionConstants.newAsterix("sql-sum", 1);
@@ -1240,29 +1230,13 @@ public class BuiltinFunctions {
     // Vector search functions
     public static final FunctionIdentifier ANN_DISTANCE =
             FunctionConstants.newAsterix("ann-distance", FunctionIdentifier.VARARGS);
-    // CLUSTER BY: nearest_centroid(point, centroids) -> AINT32 index of the closest centroid.
-    public static final FunctionIdentifier NEAREST_CENTROID = FunctionConstants.newAsterix("nearest-centroid", 2);
-    // CLUSTER BY: nearest_centroid_distance(point, centroids) -> ADOUBLE squared distance to the closest centroid
-    // (the k-means|| sampling score d2(x, C)).
+    // CLUSTER BY: nearest_centroid(point, centroids[, metric]) -> AINT32 index of the closest centroid.
+    public static final FunctionIdentifier NEAREST_CENTROID =
+            FunctionConstants.newAsterix("nearest-centroid", FunctionIdentifier.VARARGS);
+    // CLUSTER BY: nearest_centroid_distance(point, centroids[, metric]) -> ADOUBLE distance to the closest
+    // centroid under the metric (the k-means|| sampling score d2(x, C) when squared Euclidean).
     public static final FunctionIdentifier NEAREST_CENTROID_DISTANCE =
-            FunctionConstants.newAsterix("nearest-centroid-distance", 2);
-    // kmeans-recluster(partials, k): single-input merge — reduce partials, then weighted k-means++ to k (C0).
-    public static final FunctionIdentifier KMEANS_RECLUSTER = FunctionConstants.newAsterix("kmeans-recluster", 2);
-    // CLUSTER BY initMode "kmeansPP": the exact k-means|| oversampling init as one self-iterating
-    // operator. kmeans-oversample-loop(vectors, seedPool, l, rounds, seedBase, dimension): runs the whole
-    // oversample loop internally, iterating `rounds` times and all-reducing the per-round global potential +
-    // draws across partitions; the physical operator realizes it as an injected pipelined systolic sub-graph.
-    // The final pool is weighed and emitted for kmeans-recluster. `dimension` is the declared vector width,
-    // enforced by the operator's decoder.
-    public static final FunctionIdentifier KMEANS_OVERSAMPLE_LOOP =
-            FunctionConstants.newAsterix("kmeans-oversample-loop", 6);
-
-    // The Lloyd refinement as one self-iterating operator. kmeans-lloyd-loop(vectors, centroids, k,
-    // iterations, dimension): runs every refinement iteration internally, all-reducing each iteration's
-    // per-centroid (count, sum) partials into the next centroid set; the physical operator realizes it as an
-    // injected pipelined systolic sub-graph. Emits the final centroid set as plain vectors.
-    public static final FunctionIdentifier KMEANS_LLOYD_LOOP = FunctionConstants.newAsterix("kmeans-lloyd-loop", 5);
-
+            FunctionConstants.newAsterix("nearest-centroid-distance", FunctionIdentifier.VARARGS);
     // Temporal functions
     public static final FunctionIdentifier UNIX_TIME_FROM_DATE_IN_DAYS =
             FunctionConstants.newAsterix("unix-time-from-date-in-days", 1);
@@ -1731,10 +1705,6 @@ public class BuiltinFunctions {
         addPrivateFunction(LOCAL_CENTROID, LocalCentroidTypeComputer.INSTANCE, true);
         addPrivateFunction(INTERMEDIATE_CENTROID, LocalCentroidTypeComputer.INSTANCE, true);
         addPrivateFunction(GLOBAL_CENTROID, NullableOrderedListOfADoubleTypeComputer.INSTANCE, true);
-        addPrivateFunction(SQL_CENTROID, NullableOrderedListOfADoubleTypeComputer.INSTANCE, true);
-        addPrivateFunction(LOCAL_SQL_CENTROID, LocalCentroidTypeComputer.INSTANCE, true);
-        addPrivateFunction(INTERMEDIATE_SQL_CENTROID, LocalCentroidTypeComputer.INSTANCE, true);
-        addPrivateFunction(GLOBAL_SQL_CENTROID, NullableOrderedListOfADoubleTypeComputer.INSTANCE, true);
         addPrivateFunction(SCALAR_FIRST_ELEMENT, CollectionMemberResultType.INSTANCE_NULLABLE, true);
         addPrivateFunction(SCALAR_LOCAL_FIRST_ELEMENT, CollectionMemberResultType.INSTANCE_NULLABLE, true);
         addPrivateFunction(SCALAR_LAST_ELEMENT, CollectionMemberResultType.INSTANCE_NULLABLE, true);
@@ -1787,7 +1757,6 @@ public class BuiltinFunctions {
         addPrivateFunction(SERIAL_INTERMEDIATE_SQL_AVG, LocalAvgTypeComputer.INSTANCE, true);
         addFunction(SCALAR_AVG, NullableDoubleTypeComputer.INSTANCE, true);
         addPrivateFunction(SCALAR_CENTROID, NullableOrderedListOfADoubleTypeComputer.INSTANCE, true);
-        addPrivateFunction(SCALAR_SQL_CENTROID, NullableOrderedListOfADoubleTypeComputer.INSTANCE, true);
         addFunction(SCALAR_COUNT, AInt64TypeComputer.INSTANCE, true);
         addFunction(SCALAR_COUNTN, CountNTypeComputer.INSTANCE, true);
         addFunction(SCALAR_MAX, scalarMinMaxTypeComputer, true);
@@ -2017,9 +1986,6 @@ public class BuiltinFunctions {
 
         addPrivateFunction(NEAREST_CENTROID, AInt32TypeComputer.INSTANCE_NULLABLE, true);
         addPrivateFunction(NEAREST_CENTROID_DISTANCE, ADoubleTypeComputer.INSTANCE_NULLABLE, true);
-        addPrivateFunction(KMEANS_RECLUSTER, OrderedListOfAnyTypeComputer.INSTANCE, true);
-        addPrivateFunction(KMEANS_OVERSAMPLE_LOOP, OrderedListOfAnyTypeComputer.INSTANCE, true);
-        addPrivateFunction(KMEANS_LLOYD_LOOP, OrderedListOfAnyTypeComputer.INSTANCE, true);
         // Window functions
 
         addFunction(CUME_DIST, ADoubleTypeComputer.INSTANCE, false);
@@ -2404,16 +2370,6 @@ public class BuiltinFunctions {
         addIntermediateAgg(GLOBAL_CENTROID, INTERMEDIATE_CENTROID);
         addGlobalAgg(CENTROID, GLOBAL_CENTROID);
         addScalarAgg(CENTROID, SCALAR_CENTROID);
-
-        addAgg(SQL_CENTROID);
-        addAgg(LOCAL_SQL_CENTROID);
-        addAgg(GLOBAL_SQL_CENTROID);
-        addLocalAgg(SQL_CENTROID, LOCAL_SQL_CENTROID);
-        addIntermediateAgg(SQL_CENTROID, INTERMEDIATE_SQL_CENTROID);
-        addIntermediateAgg(LOCAL_SQL_CENTROID, INTERMEDIATE_SQL_CENTROID);
-        addIntermediateAgg(GLOBAL_SQL_CENTROID, INTERMEDIATE_SQL_CENTROID);
-        addGlobalAgg(SQL_CENTROID, GLOBAL_SQL_CENTROID);
-        addScalarAgg(SQL_CENTROID, SCALAR_SQL_CENTROID);
 
         addScalarAgg(AVG, SCALAR_AVG);
 

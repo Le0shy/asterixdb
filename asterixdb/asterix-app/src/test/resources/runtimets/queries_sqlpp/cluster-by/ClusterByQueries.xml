@@ -124,25 +124,19 @@
     <test-case FilePath="cluster-by/negative">
         <compilation-unit name="unknown-distance">
             <output-dir compare="Text">unknown-distance</output-dir>
-            <expected-error>CLUSTER BY 'similarity' 'euclidian' is not supported. Supported: EUCLIDEAN, EUCLIDEAN_SQUARED.</expected-error>
+            <expected-error>CLUSTER BY 'similarity' 'euclidian' is not supported. Supported: COSINE, EUCLIDEAN, EUCLIDEAN_SQUARED.</expected-error>
         </compilation-unit>
     </test-case>
     <test-case FilePath="cluster-by/negative">
         <compilation-unit name="unsupported-distance">
             <output-dir compare="Text">unsupported-distance</output-dir>
-            <expected-error>CLUSTER BY 'similarity' 'cosine' is not supported</expected-error>
+            <expected-error>CLUSTER BY 'similarity' 'dot' is not supported</expected-error>
         </compilation-unit>
     </test-case>
     <test-case FilePath="cluster-by/negative">
         <compilation-unit name="unsupported-algorithm">
             <output-dir compare="Text">unsupported-algorithm</output-dir>
             <expected-error>Unsupported CLUSTER BY 'clustering_algorithm' 'DBSCAN'</expected-error>
-        </compilation-unit>
-    </test-case>
-    <test-case FilePath="cluster-by/negative">
-        <compilation-unit name="let-in-block">
-            <output-dir compare="Text">let-in-block</output-dir>
-            <expected-error>CLUSTER BY currently does not support LET in its query block.</expected-error>
         </compilation-unit>
     </test-case>
     <!-- A two-term FROM clause: the clustered vector comes from one dataset while the predicate spans both, so
@@ -159,6 +153,14 @@
     <test-case FilePath="cluster-by">
         <compilation-unit name="unnest-in-from">
             <output-dir compare="Text">unnest-in-from</output-dir>
+        </compilation-unit>
+    </test-case>
+    <!-- Cosine: two directions held at very different magnitudes, so Euclidean would group by magnitude and
+         return {1,3},{2,4} instead. Passing means the metric reached both the loops and the labeling, and that
+         the centroid update kept the centroids on the unit sphere. -->
+    <test-case FilePath="cluster-by">
+        <compilation-unit name="cosine-metric">
+            <output-dir compare="Text">cosine-metric</output-dir>
         </compilation-unit>
     </test-case>
     <!-- v1 scope restrictions: no set operations. -->
@@ -219,6 +221,8 @@
             <output-dir compare="Text">kmeans-mixed-dimensions</output-dir>
         </compilation-unit>
     </test-case>
+    <!-- The same rows, with the warning the user gets for the ones left out; unpartitioned input so there is
+         exactly one. -->
     <!-- The two shortfall reports are raised by different stages and say different things. RECLUSTER knows
          the distinct-vector count and names it; Lloyd only knows what survived, so it names that instead.
          init_mode "random" has no RECLUSTER at all, which is why the Lloyd backstop has to exist. -->
@@ -229,4 +233,51 @@
     </test-case>
     <!-- Initialization quality on structured data: four separable groups of unequal size must come back
          with their exact sizes. Guards the oversampling factor, which an inertia sweep alone did not. -->
+    <!-- HAVING (and a LET before it) after the clause, over the descriptor and CLUSTER AS. -->
+    <test-case FilePath="cluster-by">
+        <compilation-unit name="kmeans-having">
+            <output-dir compare="Text">kmeans-having</output-dir>
+        </compilation-unit>
+    </test-case>
+    <test-case FilePath="cluster-by/negative">
+        <compilation-unit name="outer-variable-after-clusterby">
+            <output-dir compare="Text">outer-variable-after-clusterby</output-dir>
+            <expected-error>CLUSTER BY: 'o' belongs to an enclosing query</expected-error>
+            <expected-error>CLUSTER BY: 'o' belongs to an enclosing query</expected-error>
+            <expected-error>ASX1073: Cannot resolve alias reference for undefined identifier p</expected-error>
+        </compilation-unit>
+    </test-case>
+    <test-case FilePath="cluster-by/negative">
+        <compilation-unit name="having-reads-from-binding">
+            <output-dir compare="Text">having-reads-from-binding</output-dir>
+            <expected-error>ASX1073: Cannot resolve alias reference for undefined identifier p</expected-error>
+            <expected-error>ASX1073: Cannot resolve alias reference for undefined identifier v</expected-error>
+            <expected-error>ASX1073: Cannot resolve alias reference for undefined identifier p</expected-error>
+        </compilation-unit>
+    </test-case>
+    <test-case FilePath="cluster-by">
+        <compilation-unit name="kmeans-sql92-aggregates">
+            <output-dir compare="Text">kmeans-sql92-aggregates</output-dir>
+        </compilation-unit>
+    </test-case>
+    <test-case FilePath="cluster-by">
+        <compilation-unit name="kmeans-decor">
+            <output-dir compare="Text">kmeans-decor</output-dir>
+        </compilation-unit>
+    </test-case>
+    <test-case FilePath="cluster-by">
+        <compilation-unit name="kmeans-let-in-block">
+            <output-dir compare="Text">kmeans-let-in-block</output-dir>
+        </compilation-unit>
+    </test-case>
+    <test-case FilePath="cluster-by/negative">
+        <compilation-unit name="correlated-clusterby-subquery">
+            <output-dir compare="Text">correlated-clusterby-subquery</output-dir>
+            <expected-error>CLUSTER BY: 'o' belongs to an enclosing query</expected-error>
+            <expected-error>CLUSTER BY: 'o' belongs to an enclosing query</expected-error>
+            <expected-error>CLUSTER BY: 'o' belongs to an enclosing query</expected-error>
+            <expected-error>CLUSTER BY: 'o' belongs to an enclosing query</expected-error>
+            <expected-error>CLUSTER BY: 'k' belongs to an enclosing query</expected-error>
+        </compilation-unit>
+    </test-case>
 </test-group>

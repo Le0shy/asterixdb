@@ -23,7 +23,7 @@ import java.util.Arrays;
 import java.util.Random;
 
 import org.apache.asterix.common.exceptions.ErrorCode;
-import org.apache.asterix.runtime.utils.VectorDistanceCalculation;
+import org.apache.asterix.common.vector.VectorSimilarityMetric;
 import org.apache.hyracks.api.context.IHyracksTaskContext;
 import org.apache.hyracks.api.dataflow.ActivityId;
 import org.apache.hyracks.api.dataflow.IActivityGraphBuilder;
@@ -39,6 +39,7 @@ import org.apache.hyracks.dataflow.std.base.AbstractOperatorDescriptor;
 import org.apache.hyracks.dataflow.std.base.AbstractUnaryInputSinkOperatorNodePushable;
 import org.apache.hyracks.dataflow.std.base.AbstractUnaryOutputSourceOperatorNodePushable;
 import org.apache.hyracks.dataflow.std.misc.MaterializerTaskState;
+import org.apache.hyracks.storage.am.vector.api.IVTreeDistanceFunction;
 import org.apache.hyracks.util.annotations.AiProvenance;
 
 /**
@@ -79,11 +80,17 @@ public final class KMeansReclusterOperatorDescriptor extends AbstractOperatorDes
     /** Frame budget for the partial sort; see KMeansStageRuntime#foldPartials. */
     private final int framesLimit;
 
+    // The metric every distance here is measured with, and which centroid update the fold applies. Validation
+    // refuses the metrics with no usable centroid update, so only ones the algorithm can converge under
+    // reach here.
+    private final VectorSimilarityMetric metric;
+
     public KMeansReclusterOperatorDescriptor(IOperatorDescriptorRegistry spec, RecordDescriptor vectorRecDesc,
-            int count, int poolColumn, int framesLimit) {
+            int count, int poolColumn, int framesLimit, VectorSimilarityMetric metric) {
         // One input: the broadcast partials, which are always envelope rows (the oversampling loop's output).
         super(spec, 1, 1);
         this.framesLimit = framesLimit;
+        this.metric = metric;
         this.count = count;
         this.poolColumn = poolColumn;
         outRecDescs[0] = vectorRecDesc;
@@ -117,11 +124,7 @@ public final class KMeansReclusterOperatorDescriptor extends AbstractOperatorDes
         try (KMeansLoopIO.VectorList means =
                 new KMeansLoopIO.VectorList(ctx, ctx.getJobletContext().getJobId(), taskId, framesLimit)) {
             rt.foldPartials(poolSize, (position, weight, sum) -> {
-                double[] mean = new double[sum.length];
-                for (int d = 0; d < mean.length; d++) {
-                    mean[d] = sum[d] / weight;
-                }
-                means.add(mean);
+                means.add(KMeansLoopIO.centroidOf(sum, weight, metric));
                 memberWeights[meanCount[0]++] = weight;
             });
             means.seal();
@@ -148,7 +151,8 @@ public final class KMeansReclusterOperatorDescriptor extends AbstractOperatorDes
     /**
      * Reduces the weighted candidates to at most {@code count} centroids with weighted k-means++, the closing
      * step of the k-means|| initialization. The first centre is drawn proportional to weight alone; each
-     * subsequent one proportional to {@code w_x * d^2(x, chosen)}, so mass and distance both count.
+     * subsequent one proportional to {@code w_x * d(x, chosen)} under the stage's metric, so mass and
+     * distance both count.
      * <p>
      * Holds one weight, nearest-distance, score and taken flag per candidate -- scalars, not vectors. The
      * vectors are read and not retained: a round needs them twice, to fetch the member it just picked and to
@@ -163,7 +167,8 @@ public final class KMeansReclusterOperatorDescriptor extends AbstractOperatorDes
         if (n == 0) {
             return 0;
         }
-        final double[] nearest = new double[n]; // d^2 to the closest already-chosen centre
+        final IVTreeDistanceFunction distanceFn = KMeansLoopIO.distanceFunction(metric);
+        final double[] nearest = new double[n]; // distance to the closest already-chosen centre
         Arrays.fill(nearest, Double.POSITIVE_INFINITY);
         final boolean[] taken = new boolean[n];
         final Random rng = new Random(RECLUSTER_SEED);
@@ -213,7 +218,7 @@ public final class KMeansReclusterOperatorDescriptor extends AbstractOperatorDes
             means.stream(candidate -> {
                 int i = at[0]++;
                 if (!taken[i]) {
-                    double d = VectorDistanceCalculation.euclideanSquared(candidate, picked);
+                    double d = distanceFn.apply(candidate, picked);
                     if (d < nearest[i]) {
                         nearest[i] = d;
                     }

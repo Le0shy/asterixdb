@@ -19,6 +19,7 @@
 package org.apache.asterix.lang.sqlpp.visitor.base;
 
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 
 import org.apache.asterix.common.exceptions.CompilationException;
@@ -72,6 +73,7 @@ import org.apache.asterix.lang.sqlpp.expression.SelectExpression;
 import org.apache.asterix.lang.sqlpp.expression.WindowExpression;
 import org.apache.asterix.lang.sqlpp.struct.SetOperationRight;
 import org.apache.hyracks.algebricks.common.utils.Pair;
+import org.apache.hyracks.util.annotations.AiProvenance;
 
 public class AbstractSqlppSimpleExpressionVisitor
         extends AbstractSqlppQueryExpressionVisitor<Expression, ILangExpression> {
@@ -240,7 +242,36 @@ public class AbstractSqlppSimpleExpressionVisitor
         if (cc.hasWithOptions()) {
             cc.setWithOptions((RecordConstructor) visit(cc.getWithOptions(), cc));
         }
+        visitDecorations(cc, cc);
         return null;
+    }
+
+    /**
+     * Visits the decoration expressions. A decoration carries a variable through the operator; when a rewrite
+     * has replaced that variable by its expression (an inlined WITH), the reads of it after the clause are gone
+     * too, so the decoration is dropped rather than left pointing at a binding that no longer exists. When a
+     * rewrite has re-resolved the variable (a scoping pass), the decoration's own variable follows.
+     */
+    @AiProvenance(agent = AiProvenance.Agent.CLAUDE_FABLE_5, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.ASSISTED)
+    protected void visitDecorations(ClusterbyClause cc, ILangExpression arg) throws CompilationException {
+        if (!cc.hasDecorList()) {
+            return;
+        }
+        Iterator<GbyVariableExpressionPair> pairs = cc.getDecorPairList().iterator();
+        while (pairs.hasNext()) {
+            GbyVariableExpressionPair pair = pairs.next();
+            Expression newExpr = visit(pair.getExpr(), arg);
+            if (newExpr.getKind() == Expression.Kind.VARIABLE_EXPRESSION) {
+                pair.setExpr(newExpr);
+                // The decoration binds the same symbol above the operator that the expression reads below it:
+                // the reads after the clause resolve to that symbol, so the pair's variable follows its ident.
+                VariableExpr decorVar = new VariableExpr(((VariableExpr) newExpr).getVar());
+                decorVar.setSourceLocation(pair.getVar().getSourceLocation());
+                pair.setVar(decorVar);
+            } else {
+                pairs.remove();
+            }
+        }
     }
 
     @Override

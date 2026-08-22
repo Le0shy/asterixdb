@@ -26,6 +26,7 @@ import java.util.Map;
 
 import org.apache.asterix.common.exceptions.ErrorCode;
 import org.apache.asterix.common.exceptions.RuntimeDataException;
+import org.apache.asterix.common.vector.VectorSimilarityMetric;
 import org.apache.hyracks.api.comm.IFrameWriter;
 import org.apache.hyracks.api.comm.VSizeFrame;
 import org.apache.hyracks.api.context.IHyracksTaskContext;
@@ -84,12 +85,15 @@ public class KMeansCentroidMergeOperatorDescriptor extends AbstractSingleActivit
     private final int nParticipants;
     /** Frame budget for the per-iteration partial sort. */
     private final int framesLimit;
+    /** Which centroid update the iteration applies; see {@link KMeansLoopIO#centroidOf}. */
+    private final VectorSimilarityMetric metric;
 
     public KMeansCentroidMergeOperatorDescriptor(IOperatorDescriptorRegistry spec, RecordDescriptor recDesc,
-            int nParticipants, int framesLimit) {
+            int nParticipants, int framesLimit, VectorSimilarityMetric metric) {
         super(spec, 1, 1);
         this.nParticipants = nParticipants;
         this.framesLimit = framesLimit;
+        this.metric = metric;
         outRecDescs[0] = recDesc; // DRAW_RD: the new centroid set, one vector per tuple
     }
 
@@ -209,11 +213,7 @@ public class KMeansCentroidMergeOperatorDescriptor extends AbstractSingleActivit
                     int emittedSeq = 0;
                     for (int i = 0; i < weights.length; i++) {
                         if (weights[i] > 0) {
-                            double[] mean = new double[sums[i].length];
-                            for (int d = 0; d < mean.length; d++) {
-                                mean[d] = sums[i][d] / weights[i];
-                            }
-                            emitCentroid(iter, emittedSeq++, mean);
+                            emitCentroid(iter, emittedSeq++, KMeansLoopIO.centroidOf(sums[i], weights[i], metric));
                         }
                     }
                     partialSort = null; // next iteration gets a fresh sort

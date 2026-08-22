@@ -22,6 +22,7 @@ import java.nio.ByteBuffer;
 
 import org.apache.asterix.common.exceptions.ErrorCode;
 import org.apache.asterix.common.exceptions.RuntimeDataException;
+import org.apache.asterix.common.vector.VectorSimilarityMetric;
 import org.apache.hyracks.api.comm.IFrameWriter;
 import org.apache.hyracks.api.comm.VSizeFrame;
 import org.apache.hyracks.api.context.IHyracksTaskContext;
@@ -67,7 +68,7 @@ import org.apache.hyracks.util.annotations.AiProvenance;
  * set travel, both independent of the input size.
  */
 @AiProvenance(agent = AiProvenance.Agent.CLAUDE_OPUS_4_8, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.ASSISTED)
-@AiProvenance(agent = AiProvenance.Agent.CLAUDE_FABLE_5, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.REFACTORED, notes = "Declared dimension threaded to decoders; rejected initial centroids skip with a warning instead of failing")
+@AiProvenance(agent = AiProvenance.Agent.CLAUDE_FABLE_5, tool = AiProvenance.Tool.CLAUDE_CODE_UI, contributionKind = AiProvenance.ContributionKind.ASSISTED)
 public class KMeansLloydControllerOperatorDescriptor extends AbstractOperatorDescriptor {
     private static final long serialVersionUID = 1L;
 
@@ -88,10 +89,15 @@ public class KMeansLloydControllerOperatorDescriptor extends AbstractOperatorDes
     // The declared Dimension, enforced by the decoders (see KMeansVectorCodec.ListVectorDecoder).
     private final int dimension;
 
+    // The metric every distance in this stage is measured with. Validation refuses the metrics with no usable
+    // centroid update, so only ones the algorithm can converge under reach here.
+    private final VectorSimilarityMetric metric;
+
     public KMeansLloydControllerOperatorDescriptor(IOperatorDescriptorRegistry spec, RecordDescriptor centroidRecDesc,
             RecordDescriptor partialRecDesc, String loopKey, int vectorColumn, int centroidColumn, int iterations,
-            int numClusters, int framesLimit, int dimension) {
+            int numClusters, int framesLimit, int dimension, VectorSimilarityMetric metric) {
         super(spec, 2, 2);
+        this.metric = metric;
         this.loopKey = loopKey;
         this.vectorColumn = vectorColumn;
         this.centroidColumn = centroidColumn;
@@ -377,7 +383,7 @@ public class KMeansLloydControllerOperatorDescriptor extends AbstractOperatorDes
                             final int[] dimension = { 0 };
                             KMeansLoopIO.streamScoredAgainstPool(KMeansLoopIO.source(vectorState, ctx),
                                     sink -> centroids.stream(ctx, sink), ctx, framesLimit,
-                                    (vecs, n, nearest, nearestIdx) -> {
+                                    KMeansLoopIO.distanceFunction(metric), (vecs, n, nearest, nearestIdx) -> {
                                         if (dimension[0] == 0 && n > 0) {
                                             dimension[0] = vecs[0].length;
                                         }

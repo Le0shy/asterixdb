@@ -303,35 +303,6 @@ final class KMeansStageRuntime {
         }
     }
 
-    /** Streams the materialized vector input, decoding each tuple's vector column and feeding it to sink. */
-    void streamVectors(MaterializerTaskState state, int vectorColumn, VectorSink sink) throws HyracksDataException {
-        final FrameTupleAccessor vecAccessor = new FrameTupleAccessor(vecRecDesc);
-        state.writeOut(new IFrameWriter() {
-            @Override
-            public void open() {
-            }
-
-            @Override
-            public void nextFrame(ByteBuffer buffer) throws HyracksDataException {
-                failIfInterrupted();
-                vecAccessor.reset(buffer);
-                int tupleCount = vecAccessor.getTupleCount();
-                for (int i = 0; i < tupleCount; i++) {
-                    tupleRef.reset(vecAccessor, i);
-                    sink.accept(decodeVector(tupleRef, vectorColumn));
-                }
-            }
-
-            @Override
-            public void fail() {
-            }
-
-            @Override
-            public void close() {
-            }
-        }, new VSizeFrame(ctx), false);
-    }
-
     private double[] decodeVector(FrameTupleReference tuple, int col) throws HyracksDataException {
         try {
             fieldPtr.set(tuple.getFieldData(col), tuple.getFieldStart(col), tuple.getFieldLength(col));
@@ -369,11 +340,6 @@ final class KMeansStageRuntime {
 
     Emitter newEmitter() throws HyracksDataException {
         return new Emitter();
-    }
-
-    @FunctionalInterface
-    interface VectorSink {
-        void accept(double[] vec) throws HyracksDataException;
     }
 
     /** Serialization state for one emit pass; every value is an OPEN list (tagged items). */

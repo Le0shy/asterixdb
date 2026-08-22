@@ -38,6 +38,7 @@ import org.apache.hyracks.algebricks.core.algebra.operators.logical.AbstractOper
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.AbstractUnnestMapOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.AggregateOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.AssignOperator;
+import org.apache.hyracks.algebricks.core.algebra.operators.logical.ClusterByOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.DataSourceScanOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.DelegateOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.DistinctOperator;
@@ -378,6 +379,22 @@ public class LogicalOperatorPrettyPrintVisitor extends AbstractLogicalOperatorPr
                 out.append(' ').append(str(op.getVectorVariable())).append(" vs pool ")
                         .append(str(op.getPoolVariable()));
                 break;
+        }
+        out.append(" by ").append(op.getMetric());
+        return null;
+    }
+
+    @Override
+    public Void visitClusterByOperator(ClusterByOperator op, Integer indent) throws AlgebricksException {
+        addIndent(indent).append("cluster-by ").append(str(op.getClusterIdVariable())).append(", ")
+                .append(str(op.getCentroidVariable())).append(", ").append(str(op.getRadiusVariable())).append(", ")
+                .append(str(op.getMembersVariable())).append(" <- ").append(String.valueOf(op.getNumClusters()))
+                .append(" clusters of ").append(str(op.getVectorVariable())).append(" by ").append(op.getAlgorithm())
+                .append('/').append(op.getInitMode()).append('/').append(op.getMetric());
+        if (!op.getDecorList().isEmpty()) {
+            buffer.append(" decor (");
+            pprintVeList(op.getDecorList(), indent);
+            buffer.append(")");
         }
         return null;
     }

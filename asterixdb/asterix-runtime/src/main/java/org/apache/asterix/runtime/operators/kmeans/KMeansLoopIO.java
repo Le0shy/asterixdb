@@ -27,7 +27,9 @@ import java.util.List;
 
 import org.apache.asterix.common.exceptions.ErrorCode;
 import org.apache.asterix.common.exceptions.RuntimeDataException;
-import org.apache.asterix.runtime.utils.VectorDistanceCalculation;
+import org.apache.asterix.common.vector.VectorSimilarityMetric;
+import org.apache.asterix.runtime.operators.KMeansUtils;
+import org.apache.asterix.runtime.utils.VectorDistanceFunctionFactory;
 import org.apache.hyracks.api.comm.VSizeFrame;
 import org.apache.hyracks.api.context.IHyracksTaskContext;
 import org.apache.hyracks.api.dataflow.TaskId;
@@ -47,6 +49,7 @@ import org.apache.hyracks.dataflow.common.data.marshalling.DoubleSerializerDeser
 import org.apache.hyracks.dataflow.common.data.marshalling.IntegerSerializerDeserializer;
 import org.apache.hyracks.dataflow.common.io.RunFileReader;
 import org.apache.hyracks.dataflow.std.misc.MaterializerTaskState;
+import org.apache.hyracks.storage.am.vector.api.IVTreeDistanceFunction;
 import org.apache.hyracks.util.annotations.AiProvenance;
 
 /**
@@ -597,6 +600,34 @@ public final class KMeansLoopIO {
         }
     }
 
+    /** The distance a stage measures with, built the way the vector index builds its own. */
+    public static IVTreeDistanceFunction distanceFunction(VectorSimilarityMetric metric) throws HyracksDataException {
+        return new VectorDistanceFunctionFactory(metric).createDistanceFunction();
+    }
+
+    /**
+     * The centroid of a cluster whose members sum to {@code sum}: the point minimizing total distance to them,
+     * which is a different point per metric.
+     * <p>
+     * For squared Euclidean it is the arithmetic mean. For cosine it is that mean projected back onto the unit
+     * sphere -- the cosine optimum is a direction, and the mean already lies on that ray, so the projection
+     * changes no assignment. It keeps centroids on the same sphere as the data and avoids later dividing by a
+     * near-zero norm.
+     *
+     * @param sum    component-wise sum of the cluster's members; not modified
+     * @param weight how many members it holds, at least one
+     */
+    public static double[] centroidOf(double[] sum, long weight, VectorSimilarityMetric metric) {
+        double[] centroid = new double[sum.length];
+        for (int d = 0; d < centroid.length; d++) {
+            centroid[d] = sum[d] / weight;
+        }
+        if (metric == VectorSimilarityMetric.COSINE) {
+            KMeansUtils.normalizeL2(centroid);
+        }
+        return centroid;
+    }
+
     /** Receives one finished block of {@link #streamScoredAgainstPool}: the vectors and their nearest pool member. */
     @FunctionalInterface
     public interface ScoredBlockConsumer {
@@ -621,8 +652,9 @@ public final class KMeansLoopIO {
      * every block size.
      */
     public static void streamScoredAgainstPool(MaterializerTaskState vectorState, MaterializerTaskState poolState,
-            IHyracksTaskContext ctx, int framesLimit, ScoredBlockConsumer sink) throws HyracksDataException {
-        streamScoredAgainstPool(source(vectorState, ctx), source(poolState, ctx), ctx, framesLimit, sink);
+            IHyracksTaskContext ctx, int framesLimit, IVTreeDistanceFunction distanceFn, ScoredBlockConsumer sink)
+            throws HyracksDataException {
+        streamScoredAgainstPool(source(vectorState, ctx), source(poolState, ctx), ctx, framesLimit, distanceFn, sink);
     }
 
     /**
@@ -630,8 +662,8 @@ public final class KMeansLoopIO {
      * rather than a run file, but the shape -- and the reason for inverting the residency -- is the same.
      */
     public static void streamScoredAgainstPool(RawVectorSource vectors, RawVectorSource pool, IHyracksTaskContext ctx,
-            int framesLimit, ScoredBlockConsumer sink) throws HyracksDataException {
-        BlockScan scan = new BlockScan(pool, ctx, framesLimit, sink);
+            int framesLimit, IVTreeDistanceFunction distanceFn, ScoredBlockConsumer sink) throws HyracksDataException {
+        BlockScan scan = new BlockScan(pool, ctx, framesLimit, distanceFn, sink);
         vectors.stream(scan::add);
         scan.flush(); // the final short block
     }
@@ -641,16 +673,19 @@ public final class KMeansLoopIO {
         private final RawVectorSource pool;
         private final IHyracksTaskContext ctx;
         private final int framesLimit;
+        private final IVTreeDistanceFunction distanceFn;
         private final ScoredBlockConsumer sink;
         private double[][] block;
         private double[] nearest;
         private int[] nearestIndex;
         private int count;
 
-        private BlockScan(RawVectorSource pool, IHyracksTaskContext ctx, int framesLimit, ScoredBlockConsumer sink) {
+        private BlockScan(RawVectorSource pool, IHyracksTaskContext ctx, int framesLimit,
+                IVTreeDistanceFunction distanceFn, ScoredBlockConsumer sink) {
             this.pool = pool;
             this.ctx = ctx;
             this.framesLimit = framesLimit;
+            this.distanceFn = distanceFn;
             this.sink = sink;
         }
 
@@ -682,7 +717,7 @@ public final class KMeansLoopIO {
             pool.stream(candidate -> {
                 int c = poolIndex[0]++;
                 for (int i = 0; i < n; i++) {
-                    double d = VectorDistanceCalculation.euclideanSquared(block[i], candidate);
+                    double d = distanceFn.apply(block[i], candidate);
                     // Strict <: ties resolve to the first pool member, as in the resident form.
                     if (d < nearest[i]) {
                         nearest[i] = d;
@@ -708,11 +743,5 @@ public final class KMeansLoopIO {
         long perVector = (long) dim * Double.BYTES + PER_VECTOR_OVERHEAD;
         long capacity = (long) framesLimit * ctx.getInitialFrameSize() / perVector;
         return (int) Math.max(1L, Math.min(capacity, Integer.MAX_VALUE));
-    }
-
-    /** Appends one raw-double vector as a {@link #POOL_RD} tuple into {@code appender} (caller flushes frames). */
-    public static void appendPoolVector(ArrayTupleBuilder tb, double[] vec) throws HyracksDataException {
-        tb.reset();
-        writeRawVector(tb, vec);
     }
 }
