@@ -107,6 +107,7 @@ public class KMeansStageOperator extends AbstractLogicalOperator {
     // Which distance every stage measures with, as the metric's canonical name. A String rather than the
     // metric enum because that enum lives above Algebricks; the physical operators resolve it.
     private String metric;
+    private String clusteringExpression;
 
     public KMeansStageOperator(Mutable<ILogicalExpression> vectorRef, Mutable<ILogicalExpression> poolRef,
             LogicalVariable candidateVar, Object candidateVarType, int topCount) {
@@ -244,5 +245,14 @@ public class KMeansStageOperator extends AbstractLogicalOperator {
 
     public void setMetric(String metric) {
         this.metric = metric;
+    }
+
+    /** The clustering expression as the user wrote it; the runtime names it in what it reports. */
+    public String getClusteringExpression() {
+        return clusteringExpression;
+    }
+
+    public void setClusteringExpression(String clusteringExpression) {
+        this.clusteringExpression = clusteringExpression;
     }
 }

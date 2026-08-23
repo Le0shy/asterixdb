@@ -137,8 +137,7 @@ final class KMeansStageRuntime {
             partialAppender.reset(partialFrame, true);
             if (!partialAppender.append(partialTb.getFieldEndOffsets(), partialTb.getByteArray(), 0,
                     partialTb.getSize())) {
-                throw new RuntimeDataException(ErrorCode.CLUSTER_BY_INVALID_INPUT,
-                        "a weigh partial is too large to fit in a frame");
+                throw new RuntimeDataException(ErrorCode.ILLEGAL_STATE, "a weigh partial exceeds a frame");
             }
         }
     }

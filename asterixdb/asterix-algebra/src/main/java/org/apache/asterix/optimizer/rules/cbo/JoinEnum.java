@@ -1250,7 +1250,8 @@ public class JoinEnum {
                 }
             } else if (op.getOperatorTag() == LogicalOperatorTag.ORDER) {
                 return -1; // This is because we cant reduce the selectivity of a scan operator when an order by is present.
-            } else if (op.getOperatorTag() == LogicalOperatorTag.GROUP) {
+            } else if (op.getOperatorTag() == LogicalOperatorTag.GROUP
+                    || op.getOperatorTag() == LogicalOperatorTag.CLUSTER_BY) {
                 return -1; // This is because we cant reduce the selectivity of a scan operator when a group by is present.
             }
             op = op.getInputs().get(0).getValue();

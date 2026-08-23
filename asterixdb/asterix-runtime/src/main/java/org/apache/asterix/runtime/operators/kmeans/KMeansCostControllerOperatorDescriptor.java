@@ -33,7 +33,6 @@ import org.apache.hyracks.api.dataflow.TaskId;
 import org.apache.hyracks.api.dataflow.value.IRecordDescriptorProvider;
 import org.apache.hyracks.api.dataflow.value.RecordDescriptor;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
-import org.apache.hyracks.api.exceptions.Warning;
 import org.apache.hyracks.api.job.IOperatorDescriptorRegistry;
 import org.apache.hyracks.dataflow.common.comm.io.ArrayTupleBuilder;
 import org.apache.hyracks.dataflow.common.comm.io.FrameTupleAccessor;
@@ -97,6 +96,15 @@ public class KMeansCostControllerOperatorDescriptor extends AbstractOperatorDesc
     // The metric every distance in this stage is measured with. Validation refuses the metrics with no usable
     // centroid update, so only ones the algorithm can converge under reach here.
     private final VectorSimilarityMetric metric;
+
+    // The clustering expression as the user wrote it, named in what this operator reports about rows.
+    private String clusteringExpression = "the clustering expression";
+
+    public void setClusteringExpression(String clusteringExpression) {
+        if (clusteringExpression != null) {
+            this.clusteringExpression = clusteringExpression;
+        }
+    }
 
     public KMeansCostControllerOperatorDescriptor(IOperatorDescriptorRegistry spec,
             RecordDescriptor poolEnvelopeRecDesc, RecordDescriptor sigmaRecDesc, String loopKey, int vectorColumn,
@@ -185,13 +193,9 @@ public class KMeansCostControllerOperatorDescriptor extends AbstractOperatorDesc
                         tuple.reset(accessor, i);
                         double[] vec = decoder.decode(tuple, column);
                         if (vec == null) {
-                            // Not a numeric array of the declared width: skip the row with a warning.
-                            if (ctx.getWarningCollector().shouldWarn()) {
-                                ctx.getWarningCollector()
-                                        .warn(Warning.of(null, ErrorCode.CLUSTER_BY_INVALID_INPUT,
-                                                "a row's clustering expression is not a numeric array of the declared "
-                                                        + "dimension " + dimension + "; the row was excluded"));
-                            }
+                            // Not a numeric array of the declared width: the row takes no part in training.
+                            // The labelling stage reports it to the user, once, when it leaves it out of
+                            // every cluster -- one message for one fact, rather than one per stage.
                             continue;
                         }
                         tb.reset();
@@ -199,8 +203,8 @@ public class KMeansCostControllerOperatorDescriptor extends AbstractOperatorDesc
                         if (!appender.append(tb.getFieldEndOffsets(), tb.getByteArray(), 0, tb.getSize())) {
                             flushToState();
                             if (!appender.append(tb.getFieldEndOffsets(), tb.getByteArray(), 0, tb.getSize())) {
-                                throw new RuntimeDataException(ErrorCode.CLUSTER_BY_INVALID_INPUT,
-                                        "a vector is too large to fit in a frame");
+                                throw new RuntimeDataException(ErrorCode.CLUSTER_BY_INVALID_INPUT, getSourceLocation(),
+                                        vectorTooLarge(clusteringExpression, tb.getSize(), ctx.getInitialFrameSize()));
                             }
                         }
                     }
@@ -446,5 +450,11 @@ public class KMeansCostControllerOperatorDescriptor extends AbstractOperatorDesc
                 }
             };
         }
+    }
+
+    /** The one capacity limit a user can hit with ordinary input: a clustering vector wider than a frame. */
+    static String vectorTooLarge(String clusteringExpression, int vectorBytes, int frameBytes) {
+        return "a vector of " + clusteringExpression + " is " + vectorBytes + " bytes, more than the " + frameBytes
+                + " bytes a frame holds; raise the frame size or lower the dimension";
     }
 }

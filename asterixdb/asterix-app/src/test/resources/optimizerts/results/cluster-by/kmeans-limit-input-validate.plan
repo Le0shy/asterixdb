@@ -17,7 +17,7 @@ distribute result [$$96]
           -- ONE_TO_ONE_EXCHANGE  |UNPARTITIONED|
             select (not(is-unknown($$107)))
             -- STREAM_SELECT  |UNPARTITIONED|
-              assign [$$107] <- [nearest-centroid($$93, $$106, "euclidean_squared")] project: [$$93, $$94, $$107]
+              assign [$$107] <- [nearest-centroid($$93, $$106, "euclidean_squared", "t.reviewEmbedding")] project: [$$93, $$94, $$107]
               -- ASSIGN  |UNPARTITIONED|
                 exchange
                 -- ONE_TO_ONE_EXCHANGE  |UNPARTITIONED|

@@ -35,6 +35,7 @@ import org.apache.hyracks.algebricks.core.algebra.properties.LocalMemoryRequirem
 import org.apache.hyracks.algebricks.core.algebra.properties.RandomPartitioningProperty;
 import org.apache.hyracks.algebricks.core.algebra.properties.StructuralPropertiesVector;
 import org.apache.hyracks.api.exceptions.ErrorCode;
+import org.apache.hyracks.api.exceptions.SourceLocation;
 import org.apache.hyracks.util.annotations.AiProvenance;
 
 /**
@@ -124,13 +125,14 @@ public abstract class AbstractKMeansStagePOperator extends AbstractPhysicalOpera
      * expansion rule builds over the shared input, so the schema may carry the row's other columns as well;
      * only the variable identifies the column. A schema without it is a broken plan, so it raises.
      */
-    protected static int resolveSingleColumn(IOperatorSchema schema, LogicalVariable var) throws AlgebricksException {
+    protected static int resolveSingleColumn(IOperatorSchema schema, LogicalVariable var, SourceLocation loc)
+            throws AlgebricksException {
         int col = schema.findVariable(var);
         if (col >= 0) {
             return col;
         }
-        throw AlgebricksException.create(ErrorCode.ILLEGAL_STATE, "kmeans-stage input schema",
-                String.valueOf(schema.getSize()));
+        throw AlgebricksException.create(ErrorCode.ILLEGAL_STATE, loc,
+                "kmeans stage input does not carry " + var + " (schema of " + schema.getSize() + " columns)");
     }
 
     /**

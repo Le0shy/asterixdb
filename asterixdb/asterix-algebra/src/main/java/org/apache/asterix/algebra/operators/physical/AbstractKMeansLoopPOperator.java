@@ -85,8 +85,8 @@ public abstract class AbstractKMeansLoopPOperator extends AbstractKMeansStagePOp
         KMeansStageOperator kop = (KMeansStageOperator) op;
         RecordDescriptor recDesc =
                 JobGenHelper.mkRecordDescriptor(context.getTypeEnvironment(op), propagatedSchema, context);
-        int vectorColumn = resolveSingleColumn(inputSchemas[0], kop.getVectorVariable());
-        int poolColumn = resolveSingleColumn(inputSchemas[1], kop.getPoolVariable());
+        int vectorColumn = resolveSingleColumn(inputSchemas[0], kop.getVectorVariable(), op.getSourceLocation());
+        int poolColumn = resolveSingleColumn(inputSchemas[1], kop.getPoolVariable(), op.getSourceLocation());
         String[] clusterLocations =
                 ((MetadataProvider) context.getMetadataProvider()).getClusterLocations().getLocations();
         // A single-instance loop has one participant; the entry only sizes the loop, placement is by count-1

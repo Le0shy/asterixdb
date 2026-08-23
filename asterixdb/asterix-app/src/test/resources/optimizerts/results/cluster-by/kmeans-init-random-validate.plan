@@ -17,7 +17,7 @@ distribute result [$$80]
           -- HASH_PARTITION_EXCHANGE [$$87]  |PARTITIONED|
             select (not(is-unknown($$87)))
             -- STREAM_SELECT  |PARTITIONED|
-              assign [$$87] <- [nearest-centroid($$77, $$86, "euclidean_squared")] project: [$$77, $$78, $$87]
+              assign [$$87] <- [nearest-centroid($$77, $$86, "euclidean_squared", "r.reviewEmbedding")] project: [$$77, $$78, $$87]
               -- ASSIGN  |PARTITIONED|
                 exchange
                 -- ONE_TO_ONE_EXCHANGE  |PARTITIONED|

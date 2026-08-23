@@ -23,6 +23,7 @@ import java.io.DataOutput;
 import java.io.IOException;
 
 import org.apache.asterix.common.exceptions.ErrorCode;
+import org.apache.asterix.common.exceptions.RuntimeDataException;
 import org.apache.asterix.common.vector.VectorSimilarityMetric;
 import org.apache.asterix.formats.nontagged.SerializerDeserializerProvider;
 import org.apache.asterix.om.base.ADouble;
@@ -94,6 +95,10 @@ public class NearestCentroidScalarEvaluator implements IScalarEvaluator {
     private final IWarningCollector warningCollector;
     private final FunctionIdentifier funcId;
     private final SourceLocation sourceLoc;
+    private boolean warnedInvalidRow;
+    // Optional fourth argument: the clustering expression as the user wrote it, a literal the rule emits.
+    private final IScalarEvaluator namedEval;
+    private final IPointable namedVal = new VoidPointable();
     // false: emit the argmin index (nearest_centroid); true: emit the min distance (nearest_centroid_distance).
     private final boolean emitDistance;
 
@@ -107,6 +112,7 @@ public class NearestCentroidScalarEvaluator implements IScalarEvaluator {
         this.pointEval = args[0].createScalarEvaluator(context);
         this.centroidsEval = args[1].createScalarEvaluator(context);
         this.metricEval = args.length > 2 ? args[2].createScalarEvaluator(context) : null;
+        this.namedEval = args.length > 3 ? args[3].createScalarEvaluator(context) : null;
     }
 
     /**
@@ -121,8 +127,8 @@ public class NearestCentroidScalarEvaluator implements IScalarEvaluator {
         byte[] bytes = metricVal.getByteArray();
         int offset = metricVal.getStartOffset();
         if (bytes[offset] != ATypeTag.SERIALIZED_STRING_TYPE_TAG) {
-            warn("nearest_centroid: metric must be a string");
-            return false;
+            throw new RuntimeDataException(ErrorCode.ILLEGAL_STATE, sourceLoc,
+                    "nearest-centroid: metric must be a string");
         }
         metricName.setLength(0);
         UTF8StringUtil.toString(metricName, bytes, offset + 1);
@@ -132,13 +138,13 @@ public class NearestCentroidScalarEvaluator implements IScalarEvaluator {
         }
         VectorSimilarityMetric metric = VectorSimilarityMetric.fromAlias(name);
         if (metric == null) {
-            warn("nearest_centroid: unknown metric '" + name + "'");
-            return false;
+            throw new RuntimeDataException(ErrorCode.ILLEGAL_STATE, sourceLoc,
+                    "nearest-centroid: unknown metric '" + name + "'");
         }
         if (metric == VectorSimilarityMetric.DOT) {
             // dotDistance is a negated inner product, unbounded below, so no centroid minimizes it.
-            warn("nearest_centroid: metric 'dot' is not usable for clustering");
-            return false;
+            throw new RuntimeDataException(ErrorCode.ILLEGAL_STATE, sourceLoc,
+                    "nearest-centroid: metric 'dot' is not usable for clustering");
         }
         distanceFn = new VectorDistanceFunctionFactory(metric).createDistanceFunction();
         resolvedMetricName = name;
@@ -158,10 +164,12 @@ public class NearestCentroidScalarEvaluator implements IScalarEvaluator {
             }
 
             if (PointableHelper.checkAndSetMissingOrNull(result, pointVal, centroidsVal)) {
+                // A NULL or MISSING clustering expression is ordinary data: the row is left out, and the warning says so.
+                warnInvalidRow(tuple);
                 return;
             }
             if (!decoder.checkListType(pointVal) || !decoder.checkListType(centroidsVal)) {
-                warn("nearest_centroid expects (list, list-of-lists) arguments");
+                warnInvalidRow(tuple);
                 PointableHelper.setNull(result);
                 return;
             }
@@ -170,7 +178,7 @@ public class NearestCentroidScalarEvaluator implements IScalarEvaluator {
             pointList.reset(pointVal.getByteArray(), pointVal.getStartOffset());
             int dim = pointList.size();
             if (dim == 0) {
-                warn("nearest_centroid: point must be a non-empty numeric vector");
+                warnInvalidRow(tuple);
                 PointableHelper.setNull(result);
                 return;
             }
@@ -180,7 +188,6 @@ public class NearestCentroidScalarEvaluator implements IScalarEvaluator {
             centroidsList.reset(centroidsVal.getByteArray(), centroidsVal.getStartOffset());
             int k = centroidsList.size();
             if (k == 0) {
-                warn("nearest_centroid: empty centroid set");
                 PointableHelper.setNull(result);
                 return;
             }
@@ -190,13 +197,13 @@ public class NearestCentroidScalarEvaluator implements IScalarEvaluator {
             for (int i = 0; i < k; i++) {
                 centroidsList.getOrWriteItem(i, centroidItem, itemStorage);
                 if (!decoder.checkListType(centroidItem)) {
-                    warn("nearest_centroid: centroid " + i + " is not a vector");
+                    warnInvalidRow(tuple);
                     PointableHelper.setNull(result);
                     return;
                 }
                 oneCentroidList.reset(centroidItem.getByteArray(), centroidItem.getStartOffset());
                 if (oneCentroidList.size() != dim) {
-                    warn("nearest_centroid: centroid " + i + " has wrong dimension");
+                    warnInvalidRow(tuple);
                     PointableHelper.setNull(result);
                     return;
                 }
@@ -204,7 +211,7 @@ public class NearestCentroidScalarEvaluator implements IScalarEvaluator {
                         decoder.createArrayFromList(oneCentroidList, decoder.ensureDoubleCapacity(centroidArr, dim));
                 double d = distanceFn.apply(pointArr, centroidArr);
                 if (Double.isNaN(d)) {
-                    warn("nearest_centroid: non-numeric point or centroid " + i);
+                    warnInvalidRow(tuple);
                     PointableHelper.setNull(result);
                     return;
                 }
@@ -215,7 +222,7 @@ public class NearestCentroidScalarEvaluator implements IScalarEvaluator {
             }
 
             if (bestIdx < 0) {
-                warn("nearest_centroid: no valid centroid found");
+                warnInvalidRow(tuple);
                 PointableHelper.setNull(result);
                 return;
             }
@@ -228,15 +235,35 @@ public class NearestCentroidScalarEvaluator implements IScalarEvaluator {
             }
             result.set(resultStorage);
         } catch (IOException e) {
-            warn(e.getMessage());
-            PointableHelper.setNull(result);
+            throw HyracksDataException.create(e);
         }
     }
 
-    private void warn(String msg) {
-        if (warningCollector != null && warningCollector.shouldWarn()) {
-            warningCollector.warn(Warning.of(sourceLoc, ErrorCode.FUNCTION_EVALUATION_FAILED, funcId.getName(),
-                    msg == null ? "unknown error" : msg));
+    /**
+     * One message per evaluator for every row it cannot place: the user needs to know that rows were left out
+     * and why, not how many times or in which stage. The row itself yields NULL and is dropped above.
+     */
+    private void warnInvalidRow(IFrameTupleReference tuple) throws HyracksDataException {
+        if (!warnedInvalidRow && warningCollector != null && warningCollector.shouldWarn()) {
+            warnedInvalidRow = true;
+            warningCollector.warn(Warning.of(sourceLoc, ErrorCode.CLUSTER_BY_INVALID_INPUT, "for some rows "
+                    + clusteringExpression(tuple)
+                    + " is not a numeric array of the declared dimension; they were left out of every cluster"));
         }
+    }
+
+    private String clusteringExpression(IFrameTupleReference tuple) throws HyracksDataException {
+        if (namedEval == null) {
+            return "the clustering expression";
+        }
+        namedEval.evaluate(tuple, namedVal);
+        byte[] bytes = namedVal.getByteArray();
+        int offset = namedVal.getStartOffset();
+        if (bytes[offset] != ATypeTag.SERIALIZED_STRING_TYPE_TAG) {
+            return "the clustering expression";
+        }
+        StringBuilder text = new StringBuilder();
+        UTF8StringUtil.toString(text, bytes, offset + 1);
+        return text.toString();
     }
 }

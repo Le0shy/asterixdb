@@ -70,6 +70,8 @@ public class KMeansOversampleLoopPOperator extends AbstractKMeansLoopPOperator {
         KMeansCostControllerOperatorDescriptor op1 = new KMeansCostControllerOperatorDescriptor(spec,
                 poolEnvelopeRecDesc, KMeansLoopIO.SIGMA_RD, loopKey, vectorColumn, seedColumn, kop.getLoopRounds(),
                 framesLimit(), kop.getDimension(), metricOf(kop));
+        op1.setSourceLocation(op.getSourceLocation());
+        op1.setClusteringExpression(kop.getClusteringExpression());
         contributeOpDesc(builder, op, op1);
         builder.contributeGraphEdge(src0, 0, op, 0);
         builder.contributeGraphEdge(src1, 0, op, 1);
@@ -79,11 +81,16 @@ public class KMeansOversampleLoopPOperator extends AbstractKMeansLoopPOperator {
         // connector; the argument here is its OUTPUT, {round, phi}.
         KMeansPhiMergeOperatorDescriptor op2 =
                 new KMeansPhiMergeOperatorDescriptor(spec, KMeansLoopIO.SCALAR_RD, participants);
+        op2.setSourceLocation(op.getSourceLocation());
         KMeansSampleOperatorDescriptor op3 = new KMeansSampleOperatorDescriptor(spec, KMeansLoopIO.DRAW_RD, loopKey,
                 kop.getTopCount(), kop.getSeed());
+        op3.setSourceLocation(op.getSourceLocation());
         KMeansPoolMergeOperatorDescriptor op4 =
                 new KMeansPoolMergeOperatorDescriptor(spec, KMeansLoopIO.DRAW_RD, participants, framesLimit());
+        op4.setSourceLocation(op.getSourceLocation());
         KMeansReleaseOperatorDescriptor op5 = new KMeansReleaseOperatorDescriptor(spec, loopKey);
+        op5.setSourceLocation(op.getSourceLocation());
+        op5.setClusteringExpression(kop.getClusteringExpression());
 
         // Partition constraints (registered via the builder so the job-gen finalizer does not double-assign a
         // default). Op1/Op3/Op5 share identical absolute locations -> co-located per partition; merges single-node.

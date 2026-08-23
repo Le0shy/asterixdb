@@ -93,6 +93,15 @@ public class KMeansLloydControllerOperatorDescriptor extends AbstractOperatorDes
     // centroid update, so only ones the algorithm can converge under reach here.
     private final VectorSimilarityMetric metric;
 
+    // The clustering expression as the user wrote it, named in what this operator reports about rows.
+    private String clusteringExpression = "the clustering expression";
+
+    public void setClusteringExpression(String clusteringExpression) {
+        if (clusteringExpression != null) {
+            this.clusteringExpression = clusteringExpression;
+        }
+    }
+
     public KMeansLloydControllerOperatorDescriptor(IOperatorDescriptorRegistry spec, RecordDescriptor centroidRecDesc,
             RecordDescriptor partialRecDesc, String loopKey, int vectorColumn, int centroidColumn, int iterations,
             int numClusters, int framesLimit, int dimension, VectorSimilarityMetric metric) {
@@ -165,13 +174,9 @@ public class KMeansLloydControllerOperatorDescriptor extends AbstractOperatorDes
                         tuple.reset(accessor, i);
                         double[] vec = decoder.decode(tuple, vectorColumn);
                         if (vec == null) {
-                            // Not a numeric array of the declared width: skip the row with a warning.
-                            if (ctx.getWarningCollector().shouldWarn()) {
-                                ctx.getWarningCollector()
-                                        .warn(Warning.of(null, ErrorCode.CLUSTER_BY_INVALID_INPUT,
-                                                "a row's clustering expression is not a numeric array of the declared "
-                                                        + "dimension " + dimension + "; the row was excluded"));
-                            }
+                            // Not a numeric array of the declared width: the row takes no part in training.
+                            // The labelling stage reports it to the user, once, when it leaves it out of
+                            // every cluster -- one message for one fact, rather than one per stage.
                             continue;
                         }
                         tb.reset();
@@ -179,8 +184,9 @@ public class KMeansLloydControllerOperatorDescriptor extends AbstractOperatorDes
                         if (!appender.append(tb.getFieldEndOffsets(), tb.getByteArray(), 0, tb.getSize())) {
                             flushToState();
                             if (!appender.append(tb.getFieldEndOffsets(), tb.getByteArray(), 0, tb.getSize())) {
-                                throw new RuntimeDataException(ErrorCode.CLUSTER_BY_INVALID_INPUT,
-                                        "a vector is too large to fit in a frame");
+                                throw new RuntimeDataException(ErrorCode.CLUSTER_BY_INVALID_INPUT, getSourceLocation(),
+                                        KMeansCostControllerOperatorDescriptor.vectorTooLarge(clusteringExpression,
+                                                tb.getSize(), ctx.getInitialFrameSize()));
                             }
                         }
                     }
@@ -251,16 +257,10 @@ public class KMeansLloydControllerOperatorDescriptor extends AbstractOperatorDes
                         tuple.reset(accessor, i);
                         double[] centroid = decoder.decode(tuple, centroidColumn);
                         if (centroid == null) {
-                            // Skip, not raise: under init_mode "random" this input is raw user rows, where a
-                            // bad value is ordinary input. Dropping it shrinks k, which emitFinalCentroids
-                            // reports.
-                            if (ctx.getWarningCollector().shouldWarn()) {
-                                ctx.getWarningCollector()
-                                        .warn(Warning.of(null, ErrorCode.CLUSTER_BY_INVALID_INPUT,
-                                                "an initial centroid is not a numeric array of the declared dimension "
-                                                        + dimension + "; it was excluded"));
-                            }
-                            continue;
+                            // The seeds are drawn behind a shape guard and the pool is decoded before it
+                            // gets here, so a malformed centroid is a plan defect, not user input.
+                            throw new RuntimeDataException(ErrorCode.ILLEGAL_STATE, getSourceLocation(),
+                                    "an initial centroid is not a numeric array of dimension " + dimension);
                         }
                         // Streamed straight into the store rather than gathered first: buffering the seed set
                         // here would put the O(k * dim) back on the heap that the store exists to keep off it.
@@ -456,11 +456,12 @@ public class KMeansLloydControllerOperatorDescriptor extends AbstractOperatorDes
                     // do exist are returned.
                     if (finalCentroids.size() < numClusters && ctx.getWarningCollector().shouldWarn()) {
                         int remaining = finalCentroids.size();
-                        ctx.getWarningCollector().warn(Warning.of(null, ErrorCode.CLUSTER_BY_INVALID_INPUT,
-                                "NumClusters is " + numClusters + " but only " + remaining + " cluster(s) remain"
-                                        + (remaining == 0 ? " -- no row matched the declared Dimension"
-                                                : ": the input yielded fewer starting centroids, or a cluster"
-                                                        + " lost every row during refinement")));
+                        ctx.getWarningCollector()
+                                .warn(Warning.of(getSourceLocation(), ErrorCode.CLUSTER_BY_INVALID_INPUT, remaining == 0
+                                        ? "no row has a numeric array of dimension " + dimension + " under "
+                                                + clusteringExpression + "; no clusters are returned"
+                                        : "num_clusters is " + numClusters + " but the input only supports " + remaining
+                                                + " cluster(s); " + remaining + " cluster(s) are returned"));
                     }
                     KMeansVectorCodec.PoolEnvelopeWriter out =
                             new KMeansVectorCodec.PoolEnvelopeWriter(ctx, centroidWriter);

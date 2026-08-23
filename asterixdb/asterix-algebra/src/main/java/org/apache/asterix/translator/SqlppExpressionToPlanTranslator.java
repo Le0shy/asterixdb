@@ -314,6 +314,7 @@ public class SqlppExpressionToPlanTranslator extends LangExpressionToPlanTransla
         cop.setAlgorithm(ALGORITHM_KMEANS);
         cop.setInitMode(clusterbyClause.getInitMode());
         cop.setMetric(clusterbyClause.getMetric());
+        cop.setClusteringExpression(clusterbyClause.getClusteringExpressionText());
         cop.setDimension(clusterbyClause.getDimension());
         cop.setSourceLocation(clusterbyClause.getSourceLocation());
         cop.setMemberRecordRef(new MutableObject<>(memberRef));

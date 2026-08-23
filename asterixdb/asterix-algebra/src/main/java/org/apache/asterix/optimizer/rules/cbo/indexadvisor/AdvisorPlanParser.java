@@ -89,7 +89,8 @@ public class AdvisorPlanParser {
             }
             return new AdvisorJoinPlanNode(leftPlanNode, rightPlanNode, skipAssignOp, context);
         } else {
-            if (op.getOperatorTag() == LogicalOperatorTag.GROUP) {
+            if (op.getOperatorTag() == LogicalOperatorTag.GROUP
+                    || op.getOperatorTag() == LogicalOperatorTag.CLUSTER_BY) {
                 return null;
             }
             Pair<EmptyTupleSourceOperator, DataSourceScanOperator> etsDataSource = containsLeafInputOnly(op);

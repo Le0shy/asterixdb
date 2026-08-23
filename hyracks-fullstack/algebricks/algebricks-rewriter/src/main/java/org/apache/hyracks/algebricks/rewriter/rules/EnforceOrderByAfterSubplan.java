@@ -57,6 +57,8 @@ public class EnforceOrderByAfterSubplan implements IAlgebraicRewriteRule {
         orderBreakingOps.add(LogicalOperatorTag.LEFTOUTERJOIN);
         orderBreakingOps.add(LogicalOperatorTag.UNIONALL);
         orderBreakingOps.add(LogicalOperatorTag.AGGREGATE);
+        // Consumes its input like GROUP does: an ORDER below it orders nothing that is live above it.
+        orderBreakingOps.add(LogicalOperatorTag.CLUSTER_BY);
 
         /** add operators that are sensitive to the ordering */
         orderSensitiveOps.add(LogicalOperatorTag.LIMIT);

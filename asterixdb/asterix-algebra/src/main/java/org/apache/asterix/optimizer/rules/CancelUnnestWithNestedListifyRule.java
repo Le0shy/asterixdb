@@ -205,7 +205,7 @@ public class CancelUnnestWithNestedListifyRule implements IAlgebraicRewriteRule 
 
         if (OperatorManipulationUtil.ancestorOfOperatorsExcludeCurrent(agg,
                 ImmutableSet.of(LogicalOperatorTag.LIMIT, LogicalOperatorTag.ORDER, LogicalOperatorTag.GROUP,
-                        LogicalOperatorTag.DISTINCT, LogicalOperatorTag.AGGREGATE))) {
+                        LogicalOperatorTag.CLUSTER_BY, LogicalOperatorTag.DISTINCT, LogicalOperatorTag.AGGREGATE))) {
             return false;
         }
 

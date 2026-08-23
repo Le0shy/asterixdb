@@ -60,6 +60,7 @@ import org.apache.asterix.lang.sqlpp.optype.JoinType;
 import org.apache.asterix.lang.sqlpp.optype.UnnestType;
 import org.apache.asterix.lang.sqlpp.struct.SetOperationInput;
 import org.apache.asterix.lang.sqlpp.struct.SetOperationRight;
+import org.apache.asterix.lang.sqlpp.util.SqlppFormatPrintUtil;
 import org.apache.asterix.lang.sqlpp.util.SqlppRewriteUtil;
 import org.apache.asterix.lang.sqlpp.util.SqlppVariableUtil;
 import org.apache.asterix.lang.sqlpp.visitor.base.AbstractSqlppSimpleExpressionVisitor;
@@ -113,6 +114,10 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
     // Variables bound by the enclosing query blocks, subquery LETs and quantifiers of the expression being
     // visited, innermost first; a CLUSTER BY block may not read any of them.
     private final Deque<Set<String>> enclosingBindings = new ArrayDeque<>();
+
+    // The k-means|| pool is sized as a small multiple of k (ExpandClusterByRule.OVERSAMPLING_FACTOR_PER_K); this
+    // keeps that product inside an int, so the bound is checked where the option is read, with the user's value.
+    private static final int MAX_NUM_CLUSTERS = Integer.MAX_VALUE / 2;
 
     private static final Set<String> KNOWN_OPTIONS = Set.of(OPT_ALGORITHM, OPT_NUM_CLUSTERS, OPT_SIMILARITY,
             OPT_CROSS_POLLINATION, OPT_INIT_MODE, OPT_DIMENSION);
@@ -305,6 +310,7 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
         int dimension = validateDimensionAndGet(cbc);
         String metric = getMetric(cbc);
         cbc.setResolvedOptions(k, getInitMode(cbc), metric, dimension);
+        cbc.setClusteringExpressionText(SqlppFormatPrintUtil.toString(cbc.getClusteringExpression()).trim());
 
         // The declared width is not a WHERE on the block: the columnar filter pushdown would split it from its
         // is-array guard and evaluate len() per array element inside the scan. The stages' decoders enforce it
@@ -548,6 +554,10 @@ public class SqlppClusterByVisitor extends AbstractSqlppSimpleExpressionVisitor 
         } catch (NumberFormatException e) {
             throw new CompilationException(ErrorCode.COMPILATION_ERROR, cbc.getSourceLocation(),
                     "CLUSTER BY 'num_clusters' must be a positive integer, but was: " + numClusters);
+        }
+        if (k > MAX_NUM_CLUSTERS) {
+            throw new CompilationException(ErrorCode.COMPILATION_ERROR, cbc.getSourceLocation(),
+                    "CLUSTER BY 'num_clusters' must be at most " + MAX_NUM_CLUSTERS + ", but was: " + k);
         }
         // Cross-pollination (overlapping clusters) is not implemented, but only a request to turn it ON is an
         // error: false asks for the disjoint clusters this release already produces. Accepting a true would

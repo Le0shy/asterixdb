@@ -223,6 +223,12 @@
     </test-case>
     <!-- The same rows, with the warning the user gets for the ones left out; unpartitioned input so there is
          exactly one. -->
+    <test-case FilePath="cluster-by" check-warnings="true">
+        <compilation-unit name="kmeans-invalid-row-warning">
+            <output-dir compare="Text">kmeans-invalid-row-warning</output-dir>
+            <expected-warn>ASX0203: CLUSTER BY encountered invalid input: for some rows p.vec is not a numeric array of the declared dimension; they were left out of every cluster</expected-warn>
+        </compilation-unit>
+    </test-case>
     <!-- The two shortfall reports are raised by different stages and say different things. RECLUSTER knows
          the distinct-vector count and names it; Lloyd only knows what survived, so it names that instead.
          init_mode "random" has no RECLUSTER at all, which is why the Lloyd backstop has to exist. -->
@@ -237,6 +243,53 @@
     <test-case FilePath="cluster-by">
         <compilation-unit name="kmeans-having">
             <output-dir compare="Text">kmeans-having</output-dir>
+        </compilation-unit>
+    </test-case>
+    <test-case FilePath="cluster-by" check-warnings="true">
+        <compilation-unit name="kmeans-empty-input">
+            <output-dir compare="Text">kmeans-empty-input</output-dir>
+            <expected-warn>is not a numeric array of the declared dimension; they were left out of every cluster</expected-warn>
+            <expected-warn>no row has a numeric array of the declared dimension under p.vec; no clusters are returned</expected-warn>
+            <expected-warn>no row has a numeric array of dimension 2 under p.vec; no clusters are returned</expected-warn>
+        </compilation-unit>
+    </test-case>
+    <test-case FilePath="cluster-by" check-warnings="true">
+        <compilation-unit name="kmeans-nonfinite-vectors">
+            <output-dir compare="Text">kmeans-nonfinite-vectors</output-dir>
+            <expected-warn>is not a numeric array of the declared dimension; they were left out of every cluster</expected-warn>
+        </compilation-unit>
+    </test-case>
+    <test-case FilePath="cluster-by" check-warnings="true">
+        <compilation-unit name="kmeans-int-vectors">
+            <output-dir compare="Text">kmeans-int-vectors</output-dir>
+        </compilation-unit>
+    </test-case>
+    <test-case FilePath="cluster-by" check-warnings="true">
+        <compilation-unit name="kmeans-huge-k">
+            <output-dir compare="Text">kmeans-huge-k</output-dir>
+            <expected-warn>num_clusters is 5000 but the input has only 6 distinct vector(s); 6 cluster(s) are returned</expected-warn>
+            <expected-warn>num_clusters is 5000 but the input only supports 6 cluster(s); 6 cluster(s) are returned</expected-warn>
+        </compilation-unit>
+    </test-case>
+    <test-case FilePath="cluster-by/negative">
+        <compilation-unit name="vector-exceeds-frame">
+            <output-dir compare="Text">vector-exceeds-frame</output-dir>
+            <expected-error>needs about 96064 bytes per vector, more than the frame size</expected-error>
+        </compilation-unit>
+    </test-case>
+    <test-case FilePath="cluster-by">
+        <compilation-unit name="kmeans-members-twice">
+            <output-dir compare="Text">kmeans-members-twice</output-dir>
+        </compilation-unit>
+    </test-case>
+    <test-case FilePath="cluster-by">
+        <compilation-unit name="kmeans-in-join">
+            <output-dir compare="Text">kmeans-in-join</output-dir>
+        </compilation-unit>
+    </test-case>
+    <test-case FilePath="cluster-by">
+        <compilation-unit name="kmeans-correlated">
+            <output-dir compare="Text">kmeans-correlated</output-dir>
         </compilation-unit>
     </test-case>
     <test-case FilePath="cluster-by/negative">

@@ -85,6 +85,15 @@ public final class KMeansReclusterOperatorDescriptor extends AbstractOperatorDes
     // reach here.
     private final VectorSimilarityMetric metric;
 
+    // The clustering expression as the user wrote it, named in what this operator reports about rows.
+    private String clusteringExpression = "the clustering expression";
+
+    public void setClusteringExpression(String clusteringExpression) {
+        if (clusteringExpression != null) {
+            this.clusteringExpression = clusteringExpression;
+        }
+    }
+
     public KMeansReclusterOperatorDescriptor(IOperatorDescriptorRegistry spec, RecordDescriptor vectorRecDesc,
             int count, int poolColumn, int framesLimit, VectorSimilarityMetric metric) {
         // One input: the broadcast partials, which are always envelope rows (the oversampling loop's output).
@@ -136,11 +145,12 @@ public final class KMeansReclusterOperatorDescriptor extends AbstractOperatorDes
             // a k the data cannot supply, and every row still lands in exactly one of them.
             if (meanCount[0] < count && ctx.getWarningCollector().shouldWarn()) {
                 ctx.getWarningCollector()
-                        .warn(Warning.of(null, ErrorCode.CLUSTER_BY_INVALID_INPUT,
-                                "NumClusters is " + count + " but only " + meanCount[0]
-                                        + " distinct vector(s) were found in the input"
-                                        + (meanCount[0] == 0 ? " -- no row matched the declared Dimension"
-                                                : ", so only " + meanCount[0] + " cluster(s) are returned")));
+                        .warn(Warning.of(getSourceLocation(), ErrorCode.CLUSTER_BY_INVALID_INPUT,
+                                meanCount[0] == 0
+                                        ? "no row has a numeric array of the declared dimension under "
+                                                + clusteringExpression + "; no clusters are returned"
+                                        : "num_clusters is " + count + " but the input has only " + meanCount[0]
+                                                + " distinct vector(s); " + meanCount[0] + " cluster(s) are returned"));
             }
             // A shortfall is not topped up from the candidate pool: a candidate that took no rows is by
             // construction a duplicate of one that did, so it stands for a position already covered.

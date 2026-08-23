@@ -134,6 +134,7 @@ public class PushFunctionsBelowJoin implements IAlgebraicRewriteRule {
             }
             // Bail on these operators.
             case GROUP:
+            case CLUSTER_BY:
             case AGGREGATE:
             case DISTINCT:
             case UNNEST_MAP: {

@@ -62,6 +62,15 @@ public class KMeansReleaseOperatorDescriptor extends AbstractSingleActivityOpera
 
     private final String loopKey;
 
+    // The clustering expression as the user wrote it, named in what this operator reports about rows.
+    private String clusteringExpression = "the clustering expression";
+
+    public void setClusteringExpression(String clusteringExpression) {
+        if (clusteringExpression != null) {
+            this.clusteringExpression = clusteringExpression;
+        }
+    }
+
     public KMeansReleaseOperatorDescriptor(IOperatorDescriptorRegistry spec, String loopKey) {
         super(spec, 1, 0);
         this.loopKey = loopKey;
@@ -122,8 +131,9 @@ public class KMeansReleaseOperatorDescriptor extends AbstractSingleActivityOpera
                 if (!poolAppender.append(tb.getFieldEndOffsets(), tb.getByteArray(), 0, tb.getSize())) {
                     flushPool();
                     if (!poolAppender.append(tb.getFieldEndOffsets(), tb.getByteArray(), 0, tb.getSize())) {
-                        throw new RuntimeDataException(ErrorCode.CLUSTER_BY_INVALID_INPUT,
-                                "a vector is too large to fit in a frame");
+                        throw new RuntimeDataException(ErrorCode.CLUSTER_BY_INVALID_INPUT, getSourceLocation(),
+                                KMeansCostControllerOperatorDescriptor.vectorTooLarge(clusteringExpression,
+                                        tb.getSize(), ctx.getInitialFrameSize()));
                     }
                 }
             }

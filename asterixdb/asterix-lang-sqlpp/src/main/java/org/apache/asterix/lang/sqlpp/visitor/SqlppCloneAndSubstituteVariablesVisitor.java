@@ -292,6 +292,7 @@ public class SqlppCloneAndSubstituteVariablesVisitor extends CloneAndSubstituteV
         // The resolved state survives the clone: a view or function body is rewritten once, then inlined.
         newClusterbyClause.setResolvedOptions(cc.getNumClusters(), cc.getInitMode(), cc.getMetric(), cc.getDimension());
         newClusterbyClause.setRadiusRead(cc.isRadiusRead());
+        newClusterbyClause.setClusteringExpressionText(cc.getClusteringExpressionText());
         if (cc.hasDecorList()) {
             // The expression reads the variable before the clause; the decoration binds it after it.
             List<GbyVariableExpressionPair> decorList = new ArrayList<>();

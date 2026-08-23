@@ -256,6 +256,7 @@ public class OperatorDeepCopyVisitor implements ILogicalOperatorVisitor<ILogical
         opCopy.setLoopRounds(op.getLoopRounds());
         opCopy.setDimension(op.getDimension());
         opCopy.setMetric(op.getMetric());
+        opCopy.setClusteringExpression(op.getClusteringExpression());
         return opCopy;
     }
 
@@ -269,6 +270,7 @@ public class OperatorDeepCopyVisitor implements ILogicalOperatorVisitor<ILogical
         opCopy.setAlgorithm(op.getAlgorithm());
         opCopy.setInitMode(op.getInitMode());
         opCopy.setMetric(op.getMetric());
+        opCopy.setClusteringExpression(op.getClusteringExpression());
         opCopy.setDimension(op.getDimension());
         if (op.getMemberRecordRef() != null) {
             opCopy.setMemberRecordRef(deepCopyExpressionRef(op.getMemberRecordRef()));

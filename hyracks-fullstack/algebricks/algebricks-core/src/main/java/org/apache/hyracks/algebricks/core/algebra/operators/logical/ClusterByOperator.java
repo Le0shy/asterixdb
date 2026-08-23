@@ -77,6 +77,7 @@ public class ClusterByOperator extends AbstractLogicalOperator {
     private String initMode;
     // Which distance the algorithm measures with, as the metric's canonical name.
     private String metric;
+    private String clusteringExpression;
     // The declared vector width, enforced by the stages' decoders on the assembled value.
     private int dimension;
     // Computes the members list's type from the member record's once the input is typed: the record's type
@@ -323,6 +324,15 @@ public class ClusterByOperator extends AbstractLogicalOperator {
 
     public void setMetric(String metric) {
         this.metric = metric;
+    }
+
+    /** The clustering expression as the user wrote it; the runtime names it in what it reports. */
+    public String getClusteringExpression() {
+        return clusteringExpression;
+    }
+
+    public void setClusteringExpression(String clusteringExpression) {
+        this.clusteringExpression = clusteringExpression;
     }
 
     public int getDimension() {

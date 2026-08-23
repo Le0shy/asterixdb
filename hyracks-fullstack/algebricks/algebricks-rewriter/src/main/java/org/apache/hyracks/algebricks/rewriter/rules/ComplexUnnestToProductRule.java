@@ -165,6 +165,7 @@ public class ComplexUnnestToProductRule implements IAlgebraicRewriteRule {
                 case AGGREGATE:
                 case SUBPLAN:
                 case GROUP:
+                case CLUSTER_BY:
                 case UNNEST_MAP:
                     return false;
             }

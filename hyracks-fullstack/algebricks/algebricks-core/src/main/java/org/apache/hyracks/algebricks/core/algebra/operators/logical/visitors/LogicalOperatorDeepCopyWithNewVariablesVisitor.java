@@ -551,6 +551,7 @@ public class LogicalOperatorDeepCopyWithNewVariablesVisitor
         opCopy.setLoopRounds(op.getLoopRounds());
         opCopy.setDimension(op.getDimension());
         opCopy.setMetric(op.getMetric());
+        opCopy.setClusteringExpression(op.getClusteringExpression());
         deepCopyInputsAnnotationsAndExecutionMode(op, arg, opCopy);
         return opCopy;
     }
@@ -568,6 +569,7 @@ public class LogicalOperatorDeepCopyWithNewVariablesVisitor
         opCopy.setAlgorithm(op.getAlgorithm());
         opCopy.setInitMode(op.getInitMode());
         opCopy.setMetric(op.getMetric());
+        opCopy.setClusteringExpression(op.getClusteringExpression());
         opCopy.setDimension(op.getDimension());
         if (op.getMemberRecordRef() != null) {
             opCopy.setMemberRecordRef(exprDeepCopyVisitor.deepCopyExpressionReference(op.getMemberRecordRef()));

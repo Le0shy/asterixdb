@@ -21,6 +21,7 @@ package org.apache.asterix.optimizer.rules;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.apache.asterix.common.exceptions.CompilationException;
 import org.apache.asterix.common.vector.VectorSimilarityMetric;
 import org.apache.asterix.om.base.ABoolean;
 import org.apache.asterix.om.base.AInt64;
@@ -136,6 +137,7 @@ public class ExpandClusterByRule extends AbstractDecorrelationRule {
         SourceLocation loc = cop.getSourceLocation();
         LogicalVariable vectorVar = cop.getVectorVariable();
         boolean forgy = INIT_MODE_RANDOM.equals(cop.getInitMode());
+        rejectVectorsWiderThanAFrame(cop, context.getPhysicalOptimizationConfig().getFrameSize(), loc);
 
         // One REPLICATE over the input, as IntroduceSecondaryIndexInsertDeleteRule builds its fan-out: consumers
         // attached directly, outputs naming them, no exchanges -- the enforcer adds those, and
@@ -170,6 +172,24 @@ public class ExpandClusterByRule extends AbstractDecorrelationRule {
 
         Labelled rows = label(cop, shared, finalSet, cFinal, context, loc);
         return clustersOf(cop, rows.op, rows.cid, rows.radius, context, loc);
+    }
+
+    /**
+     * A vector has to fit in a frame everywhere the stages sort, ship or store it. The sort would fail first,
+     * with a message about sorting memory that points the user nowhere; the width is known here, so the
+     * query is refused up front with the two numbers that matter.
+     */
+    private static void rejectVectorsWiderThanAFrame(ClusterByOperator cop, int frameSize, SourceLocation loc)
+            throws AlgebricksException {
+        // An open list of doubles: a tag and an 8-byte value per component, a 4-byte offset per component in
+        // the list header, and the list's own header -- rounded up, so the check is never too lenient.
+        long vectorBytes = 16L * cop.getDimension() + 64;
+        if (vectorBytes > frameSize) {
+            throw new CompilationException(org.apache.asterix.common.exceptions.ErrorCode.COMPILATION_ERROR, loc,
+                    "CLUSTER BY 'dimension' " + cop.getDimension() + " for " + cop.getClusteringExpression()
+                            + " needs about " + vectorBytes + " bytes per vector, more than the frame size of "
+                            + frameSize + " bytes; raise compiler.framesize or lower the dimension");
+        }
     }
 
     /** k-means||: oversample a pool from the seed, then reduce it to k centres. */
@@ -272,10 +292,13 @@ public class ExpandClusterByRule extends AbstractDecorrelationRule {
 
         Mutable<ILogicalExpression> metric =
                 new MutableObject<>(new ConstantExpression(new AsterixConstantValue(new AString(cop.getMetric()))));
+        // The expression's text rides along so the evaluator can name it in what it reports about a row.
+        Mutable<ILogicalExpression> named = new MutableObject<>(
+                new ConstantExpression(new AsterixConstantValue(new AString(cop.getClusteringExpression()))));
         LogicalVariable rowCid = context.newVar();
         ScalarFunctionCallExpression nearest = new ScalarFunctionCallExpression(
                 BuiltinFunctions.getBuiltinFunctionInfo(BuiltinFunctions.NEAREST_CENTROID), ref(vectorVar), ref(cFinal),
-                metric);
+                metric, named);
         nearest.setSourceLocation(loc);
         AssignOperator labelOp = new AssignOperator(rowCid, new MutableObject<>(nearest));
         labelOp.setSourceLocation(loc);
@@ -292,7 +315,8 @@ public class ExpandClusterByRule extends AbstractDecorrelationRule {
             rowDist = context.newVar();
             ScalarFunctionCallExpression distance = new ScalarFunctionCallExpression(
                     BuiltinFunctions.getBuiltinFunctionInfo(BuiltinFunctions.NEAREST_CENTROID_DISTANCE), ref(vectorVar),
-                    ref(cFinal), new MutableObject<>(metric.getValue().cloneExpression()));
+                    ref(cFinal), new MutableObject<>(metric.getValue().cloneExpression()),
+                    new MutableObject<>(named.getValue().cloneExpression()));
             distance.setSourceLocation(loc);
             ILogicalExpression radiusOfRow = distance;
             if (VectorSimilarityMetric.EUCLIDEAN_SQUARED.canonical().equals(cop.getMetric())) {
@@ -456,6 +480,7 @@ public class ExpandClusterByRule extends AbstractDecorrelationRule {
                 new KMeansStageOperator(vectorRef, poolRef, context.newVar(), BuiltinType.ANY, topCount);
         stage.setMode(mode);
         stage.setMetric(cop.getMetric());
+        stage.setClusteringExpression(cop.getClusteringExpression());
         // The loop stages admit only numeric arrays of this width; RECLUSTER reads decoded envelopes.
         stage.setDimension(cop.getDimension());
         stage.setSourceLocation(cop.getSourceLocation());

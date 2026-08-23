@@ -61,6 +61,8 @@ public class ClusterbyClause extends AbstractClause {
     private int dimension;
     // Whether the query reads sc.cluster_radius; the expansion builds the distance and its aggregate only then.
     private boolean radiusRead;
+    // The clustering expression as the user wrote it, for messages about rows it does not describe.
+    private String clusteringExpressionText;
     // The variables the CLUSTER BY operator produces, one tuple per cluster: id, centroid, radius, members.
     // Named by the rewrite so the descriptor's fields can be pointed at them before the translator binds them
     // -- the hand-off GroupbyClause makes for its grouping variables.
@@ -152,6 +154,14 @@ public class ClusterbyClause extends AbstractClause {
 
     public void setRadiusRead(boolean radiusRead) {
         this.radiusRead = radiusRead;
+    }
+
+    public String getClusteringExpressionText() {
+        return clusteringExpressionText;
+    }
+
+    public void setClusteringExpressionText(String clusteringExpressionText) {
+        this.clusteringExpressionText = clusteringExpressionText;
     }
 
     /** Records the validated WITH settings for the translator. */

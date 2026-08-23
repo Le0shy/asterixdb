@@ -1221,7 +1221,9 @@ public class EnumerateJoinsRule implements IAlgebraicRewriteRule {
                 }
             }
         } else {
-            if (op.getOperatorTag() == LogicalOperatorTag.GROUP) { // cannot handle group by's in leaf Inputs.
+            if (op.getOperatorTag() == LogicalOperatorTag.GROUP
+                    || op.getOperatorTag() == LogicalOperatorTag.CLUSTER_BY) {
+                // neither is a leaf input: both consume their input and change its cardinality
                 return false;
             }
             Pair<EmptyTupleSourceOperator, DataSourceScanOperator> etsDataSource = containsLeafInputOnly(op);

@@ -354,6 +354,7 @@ public class DeepCopyVisitor extends AbstractSqlppQueryExpressionVisitor<ILangEx
         copy.setSourceLocation(cc.getSourceLocation());
         copy.setResolvedOptions(cc.getNumClusters(), cc.getInitMode(), cc.getMetric(), cc.getDimension());
         copy.setRadiusRead(cc.isRadiusRead());
+        copy.setClusteringExpressionText(cc.getClusteringExpressionText());
         if (cc.hasDecorList()) {
             List<GbyVariableExpressionPair> decorList = new ArrayList<>();
             for (GbyVariableExpressionPair pair : cc.getDecorPairList()) {

@@ -64,13 +64,17 @@ public class KMeansLloydLoopPOperator extends AbstractKMeansLoopPOperator {
         KMeansLloydControllerOperatorDescriptor op1 = new KMeansLloydControllerOperatorDescriptor(spec, centroidRecDesc,
                 KMeansLoopIO.PARTIAL_RD, loopKey, vectorColumn, centroidColumn, kop.getLoopRounds(), kop.getTopCount(),
                 framesLimit(), kop.getDimension(), metricOf(kop));
+        op1.setSourceLocation(op.getSourceLocation());
+        op1.setClusteringExpression(kop.getClusteringExpression());
         contributeOpDesc(builder, op, op1);
         builder.contributeGraphEdge(src0, 0, op, 0);
         builder.contributeGraphEdge(src1, 0, op, 1);
 
         KMeansCentroidMergeOperatorDescriptor op2 = new KMeansCentroidMergeOperatorDescriptor(spec,
                 KMeansLoopIO.DRAW_RD, participants, framesLimit(), metricOf(kop));
+        op2.setSourceLocation(op.getSourceLocation());
         KMeansLloydReleaseOperatorDescriptor op3 = new KMeansLloydReleaseOperatorDescriptor(spec, loopKey);
+        op3.setSourceLocation(op.getSourceLocation());
 
         // A single-instance loop (an unpartitioned stage) names no node: every operator of it takes a count-1
         // constraint, which the job builder resolves to the one node it uses for all one-partition operators
